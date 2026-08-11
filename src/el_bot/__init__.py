@@ -1,6 +1,7 @@
 """EL Bot package."""
 
 from .core.engine import CoreEngine, ParseResult, Token, TokenKind, ValidationStatus
+from .vocabulary import CANONICAL_SYMBOLS, SymbolAuthority, VocabularyEngine, VocabularyResult
 
 __all__ = [
     "CoreEngine",
@@ -8,4 +9,8 @@ __all__ = [
     "Token",
     "TokenKind",
     "ValidationStatus",
+    "CANONICAL_SYMBOLS",
+    "SymbolAuthority",
+    "VocabularyEngine",
+    "VocabularyResult",
 ]
