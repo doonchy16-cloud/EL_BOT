@@ -2,6 +2,7 @@
 
 from .core.engine import CoreEngine, ParseResult, Token, TokenKind, ValidationStatus
 from .intelligence import IntelligenceEngine, InterpretationResult, InterpretedLine, Relationship
+from .validation import ValidationEngine, ValidationReport
 from .vocabulary import CANONICAL_SYMBOLS, SymbolAuthority, VocabularyEngine, VocabularyResult
 
 __all__ = [
@@ -18,4 +19,6 @@ __all__ = [
     "InterpretationResult",
     "InterpretedLine",
     "Relationship",
+    "ValidationEngine",
+    "ValidationReport",
 ]
