@@ -48,21 +48,56 @@ Responsibilities:
 4. Put interpretation on `HOLD` when a noncanonical emoji appears.
 5. Never expose English meaning labels in EL-facing status output.
 
-Current EL-facing status forms are emoji-native:
+EL-facing status forms:
 
 - canonical vocabulary pass → `✅`
 - unknown emoji / unresolved vocabulary → `🟡❓<unknown emoji>`
 - alphabetic-letter violation → `❌🔤`
 
-The vocabulary engine intentionally does not translate EL into English. Higher interpretation/reasoning engines will consume canonical symbol identity and relationships while the final EL renderer remains emoji-only whenever EL mode is active.
+## Engine 3 — Intelligence / Interpretation Engine
+
+Status: implemented in `src/el_bot/intelligence/interpreter.py`.
+
+Responsibilities:
+
+1. Read canonical symbol order without translating the message to English.
+2. Preserve line structure and indentation.
+3. Extract canonical status anchors such as current, hold, fail, and verified symbols by their locked emoji identity.
+4. Read explicit `➡️`, `⬅️`, and `↔️` relationships as deterministic symbol-to-symbol relationships.
+5. Refuse to upgrade unknown vocabulary from `HOLD` to interpreted `PASS`.
+6. Never echo alphabetic input through its EL renderer.
+
+## Engine 4 — Validation Engine
+
+Status: implemented in `src/el_bot/validation/engine.py`.
+
+Responsibilities:
+
+1. Re-parse every proposed user-facing response before release.
+2. Block accidental alphabetic words from EL output.
+3. Hold noncanonical emoji instead of pretending they are verified vocabulary.
+4. Propagate upstream HOLD/FAIL evidence.
+5. Release the proposed EL response only after evidence-backed PASS.
+
+EL-facing gate output:
+
+- release pass → `✅🧾`
+- hold → `🟡🧾❓`
+- fail → `❌🧾`
+
+This fixes the runtime leakage problem: ordinary words may exist in developer code and documentation, but they cannot pass the EL user-facing release gate while EL mode is active.
 
 ## Planned next engine
 
-**Engine 3 — Intelligence / Interpretation Engine**
+**Engine 5 — Session / Context Engine**
 
-It will interpret canonical symbol sequences, grouping, punctuation, and layout without changing locked symbol meanings or guessing through uncertainty.
+It will preserve EL conversation context, activation state, message history, and bounded interpretation context without weakening the locked output gate.
 
 ## Development
+
+Windows: double-click `run_tests.cmd`.
+
+Manual:
 
 ```bash
 python -m pip install -e ".[test]"
