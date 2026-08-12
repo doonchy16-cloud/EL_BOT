@@ -1,18 +1,96 @@
-"""Deterministic Emoji Language surface parser."""
+"""Deterministic Emoji Language surface parser using Python standard library only."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Iterator
+import unicodedata
 
-import regex
+_ZWJ = "\u200d"
+_VS15 = "\ufe0e"
+_VS16 = "\ufe0f"
+_KEYCAP = "\u20e3"
 
-_GRAPHEME_RE = regex.compile(r"\X")
-_LETTER_RE = regex.compile(r"\p{L}")
-_PUNCT_RE = regex.compile(r"^\p{P}+$")
-_EMOJI_RE = regex.compile(r"\p{Emoji}")
-_KEYCAP_RE = regex.compile(r"^[0-9#*]\ufe0f?\u20e3$")
+
+def _is_variation(char: str) -> bool:
+    return char in {_VS15, _VS16}
+
+
+def _is_modifier(char: str) -> bool:
+    code = ord(char)
+    return 0x1F3FB <= code <= 0x1F3FF
+
+
+def _is_regional(char: str) -> bool:
+    code = ord(char)
+    return 0x1F1E6 <= code <= 0x1F1FF
+
+
+def _is_extend(char: str) -> bool:
+    return _is_variation(char) or _is_modifier(char) or unicodedata.category(char).startswith("M")
+
+
+def split_graphemes(text: str) -> tuple[str, ...]:
+    """Segment the EL surface into deterministic emoji-safe clusters.
+
+    Covers combining marks, variation selectors, keycaps, emoji modifiers,
+    regional-indicator pairs, and ZWJ sequences used by the canonical set.
+    """
+    clusters: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        start = index
+        index += 1
+
+        if _is_regional(text[start]) and index < length and _is_regional(text[index]):
+            index += 1
+
+        while index < length and _is_extend(text[index]):
+            index += 1
+
+        while index < length and text[index] == _ZWJ:
+            index += 1
+            if index >= length:
+                break
+            index += 1
+            while index < length and _is_extend(text[index]):
+                index += 1
+
+        clusters.append(text[start:index])
+    return tuple(clusters)
+
+
+def _is_keycap(cluster: str) -> bool:
+    if not cluster or cluster[-1] != _KEYCAP:
+        return False
+    base = cluster[0]
+    return base in "0123456789#*"
+
+
+def _contains_letter(cluster: str) -> bool:
+    return any(unicodedata.category(char).startswith("L") for char in cluster)
+
+
+def _is_punctuation(cluster: str) -> bool:
+    return bool(cluster) and all(unicodedata.category(char).startswith("P") for char in cluster)
+
+
+def _is_emoji_cluster(cluster: str) -> bool:
+    if _is_keycap(cluster):
+        return True
+    if _VS16 in cluster or _ZWJ in cluster:
+        return not _contains_letter(cluster)
+    for char in cluster:
+        category = unicodedata.category(char)
+        code = ord(char)
+        if category.startswith("S"):
+            return True
+        if 0x1F000 <= code <= 0x1FAFF:
+            return True
+        if 0x2600 <= code <= 0x27FF:
+            return True
+    return False
 
 
 class ValidationStatus(str, Enum):
@@ -66,47 +144,35 @@ class CoreEngine:
     def parse(self, text: str, *, el_mode: bool = True) -> ParseResult:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
-
         tokens = tuple(self._tokenize(text))
         letter_tokens = tuple(token for token in tokens if token.kind is TokenKind.LETTER)
-
         if not el_mode:
             status = ValidationStatus.HOLD
         elif letter_tokens:
             status = ValidationStatus.FAIL
         else:
             status = ValidationStatus.PASS
-
-        return ParseResult(
-            source=text,
-            tokens=tokens,
-            status=status,
-            el_mode=el_mode,
-            letter_tokens=letter_tokens,
-        )
+        return ParseResult(text, tokens, status, el_mode, letter_tokens)
 
     def _tokenize(self, text: str) -> Iterable[Token]:
-        for match in _GRAPHEME_RE.finditer(text):
-            cluster = match.group(0)
-            yield Token(
-                text=cluster,
-                kind=self._classify(cluster),
-                start=match.start(),
-                end=match.end(),
-            )
+        offset = 0
+        for cluster in split_graphemes(text):
+            end = offset + len(cluster)
+            yield Token(cluster, self._classify(cluster), offset, end)
+            offset = end
 
     @staticmethod
     def _classify(cluster: str) -> TokenKind:
         if cluster.isspace():
             return TokenKind.WHITESPACE
-        if _LETTER_RE.search(cluster):
+        if _contains_letter(cluster):
             return TokenKind.LETTER
-        if _KEYCAP_RE.fullmatch(cluster):
+        if _is_keycap(cluster):
             return TokenKind.EMOJI
         if cluster.isdecimal():
             return TokenKind.NUMBER
-        if _PUNCT_RE.fullmatch(cluster):
-            return TokenKind.PUNCTUATION
-        if _EMOJI_RE.search(cluster):
+        if _is_emoji_cluster(cluster):
             return TokenKind.EMOJI
+        if _is_punctuation(cluster):
+            return TokenKind.PUNCTUATION
         return TokenKind.SYMBOL
