@@ -126,7 +126,7 @@ class OllamaConnector:
         self._last_evidence = evidence
         return evidence
 
-    def warm_internal(self, keep_alive: str = "5m") -> bool:
+    def warm_internal(self, keep_alive: str = "10m") -> bool:
         if not isinstance(keep_alive, str) or not keep_alive:
             raise ValueError("keep_alive must be a non-empty string")
         payload = {
@@ -158,7 +158,7 @@ class OllamaConnector:
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "keep_alive": "5m",
+            "keep_alive": "10m",
             "options": {"temperature": 0},
         }
         if image_list:
@@ -188,8 +188,8 @@ class OllamaConnector:
             "model": self.model,
             "messages": [message],
             "stream": False,
-            "keep_alive": "5m",
-            "options": {"temperature": 0, "num_ctx": 8192},
+            "keep_alive": "10m",
+            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 96},
         }
         decoded = self._request_json(
             "/api/chat",
