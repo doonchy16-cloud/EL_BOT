@@ -96,8 +96,21 @@ jobs:
           $main = Join-Path $dir $spark
           $preload = Join-Path $dir $plug
           $view = Join-Path $dir $screen
-          node --check $main
-          node --check $preload
+
+          $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+          if ($nodeCommand) {
+            $node = $nodeCommand.Source
+          } else {
+            $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
+            $node = Join-Path $runnerRoot 'externals\node24\bin\node.exe'
+            if (-not (Test-Path -LiteralPath $node)) {
+              $node = Join-Path $runnerRoot 'externals\node20\bin\node.exe'
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $node)) { throw 'node missing' }
+          & $node --check $main
+          & $node --check $preload
           if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
           if ((Get-Item -LiteralPath $view).Length -lt 100) { throw 'view empty' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
