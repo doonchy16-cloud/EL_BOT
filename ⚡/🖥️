@@ -104,7 +104,7 @@ function compressImage(dataUrl){
   return new Promise((resolve)=>{
     const image = new Image();
     image.onload = ()=>{
-      const maxSide = 1600;
+      const maxSide = 1024;
       const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
       const width = Math.max(1, Math.round(image.naturalWidth * scale));
       const height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -115,7 +115,7 @@ function compressImage(dataUrl){
       context.fillStyle = '#ffffff';
       context.fillRect(0,0,width,height);
       context.drawImage(image,0,0,width,height);
-      resolve(canvas.toDataURL('image/jpeg',0.88));
+      resolve(canvas.toDataURL('image/jpeg',0.86));
     };
     image.onerror = ()=>resolve(dataUrl);
     image.src = dataUrl;
