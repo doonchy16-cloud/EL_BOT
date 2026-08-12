@@ -36,6 +36,7 @@ CLAUSE_SPLIT_RE = re.compile(r"[.!?;\n]+")
 _PROCESS_PATTERNS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("📥","🧪","🧾","✅","🚀"), "Import the item, test and validate it, confirm that it passes, and then deploy it."),
     (("🔐","🔒","❌","🔑","🛂","🔓","🧾","✅"), "Keep the security boundary locked when the credential fails, authenticate the replacement credential, unlock access only after verification succeeds, and confirm success."),
+    (("🔐","🔒","❌","🔑","🛂","🔓","✅"), "Keep the security system locked when the credential fails, authenticate the credential, unlock access, and confirm success."),
     (("🔄","📦","‼️","❤️‍🩹","⚙️"), "Restart the package or container immediately to restore the core service."),
     (("📸","🦙","👁️"), "Use Ollama only for visual observation of the screenshot."),
     (("🧪","🧾","✅"), "Run diagnostics and validation, then confirm successful completion."),
@@ -82,25 +83,29 @@ class EmojiToABCEngine:
     @classmethod
     def _render_group(cls, raw: str, symbols: tuple[str, ...]) -> str:
         if not symbols:return ""
-        timer=cls._number_after_timer(raw)
+        symbol_set=set(symbols); timer=cls._number_after_timer(raw)
+        if {"🔐","🔒"}.issubset(symbol_set):return "keep the security system locked"
+        if {"❌","🔑"}.issubset(symbol_set):return "the credential has failed"
+        if "🛂" in symbol_set and "🔑" in symbol_set:return "authenticate the credential"
+        if "🛂" in symbol_set:return "authenticate the credential"
+        if "🔓" in symbol_set:return "unlock access"
+        if {"🧾","✅"}.issubset(symbol_set):return "verify and confirm success"
         if "⏱️" in symbols and timer and len([s for s in symbols if s!="⏱️"])==0:return f"after {timer} seconds"
         statuses=[_lang.STATUS_PHRASES[s] for s in symbols if s in _lang.STATUS_PHRASES]
         actions=[_lang.ACTION_PHRASES[s] for s in symbols if s in _lang.ACTION_PHRASES]
         entities=[cls._context_entity(s,symbols) for s in symbols if s in _lang.ENTITY_PHRASES and s not in _lang.ACTION_PHRASES]
         others=[_lang.preferred_phrase(s) for s in symbols if s not in _lang.STATUS_PHRASES and s not in _lang.ACTION_PHRASES and s not in _lang.ENTITY_PHRASES and not _lang.is_relation(s) and s not in {"⏱️"}]
-        statuses=list(dict.fromkeys(statuses)); actions=list(dict.fromkeys(actions)); entities=list(dict.fromkeys(entities)); others=list(dict.fromkeys(others))
-        urgent=" immediately" if "‼️" in symbols or "❗" in symbols else ""
+        statuses=list(dict.fromkeys(statuses)); actions=list(dict.fromkeys(actions)); entities=list(dict.fromkeys(entities)); others=list(dict.fromkeys(others)); urgent=" immediately" if symbol_set.intersection({"‼️","❗"}) else ""
         if statuses and entities and not actions:
             subject=entities[0]
             if "failed" in statuses:return f"the {subject} has failed"
             if "offline" in statuses and len(statuses)==1:return f"the {subject} is offline"
             return f"the {subject} is " + " and ".join(statuses[:2])
         if actions:
-            verb=actions[0]; obj=entities[0] if entities else (others[0] if others else "the current item")
-            phrase=f"{verb} {obj}{urgent}"
-            if len(actions)>1: phrase += " and " + " and ".join(actions[1:3])
-            if statuses: phrase += " while it is " + " and ".join(statuses[:2])
-            if timer: phrase += f" after {timer} seconds"
+            verb=actions[0]; obj=entities[0] if entities else (others[0] if others else "the current item"); phrase=f"{verb} {obj}{urgent}"
+            if len(actions)>1:phrase += " and " + " and ".join(actions[1:3])
+            if statuses:phrase += " while it is " + " and ".join(statuses[:2])
+            if timer:phrase += f" after {timer} seconds"
             return phrase
         if "⏱️" in symbols and timer:return f"after {timer} seconds"
         if statuses:return "the current state is " + " and ".join(statuses[:3])
@@ -116,25 +121,15 @@ class EmojiToABCEngine:
             if symbols or NUMBER_RE.search(part):groups.append((part,symbols))
         return tuple(groups)
 
-    @staticmethod
-    def _ordered_contains(symbols: tuple[str, ...], required: tuple[str, ...]) -> bool:
-        cursor=0
-        for symbol in symbols:
-            if cursor<len(required) and symbol==required[cursor]:cursor+=1
-        return cursor==len(required)
-
     @classmethod
     def _pattern_sentence(cls, clause: str, symbols: tuple[str, ...]) -> str | None:
         substantive=tuple(s for s in symbols if not _lang.is_relation(s) and s not in {"➕","⬅️","↔️","🔀","🚦"})
         for required,sentence in _PROCESS_PATTERNS:
-            present=sum(1 for s in required if s in substantive)
-            ratio=present/max(1,len(set(substantive)))
-            if all(s in substantive for s in required) and ratio>=0.68:
-                return sentence
+            present=sum(1 for s in required if s in substantive); ratio=present/max(1,len(set(substantive)))
+            if all(s in substantive for s in required) and ratio>=0.68:return sentence
         symbol_set=set(symbols)
         if "🔴" in symbol_set and "❌" in symbol_set:
-            timer=cls._number_after_timer(clause); entity_bits=[s for s in symbols if s in {"🗃️","🔌","📡","⚙️","📦"}]; subject=cls._noun_phrase(tuple(entity_bits)) or "system"
-            parts=[f"A critical failure affected the {subject}"+(f" after {timer} seconds" if timer else "")+"."]
+            timer=cls._number_after_timer(clause); entity_bits=[s for s in symbols if s in {"🗃️","🔌","📡","⚙️","📦"}]; subject=cls._noun_phrase(tuple(entity_bits)) or "system"; parts=[f"A critical failure affected the {subject}"+(f" after {timer} seconds" if timer else "")+"."]
             if "💥" in symbol_set and "📴" in symbol_set:parts.append("The server crashed and went offline.")
             if "🔄" in symbol_set:parts.append("Restart the "+("package or container" if "📦" in symbol_set else "service")+(" immediately" if symbol_set.intersection({"‼️","❗"}) else "")+".")
             if symbol_set.intersection({"❤️‍🩹","🧯"}):parts.append("Restore the service and recover it safely.")
@@ -157,11 +152,8 @@ class EmojiToABCEngine:
         if len(groups)>=2:
             rendered=[cls._render_group(raw,syms) for raw,syms in groups]; rendered=[item for item in rendered if item]
             if not rendered:return "The input contains canonical EL concepts but no reconstructable statement."
-            if concise:
-                return _lang.sentence_case(rendered[0] if len(rendered)==1 else "; ".join(rendered))
-            return _lang.sentence_case("; ".join(rendered))
-        phrase=cls._render_group(clause,symbols)
-        return _lang.sentence_case(phrase) if phrase else "The input contains canonical EL concepts but no reconstructable statement."
+            return _lang.sentence_case(rendered[0] if concise and len(rendered)==1 else "; ".join(rendered))
+        phrase=cls._render_group(clause,symbols); return _lang.sentence_case(phrase) if phrase else "The input contains canonical EL concepts but no reconstructable statement."
 
     @classmethod
     def _realize_document(cls, source: str, *, concise: bool=False) -> str:
@@ -177,49 +169,36 @@ class EmojiToABCEngine:
     def _hallucination_score(source_symbols: tuple[str, ...], value: str) -> float:
         candidate_signature=_lang.concept_signature_from_abc(value)
         if not candidate_signature:return 0.0
-        source_set=set(source_symbols); extra=sum(1 for s in candidate_signature if s not in source_set)
-        return max(0.0,1.0-extra/max(1,len(candidate_signature)))
+        source_set=set(source_symbols); extra=sum(1 for s in candidate_signature if s not in source_set); return max(0.0,1.0-extra/max(1,len(candidate_signature)))
 
     @staticmethod
     def _critical_retention(source_symbols: tuple[str, ...], value: str, source: str) -> float:
         critical=[s for s in source_symbols if s in {"🔴","❌","📴","🔄","‼️","🧪","🧾","🔐","🔒","🔓","🛂","✅","🟢","⏱️"}]
         if not critical:return 1.0
-        sig=_lang.concept_signature_from_abc(value); retained=sum(1 for s in critical if s in sig)
-        numbers=NUMBER_RE.findall(source)
-        number_retention=1.0 if not numbers else sum(1 for n in numbers if n in value)/len(numbers)
+        sig=_lang.concept_signature_from_abc(value); retained=sum(1 for s in critical if s in sig); numbers=NUMBER_RE.findall(source); number_retention=1.0 if not numbers else sum(1 for n in numbers if n in value)/len(numbers)
         return 0.8*(retained/max(1,len(critical)))+0.2*number_retention
 
     def translate(self, source: str, *, verifier=None, preference_counts: dict[str,int] | None=None, cross_verify: bool=True, emit: bool=True):
-        stages=[]; metrics={}; preference_counts=preference_counts or {}
-        stages.append(self._emit(1,emit))
+        stages=[]; metrics={}; preference_counts=preference_counts or {}; stages.append(self._emit(1,emit))
         if not isinstance(source,str) or not source.strip():
             c=_lang.Candidate("Unable to translate empty input.",0.0,("empty-input",),0.0,0.0); return _lang.EngineResult(1,source if isinstance(source,str) else "",(c,),tuple(stages),{"status":"hold","quality_status":"fail"})
-        normalized=source.strip()
-        stages.append(self._emit(2,emit)); graphemes=_lang._core.split_graphemes(normalized); metrics["graphemes"]=len(graphemes)
+        normalized=source.strip(); stages.append(self._emit(2,emit)); graphemes=_lang._core.split_graphemes(normalized); metrics["graphemes"]=len(graphemes)
         stages.append(self._emit(3,emit)); canonical=tuple(v for v in graphemes if v in _lang.MEANING_BY_SYMBOL); unknown=tuple(v for v in graphemes if any(ord(ch)>127 for ch in v) and v not in _lang.MEANING_BY_SYMBOL and not v.isspace()); metrics["canonical"]=len(canonical); metrics["unknown"]=len(unknown)
         stages.append(self._emit(4,emit)); compound_exact=_compounds.lookup_compound(normalized); metrics["compound_boundaries"]=1 if compound_exact else 0
         stages.append(self._emit(5,emit)); compound_sentence=_lang.sentence_case(compound_exact) if compound_exact else ""
-        stages.append(self._emit(6,emit)); metrics["resolved"]=len(tuple(_lang.MEANING_BY_SYMBOL[s] for s in canonical))
-        stages.append(self._emit(7,emit)); metrics["literal_unicode_used"]=0
-        stages.append(self._emit(8,emit)); clauses=self._split_clauses(normalized); metrics["clauses"]=len(clauses)
-        stages.append(self._emit(9,emit)); metrics["relations"]=sum(1 for s in canonical if _lang.is_relation(s))
+        stages.append(self._emit(6,emit)); metrics["resolved"]=len(tuple(_lang.MEANING_BY_SYMBOL[s] for s in canonical)); stages.append(self._emit(7,emit)); metrics["literal_unicode_used"]=0
+        stages.append(self._emit(8,emit)); clauses=self._split_clauses(normalized); metrics["clauses"]=len(clauses); stages.append(self._emit(9,emit)); metrics["relations"]=sum(1 for s in canonical if _lang.is_relation(s))
         stages.append(self._emit(10,emit)); metrics["actions"]=sum(1 for s in canonical if _lang.is_action(s)); metrics["entities"]=sum(1 for s in canonical if s in _lang.ENTITY_PHRASES)
-        stages.append(self._emit(11,emit)); metrics["negations"]=canonical.count("❌")+canonical.count("⛔")
-        stages.append(self._emit(12,emit)); metrics["severity"]=sum(1 for s in canonical if s in {"🔴","⚠️","❌","🟡","🚧","🛑"})
-        stages.append(self._emit(13,emit)); numbers=tuple(NUMBER_RE.findall(normalized)); metrics["numbers"]=len(numbers)
-        stages.append(self._emit(14,emit)); metrics["temporal"]=sum(1 for c in clauses if "⏱️" in c or "⏳" in c or "⌛" in c)
-        stages.append(self._emit(15,emit)); metrics["directional"]=sum(1 for s in canonical if s in {"➡️","⬅️","↔️","↕️","🚦"})
-        stages.append(self._emit(16,emit)); metrics["branches"]=1+(0 if compound_sentence else 2)
-        stages.append(self._emit(17,emit)); metrics["interpretations"]=2
+        stages.append(self._emit(11,emit)); metrics["negations"]=canonical.count("❌")+canonical.count("⛔"); stages.append(self._emit(12,emit)); metrics["severity"]=sum(1 for s in canonical if s in {"🔴","⚠️","❌","🟡","🚧","🛑"})
+        stages.append(self._emit(13,emit)); numbers=tuple(NUMBER_RE.findall(normalized)); metrics["numbers"]=len(numbers); stages.append(self._emit(14,emit)); metrics["temporal"]=sum(1 for c in clauses if "⏱️" in c or "⏳" in c or "⌛" in c)
+        stages.append(self._emit(15,emit)); metrics["directional"]=sum(1 for s in canonical if s in {"➡️","⬅️","↔️","↕️","🚦"}); stages.append(self._emit(16,emit)); metrics["branches"]=1+(0 if compound_sentence else 2); stages.append(self._emit(17,emit)); metrics["interpretations"]=2
         stages.append(self._emit(18,emit)); structures=[]
         if compound_sentence:structures.append((compound_sentence,"authority-compound"))
         structures.extend(((self._realize_document(normalized,concise=False),"faithful-structure"),(self._realize_document(normalized,concise=True),"concise-structure")))
-        stages.append(self._emit(19,emit)); realized=[(v,r) for v,r in structures if v and len(v.split())>=1]
-        stages.append(self._emit(20,emit)); filtered=[(v,r) for v,r in realized if not self._glossary_like(v)] or [("Unable to reconstruct a grammatical sentence from the available canonical EL concepts.","hold")]
+        stages.append(self._emit(19,emit)); realized=[(v,r) for v,r in structures if v and len(v.split())>=1]; stages.append(self._emit(20,emit)); filtered=[(v,r) for v,r in realized if not self._glossary_like(v)] or [("Unable to reconstruct a grammatical sentence from the available canonical EL concepts.","hold")]
         stages.append(self._emit(21,emit)); source_signature=_lang.concept_signature_from_el(normalized); candidates=[]
         for order,(value,reason) in enumerate(filtered):
-            sig=_lang.concept_signature_from_abc(value); score,coverage,order_score=_lang.score_candidate(source_signature,sig,base=max(0.0,16.0-order)); retention=self._critical_retention(source_signature,value,normalized)
-            score += 42.0*retention
+            sig=_lang.concept_signature_from_abc(value); score,coverage,order_score=_lang.score_candidate(source_signature,sig,base=max(0.0,16.0-order)); retention=self._critical_retention(source_signature,value,normalized); score+=42.0*retention
             if retention<.55:score-=55.0
             candidates.append(_lang.Candidate(value,score,(reason,"meaning-coverage",f"order:{order_score:.3f}",f"critical-retention:{retention:.3f}"),coverage,0.0))
         stages.append(self._emit(22,emit)); audited=[]
@@ -228,8 +207,7 @@ class EmojiToABCEngine:
         stages.append(self._emit(23,emit)); verified=[]
         if cross_verify and verifier is not None:
             for c in audited:
-                try:
-                    reverse=verifier.translate(c.value,cross_verify=False,emit=False); reverse_signature=_lang.concept_signature_from_el(reverse.winner); similarity=_lang.multiset_similarity(source_signature,reverse_signature)
+                try:reverse=verifier.translate(c.value,cross_verify=False,emit=False); reverse_signature=_lang.concept_signature_from_el(reverse.winner); similarity=_lang.multiset_similarity(source_signature,reverse_signature)
                 except Exception:similarity=0.0
                 verified.append(_lang.apply_roundtrip(c,similarity))
         else:verified=[replace(c,roundtrip=1.0) for c in audited]
@@ -238,8 +216,7 @@ class EmojiToABCEngine:
             observed=int(preference_counts.get(c.value,0))
             if observed:c=replace(c,score=c.score+min(40.0,observed*8.0),reasons=c.reasons+("observed-user-choice",))
             final.append(c)
-        ranked=_lang.sort_candidates(final); metrics["candidates"]=len(ranked); metrics["coverage"]=ranked[0].coverage if ranked else 0.0; metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0
-        retention=self._critical_retention(source_signature,ranked[0].value,normalized) if ranked else 0.0; metrics["critical_retention"]=round(retention,4)
+        ranked=_lang.sort_candidates(final); metrics["candidates"]=len(ranked); metrics["coverage"]=ranked[0].coverage if ranked else 0.0; metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0; retention=self._critical_retention(source_signature,ranked[0].value,normalized) if ranked else 0.0; metrics["critical_retention"]=round(retention,4)
         if unknown or not ranked or metrics["coverage"]<.50 or retention<.55:metrics["quality_status"]="fail"
         elif metrics["coverage"]<.82 or metrics["roundtrip"]<.72 or retention<.80:metrics["quality_status"]="hold"
         else:metrics["quality_status"]="pass"
