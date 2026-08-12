@@ -124,6 +124,6 @@ start=perf_counter()
 for index in range(120):abc_engine.translate(f"Restart the local server after {30+index} seconds and verify success.",cross_verify=False,emit=False)
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
-report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==24
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
+report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==30
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("📚2️⃣✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
