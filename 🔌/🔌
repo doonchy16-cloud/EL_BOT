@@ -1,12 +1,6 @@
-"""Engine 14: deterministic EL connector boundary.
-
-No external connector is invented or pre-registered. Connectors exist only
-when an explicit runtime owner registers a real adapter. User-facing output
-from this engine remains Emoji Language only.
-"""
+"""Engine 14: deterministic EL connector boundary with explicit evidence states."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -30,18 +24,30 @@ def _load(name: str, path: Path):
 
 _ROOT = Path(__file__).resolve().parent.parent
 _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
 CoreEngine = _core.CoreEngine
 ValidationStatus = _core.ValidationStatus
+VocabularyEngine = _vocab.VocabularyEngine
 
 
 @dataclass(frozen=True, slots=True)
 class ConnectorRecord:
     marker: str
     handler: Callable[[str], str]
+    probe: Callable[[], bool] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectorEvidence:
+    marker: str
+    state: str
+
+    def render_el(self) -> str:
+        return self.state + self.marker
 
 
 class ConnectorEngine:
-    """Register and invoke only explicit connector adapters."""
+    """Register only explicit adapters; never fabricate connectivity or health."""
 
     def __init__(self) -> None:
         self._records: dict[str, ConnectorRecord] = {}
@@ -50,31 +56,62 @@ class ConnectorEngine:
     def count(self) -> int:
         return len(self._records)
 
-    def register(self, marker: str, handler: Callable[[str], str]) -> None:
+    @property
+    def markers(self) -> tuple[str, ...]:
+        return tuple(self._records)
+
+    @staticmethod
+    def _validate_marker(marker: str) -> None:
         if not isinstance(marker, str) or not marker:
             raise TypeError("marker must be a non-empty string")
+        parsed = CoreEngine().parse(marker, el_mode=True)
+        if parsed.status is not ValidationStatus.PASS or len(parsed.tokens) != 1:
+            raise ValueError("connector marker must be exactly one EL-safe token")
+        if VocabularyEngine.lookup(marker) is None:
+            raise ValueError("connector marker must be canonical")
+
+    def register(
+        self,
+        marker: str,
+        handler: Callable[[str], str],
+        probe: Callable[[], bool] | None = None,
+    ) -> None:
+        self._validate_marker(marker)
         if not callable(handler):
             raise TypeError("handler must be callable")
-        surface = CoreEngine().parse(marker, el_mode=True)
-        if surface.status is ValidationStatus.FAIL:
-            raise ValueError("connector marker must be letter-free")
+        if probe is not None and not callable(probe):
+            raise TypeError("probe must be callable")
         if marker in self._records:
             raise ValueError("connector marker already registered")
-        self._records[marker] = ConnectorRecord(marker, handler)
+        self._records[marker] = ConnectorRecord(marker, handler, probe)
 
     def unregister(self, marker: str) -> bool:
         return self._records.pop(marker, None) is not None
+
+    def evidence(self, marker: str) -> ConnectorEvidence:
+        record = self._records.get(marker)
+        if record is None:
+            return ConnectorEvidence(marker, "⚪")
+        if record.probe is None:
+            return ConnectorEvidence(marker, "🟡")
+        try:
+            state = "✅" if record.probe() is True else "❌"
+        except Exception:
+            state = "❌"
+        return ConnectorEvidence(marker, state)
 
     def invoke(self, marker: str, payload: str) -> str:
         record = self._records.get(marker)
         if record is None:
             return "🟡🔌❓"
+        if record.probe is not None and self.evidence(marker).state != "✅":
+            return "🟡🔌" + marker
         try:
             output = record.handler(payload)
         except Exception:
-            return "❌🔌"
+            return "❌🔌" + marker
         if not isinstance(output, str):
-            return "❌🔌"
+            return "❌🔌" + marker
         surface = CoreEngine().parse(output, el_mode=True)
         if surface.status is ValidationStatus.FAIL:
             return "❌🔌🔤"
@@ -83,14 +120,25 @@ class ConnectorEngine:
     def render_el(self) -> str:
         if not self._records:
             return "⚪🔌0"
-        return "✅🔌" + str(self.count) + " " + " ".join(self._records)
+        rendered = " ".join(self.evidence(marker).render_el() for marker in self._records)
+        return "🔌" + str(self.count) + " " + rendered
 
     def process(self, text: str) -> str:
         if text in {"🔌", "🔌📋"}:
             return self.render_el()
+        if text.startswith("🔌") and len(CoreEngine().parse(text, el_mode=True).tokens) == 2:
+            marker = CoreEngine().parse(text, el_mode=True).tokens[1].text
+            return self.evidence(marker).render_el()
         return "🟡🔌❓"
 
     def render_el_status(self) -> str:
         if not self._records:
             return "⚪🔌0"
-        return "✅🔌" + str(self.count)
+        states = tuple(self.evidence(marker).state for marker in self._records)
+        if any(state == "❌" for state in states):
+            head = "❌"
+        elif any(state == "🟡" for state in states):
+            head = "🟡"
+        else:
+            head = "✅"
+        return head + "🔌" + str(self.count)
