@@ -1,0 +1,96 @@
+"""Engine 14: deterministic EL connector boundary.
+
+No external connector is invented or pre-registered. Connectors exist only
+when an explicit runtime owner registers a real adapter. User-facing output
+from this engine remains Emoji Language only.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+from typing import Callable
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+CoreEngine = _core.CoreEngine
+ValidationStatus = _core.ValidationStatus
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectorRecord:
+    marker: str
+    handler: Callable[[str], str]
+
+
+class ConnectorEngine:
+    """Register and invoke only explicit connector adapters."""
+
+    def __init__(self) -> None:
+        self._records: dict[str, ConnectorRecord] = {}
+
+    @property
+    def count(self) -> int:
+        return len(self._records)
+
+    def register(self, marker: str, handler: Callable[[str], str]) -> None:
+        if not isinstance(marker, str) or not marker:
+            raise TypeError("marker must be a non-empty string")
+        if not callable(handler):
+            raise TypeError("handler must be callable")
+        surface = CoreEngine().parse(marker, el_mode=True)
+        if surface.status is ValidationStatus.FAIL:
+            raise ValueError("connector marker must be letter-free")
+        if marker in self._records:
+            raise ValueError("connector marker already registered")
+        self._records[marker] = ConnectorRecord(marker, handler)
+
+    def unregister(self, marker: str) -> bool:
+        return self._records.pop(marker, None) is not None
+
+    def invoke(self, marker: str, payload: str) -> str:
+        record = self._records.get(marker)
+        if record is None:
+            return "🟡🔌❓"
+        try:
+            output = record.handler(payload)
+        except Exception:
+            return "❌🔌"
+        if not isinstance(output, str):
+            return "❌🔌"
+        surface = CoreEngine().parse(output, el_mode=True)
+        if surface.status is ValidationStatus.FAIL:
+            return "❌🔌🔤"
+        return output
+
+    def render_el(self) -> str:
+        if not self._records:
+            return "⚪🔌0"
+        return "✅🔌" + str(self.count) + " " + " ".join(self._records)
+
+    def process(self, text: str) -> str:
+        if text in {"🔌", "🔌📋"}:
+            return self.render_el()
+        return "🟡🔌❓"
+
+    def render_el_status(self) -> str:
+        if not self._records:
+            return "⚪🔌0"
+        return "✅🔌" + str(self.count)
