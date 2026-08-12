@@ -34,10 +34,10 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent.parent
-_core = _load("_el_rank_core", _ROOT / "⚙️" / "⚙️")
-_vocab = _load("_el_rank_vocab", _ROOT / "📚" / "📚")
-_meanings = _load("_el_rank_meanings", _ROOT / "📚" / "🧾")
-_compounds = _load("_el_rank_compounds", _ROOT / "📚" / "🧩")
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
+_compounds = _load("_el_compounds", _ROOT / "📚" / "🧩")
 
 ValidationStatus = _core.ValidationStatus
 CoreEngine = _core.CoreEngine
