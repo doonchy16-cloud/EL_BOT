@@ -65,12 +65,10 @@ def _strip_data_url(value: str) -> str:
 def _valid_el(text: str) -> bool:
     if not text.strip():
         return False
-    core = CoreEngine()
-    vocab = VocabularyEngine()
-    parsed = core.parse(text, el_mode=True)
+    parsed = CoreEngine().parse(text, el_mode=True)
     if parsed.status is ValidationStatus.FAIL:
         return False
-    return vocab.resolve(parsed).status is ValidationStatus.PASS
+    return VocabularyEngine().resolve(parsed).status is ValidationStatus.PASS
 
 
 def _debug_exception(exc: Exception) -> None:
@@ -90,7 +88,7 @@ def _mode_prompt(mode: int) -> str:
 This is Mode 1: visual evidence to text.
 Prioritize visible errors, warnings, success states, UI state, controls, files, devices, people, relationships, and actionable evidence.
 Do not invent hidden facts, causes, identities, or unseen state. If text is visibly readable, summarize it faithfully.
-Return 1-5 short sentences, no markdown, under 180 words."""
+Return 1-5 short sentences, no markdown, under 140 words."""
     return f"""Analyze the supplied screenshot/image visually and convert the important visible evidence into canonical Emoji Language (EL).
 This is Mode 2: visual evidence to emoji.
 Output ONLY canonical EL symbols from the compact glossary below, plus digits, punctuation, arrows, and whitespace. Never output alphabetic letters or words.
@@ -99,6 +97,22 @@ If genuinely unclear, output 🟡📸❓. Keep the result concise and informatio
 
 Compact visual EL glossary:
 {_VISION_GLOSSARY}"""
+
+
+def _correct_text_only(content: str) -> str:
+    retry = f"""Convert the vision result below into strict canonical EL only.
+No alphabetic letters. No non-canonical emoji. Do not add facts.
+Allowed canonical symbols:
+{_ALLOWED}
+Vision result:
+{content}
+"""
+    try:
+        corrected = OllamaConnector(generation_timeout=60.0).generate_internal(retry).strip()
+    except Exception as exc:
+        _debug_exception(exc)
+        return ""
+    return corrected if _valid_el(corrected) else ""
 
 
 def analyze(mode: int, image_value: str) -> str:
@@ -110,16 +124,15 @@ def analyze(mode: int, image_value: str) -> str:
     except Exception:
         return "❌📸🔣"
 
-    connector = OllamaConnector(generation_timeout=150.0)
+    connector = OllamaConnector(generation_timeout=240.0)
     evidence = connector.probe()
     if not evidence.reachable:
         return "🟡📸🦙📡❓"
     if not evidence.model_present:
         return "🟡📸🦙❓"
 
-    prompt = _mode_prompt(mode)
     try:
-        content = connector.chat_internal(prompt, images=(raw,)).strip()
+        content = connector.chat_internal(_mode_prompt(mode), images=(raw,)).strip()
     except Exception as exc:
         _debug_exception(exc)
         return "🟡📸🦙❓"
@@ -131,19 +144,8 @@ def analyze(mode: int, image_value: str) -> str:
     if _valid_el(content):
         return content
 
-    retry = f"""Correct the previous vision answer into strict canonical EL only.
-No alphabetic letters. No non-canonical emoji. Preserve only facts visible in the image.
-Allowed canonical symbols:
-{_ALLOWED}
-Previous invalid answer:
-{content}
-"""
-    try:
-        corrected = connector.chat_internal(retry, images=(raw,)).strip()
-    except Exception as exc:
-        _debug_exception(exc)
-        corrected = ""
-    if _valid_el(corrected):
+    corrected = _correct_text_only(content)
+    if corrected:
         return corrected
     return "🟡📸🦙🔤"
 
