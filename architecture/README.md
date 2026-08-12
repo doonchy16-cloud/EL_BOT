@@ -11,7 +11,11 @@ Read in this order:
 1. `../PLANNING_EL_FOREVER_EXPANDING_LANGUAGE_ARCHITECTURE_2026-08-12.md` — Owner-locked product direction and 20-engine expansion planning.
 2. `PHASE_1_44_ENGINE_CONTRACTS.md` — reconciled 24 existing + 20 planned engine responsibilities, data contracts, escalation contract, dependency boundaries, and target flow.
 3. `phase1_44_engine_registry.json` — machine-readable 44-engine contract and dependency registry.
-4. `verify_phase1_architecture.py` — architecture gate used by `.github/workflows/🧱.yml`.
+4. `verify_phase1_architecture.py` — machine-checkable Phase 1 gate.
+
+## CI Enforcement
+
+The established `.github/workflows/🧪.yml` workflow runs `🧪/🚀` as its release smoke gate. `🧪/🚀` now executes `architecture/verify_phase1_architecture.py`; therefore a green normal CI release-smoke step proves the architecture contract at the same source head.
 
 ## Hard Boundary
 
