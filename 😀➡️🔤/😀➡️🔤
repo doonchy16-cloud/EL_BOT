@@ -9,216 +9,277 @@ import re
 import sys
 
 
-def _load(name: str, path: Path):
-    if name in sys.modules:
-        return sys.modules[name]
-    loader = SourceFileLoader(name, str(path))
-    spec = spec_from_loader(name, loader)
-    if spec is None:
-        raise RuntimeError("module spec unavailable")
-    module = module_from_spec(spec)
-    sys.modules[name] = module
-    loader.exec_module(module)
-    return module
+def _load(name:str,path:Path):
+    if name in sys.modules:return sys.modules[name]
+    loader=SourceFileLoader(name,str(path));spec=spec_from_loader(name,loader)
+    if spec is None:raise RuntimeError("module spec unavailable")
+    module=module_from_spec(spec);sys.modules[name]=module;loader.exec_module(module);return module
 
 
-_ROOT = Path(__file__).resolve().parent.parent
-_lang = _load("_el_language_foundation", _ROOT / "🧠" / "🧬")
-_compounds = _load("_el_emoji_compounds", _ROOT / "📚" / "🧩")
-
-TOTAL_STAGES = 24
-STAGES = (
+_ROOT=Path(__file__).resolve().parent.parent
+_lang=_load("_el_language_foundation",_ROOT/"🧠"/"🧬")
+_compounds=_load("_el_emoji_compounds",_ROOT/"📚"/"🧩")
+TOTAL_STAGES=24
+STAGES=(
     "Input Integrity","Grapheme Segmentation","Canonical Membership Check","Compound Boundary Detection","Canonical Compound Resolution","Canonical Individual Resolution","Literal Unicode Suppression","Sequence Structure Detection","Relationship Detection","Semantic Role Reconstruction","Negation Reconstruction","Severity Reconstruction","Quantity Binding","Temporal Reconstruction","Direction Reconstruction","Ambiguity Mapping","Interpretation Tree Generation","Sentence-Structure Generation","Natural-Language Realization","Glossary-Output Rejection","Meaning Coverage Audit","Hallucination Audit","Round-Trip Verification","Final Ranking + Winner Selection",
 )
-NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
-CLAUSE_SPLIT_RE = re.compile(r"[.!?;\n]+")
-
-_PROCESS_PATTERNS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("📥","🧪","🧾","✅","🚀"), "Import the item, test and validate it, confirm that it passes, and then deploy it."),
-    (("🔐","🔒","❌","🔑","🛂","🔓","🧾","✅"), "Keep the security boundary locked when the credential fails, authenticate the replacement credential, unlock access only after verification succeeds, and confirm success."),
-    (("🔐","🔒","❌","🔑","🛂","🔓","✅"), "Keep the security system locked when the credential fails, authenticate the credential, unlock access, and confirm success."),
-    (("🔄","📦","‼️","❤️‍🩹","⚙️"), "Restart the package or container immediately to restore the core service."),
-    (("📸","🦙","👁️"), "Use Ollama only for visual observation of the screenshot."),
-    (("🧪","🧾","✅"), "Run diagnostics and validation, then confirm successful completion."),
-)
+NUMBER_RE=re.compile(r"\d+(?:\.\d+)?")
+CLAUSE_SPLIT_RE=re.compile(r"[.!?;\n]+")
+_CONVERSATION={"👋":"Hello.","🙏":"Thank you.","🙆":"Yes.","🙅":"No.","🆗":"Okay.","🆘":"Help is needed.","🤚":"Wait."}
+_CRITICAL={"🔴","❌","⚠️","📴","💥","🔄","‼️","❗","🧪","🧾","🔐","🔒","🔓","🛂","✅","🟢","⛔","❤️‍🩹","🧯","⏱️","🚦","🔗"}
 
 
 class EmojiToABCEngine:
-    """Translate canonical EL to natural language without a model/provider."""
-    def __init__(self) -> None: self.stage_names = STAGES
+    """Translate canonical EL to natural language with zero provider/model calls."""
+    def __init__(self)->None:self.stage_names=STAGES
 
     @staticmethod
-    def _emit(index: int, enabled: bool) -> str:
-        label=STAGES[index-1]; _lang.emit_stage(index,TOTAL_STAGES,"Emoji → ABC Engine — "+label,enabled); return label
+    def _emit(index:int,enabled:bool)->str:
+        label=STAGES[index-1];_lang.emit_stage(index,TOTAL_STAGES,"Emoji → ABC Engine — "+label,enabled);return label
+    @staticmethod
+    def _split_clauses(source:str)->tuple[str,...]:return tuple(p.strip() for p in CLAUSE_SPLIT_RE.split(source) if p.strip())
+    @staticmethod
+    def _symbols(value:str)->tuple[str,...]:return _lang.canonical_symbols(value)
+    @staticmethod
+    def _numbers(value:str)->tuple[str,...]:return tuple(NUMBER_RE.findall(value))
+    @classmethod
+    def _timer(cls,value:str)->str|None:
+        i=value.find("⏱️")
+        if i<0:return None
+        m=NUMBER_RE.search(value,i);return m.group(0) if m else None
 
-    @staticmethod
-    def _split_clauses(source: str) -> tuple[str, ...]: return tuple(part.strip() for part in CLAUSE_SPLIT_RE.split(source) if part.strip())
-    @staticmethod
-    def _symbols(clause: str) -> tuple[str, ...]: return _lang.canonical_symbols(clause)
-    @staticmethod
-    def _number_after_timer(clause: str) -> str | None:
-        timer_index=clause.find("⏱️")
-        if timer_index<0:return None
-        match=NUMBER_RE.search(clause,timer_index); return match.group(0) if match else None
-
-    @staticmethod
-    def _context_entity(symbol: str, symbols: tuple[str, ...]) -> str:
+    @classmethod
+    def _context_entity(cls,symbol:str,symbols:tuple[str,...])->str:
         s=set(symbols)
-        if symbol=="📡":
-            if s.intersection({"💥","📴","⏱️","🔄","❌"}): return "server"
-            return "event/telemetry system"
-        if symbol=="🗃️":
-            if s.intersection({"🔌","⏱️","❌","❤️‍🩹"}): return "database"
-            return "structured data store"
-        if symbol=="⚙️": return "service" if s.intersection({"🔄","❤️‍🩹","🟢"}) else "core system"
+        if symbol=="📡":return "server" if s.intersection({"💥","📴","⏱️","🔄","❌","🔴"}) else "event system"
+        if symbol=="🗃️":return "database" if s.intersection({"🔌","⏱️","❌","❤️‍🩹","🔴"}) else "structured data store"
+        if symbol=="⚙️":return "service" if s.intersection({"🔄","❤️‍🩹","🟢","‼️"}) else "core system"
+        if symbol=="📦":return "container" if s.intersection({"🔄","‼️","❤️‍🩹","🧯"}) else "package"
         return _lang.ENTITY_PHRASES.get(symbol,_lang.preferred_phrase(symbol))
 
     @classmethod
-    def _noun_phrase(cls, symbols: tuple[str, ...]) -> str:
-        entities=[cls._context_entity(symbol,symbols) for symbol in symbols if symbol in _lang.ENTITY_PHRASES]
-        if entities:return ", ".join(dict.fromkeys(entities))
-        values=[_lang.preferred_phrase(symbol) for symbol in symbols if not _lang.is_relation(symbol) and not _lang.is_status(symbol)]
-        return ", ".join(list(dict.fromkeys(values))[:4])
+    def _render_atom(cls,value:str)->str:
+        symbols=cls._symbols(value);s=set(symbols);timer=cls._timer(value);numbers=cls._numbers(value)
+        if value in _CONVERSATION:return _CONVERSATION[value].rstrip(".")
+        if {"🏠","📡"}.issubset(s) and "❌" in s:return "the local server failed"
+        if "📡" in s and "❌" in s:return "the server failed"
+        if "🗃️" in s and "🔌" in s and "❌" in s:return "the database connection failed"
+        if {"🔐","🔒"}.issubset(s):return "keep the security system locked"
+        if {"❌","🔑"}.issubset(s):return "the credential failed"
+        if "🛂" in s and "🔑" in s:return "authenticate the replacement credential"
+        if "🛂" in s:return "authenticate the credential"
+        if "🔓" in s:return "unlock access"
+        if "⏱️" in s and timer:return f"after {timer} seconds"
+        if "🔄" in s:
+            target="container" if "📦" in s else "service" if "⚙️" in s else "system"
+            return "restart the "+target+(" immediately" if s.intersection({"‼️","❗"}) else "")
+        if "❤️‍🩹" in s:return "restore the service"
+        if "🧯" in s:return "recover safely"
+        if "🧪" in s and "🧾" in s:return "run diagnostics and validate the result"
+        if "🧪" in s:return "run diagnostics"
+        if "🧾" in s and "✅" in s:return "validate the result and confirm success"
+        if "🧾" in s:return "validate the result"
+        if "✔️" in s and "🟢" in s:return "verify that the system is healthy"
+        if "✔️" in s:return "verify the result"
+        if "✅" in s and "🟢" in s:return "confirm successful healthy operation"
+        if "🟢" in s:return "confirm that the system is healthy"
+        if "✅" in s:return "confirm success"
+        if "📴" in s:return "the server is offline"
+        if "💥" in s:return "the server crashed"
+        if "🚀" in s:return "deploy the package"
+        if "📥" in s and "📄" in s:return "load the file"
+        if "📥" in s:return "load the input"
+        if "🔔" in s and "👤" in s:return "notify the user"
+        if "💾" in s and "🧵" in s:return "preserve the session"
+        if "💾" in s:return "save the data"
+        if "📸" in s and "👁️" in s:return "observe the screenshot"
+        if "🤖" in s and "❌" in s:return "do not use AI"
 
-    @classmethod
-    def _render_group(cls, raw: str, symbols: tuple[str, ...]) -> str:
-        if not symbols:return ""
-        symbol_set=set(symbols); timer=cls._number_after_timer(raw)
-        if {"🔐","🔒"}.issubset(symbol_set):return "keep the security system locked"
-        if {"❌","🔑"}.issubset(symbol_set):return "the credential has failed"
-        if "🛂" in symbol_set and "🔑" in symbol_set:return "authenticate the credential"
-        if "🛂" in symbol_set:return "authenticate the credential"
-        if "🔓" in symbol_set:return "unlock access"
-        if {"🧾","✅"}.issubset(symbol_set):return "verify and confirm success"
-        if "⏱️" in symbols and timer and len([s for s in symbols if s!="⏱️"])==0:return f"after {timer} seconds"
-        statuses=[_lang.STATUS_PHRASES[s] for s in symbols if s in _lang.STATUS_PHRASES]
-        actions=[_lang.ACTION_PHRASES[s] for s in symbols if s in _lang.ACTION_PHRASES]
-        entities=[cls._context_entity(s,symbols) for s in symbols if s in _lang.ENTITY_PHRASES and s not in _lang.ACTION_PHRASES]
-        others=[_lang.preferred_phrase(s) for s in symbols if s not in _lang.STATUS_PHRASES and s not in _lang.ACTION_PHRASES and s not in _lang.ENTITY_PHRASES and not _lang.is_relation(s) and s not in {"⏱️"}]
-        statuses=list(dict.fromkeys(statuses)); actions=list(dict.fromkeys(actions)); entities=list(dict.fromkeys(entities)); others=list(dict.fromkeys(others)); urgent=" immediately" if symbol_set.intersection({"‼️","❗"}) else ""
-        if statuses and entities and not actions:
-            subject=entities[0]
-            if "failed" in statuses:return f"the {subject} has failed"
-            if "offline" in statuses and len(statuses)==1:return f"the {subject} is offline"
-            return f"the {subject} is " + " and ".join(statuses[:2])
+        actions=[_lang.ACTION_PHRASES[x] for x in symbols if x in _lang.ACTION_PHRASES]
+        entities=[cls._context_entity(x,symbols) for x in symbols if x in _lang.ENTITY_PHRASES and x not in _lang.ACTION_PHRASES]
+        statuses=[_lang.STATUS_PHRASES[x] for x in symbols if x in _lang.STATUS_PHRASES]
+        others=[_lang.preferred_phrase(x) for x in symbols if x not in _lang.ACTION_PHRASES and x not in _lang.ENTITY_PHRASES and x not in _lang.STATUS_PHRASES and not _lang.is_relation(x) and x!="⏱️"]
+        actions=list(dict.fromkeys(actions));entities=list(dict.fromkeys(entities));statuses=list(dict.fromkeys(statuses));others=list(dict.fromkeys(others))
         if actions:
-            verb=actions[0]; obj=entities[0] if entities else (others[0] if others else "the current item"); phrase=f"{verb} {obj}{urgent}"
-            if len(actions)>1:phrase += " and " + " and ".join(actions[1:3])
-            if statuses:phrase += " while it is " + " and ".join(statuses[:2])
-            if timer:phrase += f" after {timer} seconds"
-            return phrase
-        if "⏱️" in symbols and timer:return f"after {timer} seconds"
-        if statuses:return "the current state is " + " and ".join(statuses[:3])
-        if entities:return entities[0] if len(entities)==1 else ", ".join(entities[:3])
-        if others:return others[0] if len(others)==1 else ", ".join(others[:3])
+            phrase=actions[0]+(" "+entities[0] if entities else "")
+            if len(actions)>1:phrase+=" and "+" and ".join(actions[1:3])
+            if statuses:phrase+=" while it is "+" and ".join(statuses[:2])
+            if timer:phrase+=f" after {timer} seconds"
+            return phrase.strip()
+        if statuses and entities:return "the "+entities[0]+" is "+" and ".join(statuses[:2])
+        if entities:return ", ".join(entities[:3])
+        if statuses:return "the current state is "+" and ".join(statuses[:3])
+        if others:return ", ".join(others[:3])
+        if numbers:return "number "+numbers[0]
         return ""
 
-    @staticmethod
-    def _step_segments(clause: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
-        parts=clause.split("➡️"); groups=[]
-        for part in parts:
-            symbols=tuple(s for s in _lang.canonical_symbols(part) if s!="➡️")
-            if symbols or NUMBER_RE.search(part):groups.append((part,symbols))
-        return tuple(groups)
-
     @classmethod
-    def _pattern_sentence(cls, clause: str, symbols: tuple[str, ...]) -> str | None:
-        substantive=tuple(s for s in symbols if not _lang.is_relation(s) and s not in {"➕","⬅️","↔️","🔀","🚦"})
-        for required,sentence in _PROCESS_PATTERNS:
-            present=sum(1 for s in required if s in substantive); ratio=present/max(1,len(set(substantive)))
-            if all(s in substantive for s in required) and ratio>=0.68:return sentence
-        symbol_set=set(symbols)
-        if "🔴" in symbol_set and "❌" in symbol_set:
-            timer=cls._number_after_timer(clause); entity_bits=[s for s in symbols if s in {"🗃️","🔌","📡","⚙️","📦"}]; subject=cls._noun_phrase(tuple(entity_bits)) or "system"; parts=[f"A critical failure affected the {subject}"+(f" after {timer} seconds" if timer else "")+"."]
-            if "💥" in symbol_set and "📴" in symbol_set:parts.append("The server crashed and went offline.")
-            if "🔄" in symbol_set:parts.append("Restart the "+("package or container" if "📦" in symbol_set else "service")+(" immediately" if symbol_set.intersection({"‼️","❗"}) else "")+".")
-            if symbol_set.intersection({"❤️‍🩹","🧯"}):parts.append("Restore the service and recover it safely.")
-            if symbol_set.intersection({"🧪","🧾"}):parts.append("Run diagnostics and validation before confirming completion.")
-            return " ".join(parts)
-        if {"📡","💥","📴"}.issubset(symbol_set):return "The server crashed and went offline."
-        if {"🔄","📦","‼️"}.issubset(symbol_set):return "Restart the package or container immediately."
-        if {"🖤","🔘","📊"}.issubset(symbol_set):return "Provide a dark-mode toggle on the dashboard."
+    def _relationship_sentence(cls,clause:str)->str|None:
+        # Specific relationship compounds are decoded before generic arrows.
+        for marker,joiner in (("🚦➡️"," only after "),("🚦⬅️"," only before "),("🚦❌"," unless "),("🔗➡️"," because ")):
+            if marker in clause:
+                left,right=clause.split(marker,1);a=cls._render_flow(left);b=cls._render_flow(right)
+                if a and b:return _lang.sentence_case(a+joiner+b)
+        if "🚦" in clause:
+            left,right=clause.split("🚦",1);a=cls._render_flow(left);b=cls._render_flow(right.lstrip("➡️"))
+            if a and b:return _lang.sentence_case(a+" if "+b)
+        if "🔀" in clause:
+            left,right=clause.split("🔀",1);a=cls._render_flow(left);b=cls._render_flow(right)
+            if a and b:return _lang.sentence_case(a+" or "+b)
         return None
 
     @classmethod
-    def _realize_clause(cls, clause: str, *, concise: bool=False) -> str:
-        exact=_compounds.lookup_compound(clause)
-        if exact:return _lang.sentence_case(exact)
-        symbols=cls._symbols(clause)
-        if not symbols:return "The input contains no canonical EL concepts."
-        pattern=cls._pattern_sentence(clause,symbols)
-        if pattern:return pattern
-        groups=cls._step_segments(clause)
-        if len(groups)>=2:
-            rendered=[cls._render_group(raw,syms) for raw,syms in groups]; rendered=[item for item in rendered if item]
-            if not rendered:return "The input contains canonical EL concepts but no reconstructable statement."
-            return _lang.sentence_case(rendered[0] if concise and len(rendered)==1 else "; ".join(rendered))
-        phrase=cls._render_group(clause,symbols); return _lang.sentence_case(phrase) if phrase else "The input contains canonical EL concepts but no reconstructable statement."
+    def _event_sentence(cls,clause:str)->str|None:
+        symbols=cls._symbols(clause);s=set(symbols);timer=cls._timer(clause)
+        # General failure/recovery frame. This intentionally does not require 🔴.
+        if "❌" in s and s.intersection({"📡","🗃️","⚙️"}) and s.intersection({"🔄","🧪","🧾","🟢","❤️‍🩹","🧯"}):
+            if "🗃️" in s and "🔌" in s:subject="database connection"
+            elif "📡" in s:subject="local server" if "🏠" in s else "server"
+            else:subject="service"
+            first=("A critical " if "🔴" in s else "The ")+subject+(" failed" if "🔴" not in s else " failure occurred")
+            if timer:first+=f" after {timer} seconds"
+            if "💥" in s:first+=" and the server crashed"
+            if "📴" in s:first+=" and went offline"
+            parts=[first+"."]
+            if "🔄" in s:
+                target="container" if "📦" in s else "service"
+                parts.append("Restart the "+target+(" immediately" if s.intersection({"‼️","❗"}) else "")+".")
+            if "❤️‍🩹" in s:parts.append("Restore the service.")
+            if "🧯" in s:parts.append("Recover safely.")
+            if "🧪" in s and "🧾" in s:parts.append("Run diagnostics and validate the result.")
+            elif "🧪" in s:parts.append("Run diagnostics.")
+            elif "🧾" in s:parts.append("Validate the result.")
+            if "✔️" in s and "🟢" in s:parts.append("Verify that the system is healthy.")
+            elif "✅" in s and "🟢" in s:parts.append("Confirm successful healthy operation.")
+            elif "🟢" in s:parts.append("Confirm that the system is healthy.")
+            elif "✅" in s:parts.append("Confirm success.")
+            return " ".join(parts)
+
+        if {"🔐","🔒","❌","🔑","🛂","🔓"}.issubset(s):
+            tail=" Verify success." if "✅" in s or "✔️" in s else ""
+            return "Keep the security system locked when the credential fails. Authenticate the replacement credential, unlock access only after verification succeeds."+tail
+        if {"📥","🧪","🧾","✅","🚀"}.issubset(s):
+            return "Load the item, test and validate it, confirm that it passes, and deploy it only after validation succeeds."
+        if {"📸","🦙","👁️"}.issubset(s):return "Use Ollama only to observe visible facts in the screenshot."
+        if {"🖤","🔘","📊"}.issubset(s):return "Provide a dark-mode toggle on the dashboard."
+        return None
 
     @classmethod
-    def _realize_document(cls, source: str, *, concise: bool=False) -> str:
+    def _render_flow(cls,value:str)->str:
+        value=value.strip(" .")
+        if not value:return ""
+        event=cls._event_sentence(value)
+        if event:return event.rstrip(".")
+        relationship=cls._relationship_sentence(value)
+        if relationship:return relationship.rstrip(".")
+        parts=value.split("➡️")
+        rendered=[]
+        for part in parts:
+            item=cls._render_atom(part)
+            if not item:continue
+            if item.startswith("after ") and rendered:
+                rendered[-1]=rendered[-1]+" "+item
+            else:rendered.append(item)
+        if not rendered:return cls._render_atom(value)
+        if len(rendered)==1:return rendered[0]
+        if len(rendered)==2:return rendered[0]+", then "+rendered[1]
+        return ", ".join(rendered[:-1])+", and then "+rendered[-1]
+
+    @classmethod
+    def _realize_clause(cls,clause:str,*,concise:bool=False)->str:
+        exact=_compounds.lookup_compound(clause)
+        if exact:return _lang.sentence_case(exact)
+        if clause in _CONVERSATION:return _CONVERSATION[clause]
+        event=cls._event_sentence(clause)
+        if event:return event
+        relationship=cls._relationship_sentence(clause)
+        if relationship:return relationship
+        text=cls._render_flow(clause)
+        return _lang.sentence_case(text) if text else "The input contains canonical EL concepts but no reconstructable statement."
+
+    @classmethod
+    def _realize_document(cls,source:str,*,concise:bool=False)->str:
         exact=_compounds.lookup_compound(source)
         if exact:return _lang.sentence_case(exact)
-        return " ".join(cls._realize_clause(c,concise=concise) for c in cls._split_clauses(source)).strip()
+        clauses=cls._split_clauses(source)
+        return " ".join(cls._realize_clause(c,concise=concise) for c in clauses).strip()
 
     @staticmethod
-    def _glossary_like(value: str) -> bool:
-        lowered=value.lower(); return " | " in value or " = " in value or lowered.startswith("the el sequence communicates") or lowered.startswith("symbol ") or lowered.count("meaning")>=2
-
+    def _glossary_like(value:str)->bool:
+        lowered=value.lower();return " | " in value or " = " in value or lowered.startswith("the el sequence communicates") or lowered.startswith("symbol ") or lowered.count("meaning")>=2
     @staticmethod
-    def _hallucination_score(source_symbols: tuple[str, ...], value: str) -> float:
-        candidate_signature=_lang.concept_signature_from_abc(value)
-        if not candidate_signature:return 0.0
-        source_set=set(source_symbols); extra=sum(1 for s in candidate_signature if s not in source_set); return max(0.0,1.0-extra/max(1,len(candidate_signature)))
-
+    def _hallucination_score(source_symbols:tuple[str,...],value:str)->float:
+        sig=_lang.concept_signature_from_abc(value)
+        if not sig:return 0.0
+        source_set=set(source_symbols);extra=sum(1 for s in sig if s not in source_set);return max(0.0,1.0-extra/max(1,len(sig)))
     @staticmethod
-    def _critical_retention(source_symbols: tuple[str, ...], value: str, source: str) -> float:
-        critical=[s for s in source_symbols if s in {"🔴","❌","📴","🔄","‼️","🧪","🧾","🔐","🔒","🔓","🛂","✅","🟢","⏱️"}]
-        if not critical:return 1.0
-        sig=_lang.concept_signature_from_abc(value); retained=sum(1 for s in critical if s in sig); numbers=NUMBER_RE.findall(source); number_retention=1.0 if not numbers else sum(1 for n in numbers if n in value)/len(numbers)
-        return 0.8*(retained/max(1,len(critical)))+0.2*number_retention
+    def _relation_retention(source:str,value:str)->float:
+        expected=[]
+        for marker,words in (("🚦➡️",("only after","after")),("🚦⬅️",("only before","before")),("🚦❌",("unless",)),("🔗➡️",("because",)),("🚦",("if","when","only after","unless")),("🔀",(" or ",))):
+            if marker in source:expected.append(words)
+        if not expected:return 1.0
+        lowered=" "+value.lower()+" ";return sum(1 for words in expected if any(w in lowered for w in words))/len(expected)
+    @staticmethod
+    def _critical_retention(source_symbols:tuple[str,...],value:str,source:str)->float:
+        critical=[s for s in source_symbols if s in _CRITICAL]
+        sig=_lang.concept_signature_from_abc(value);used=[];retained=0
+        for symbol in critical:
+            try:idx=next(i for i,s in enumerate(sig) if s==symbol and i not in used)
+            except StopIteration:continue
+            used.append(idx);retained+=1
+        numbers=NUMBER_RE.findall(source);number_ret=1.0 if not numbers else sum(1 for n in numbers if n in value)/len(numbers)
+        symbol_ret=1.0 if not critical else retained/len(critical)
+        return .82*symbol_ret+.18*number_ret
 
-    def translate(self, source: str, *, verifier=None, preference_counts: dict[str,int] | None=None, cross_verify: bool=True, emit: bool=True):
-        stages=[]; metrics={}; preference_counts=preference_counts or {}; stages.append(self._emit(1,emit))
+    def translate(self,source:str,*,verifier=None,preference_counts:dict[str,int]|None=None,cross_verify:bool=True,emit:bool=True):
+        stages=[];metrics={};preference_counts=preference_counts or {};stages.append(self._emit(1,emit))
         if not isinstance(source,str) or not source.strip():
-            c=_lang.Candidate("Unable to translate empty input.",0.0,("empty-input",),0.0,0.0); return _lang.EngineResult(1,source if isinstance(source,str) else "",(c,),tuple(stages),{"status":"hold","quality_status":"fail"})
-        normalized=source.strip(); stages.append(self._emit(2,emit)); graphemes=_lang._core.split_graphemes(normalized); metrics["graphemes"]=len(graphemes)
-        stages.append(self._emit(3,emit)); canonical=tuple(v for v in graphemes if v in _lang.MEANING_BY_SYMBOL); unknown=tuple(v for v in graphemes if any(ord(ch)>127 for ch in v) and v not in _lang.MEANING_BY_SYMBOL and not v.isspace()); metrics["canonical"]=len(canonical); metrics["unknown"]=len(unknown)
-        stages.append(self._emit(4,emit)); compound_exact=_compounds.lookup_compound(normalized); metrics["compound_boundaries"]=1 if compound_exact else 0
-        stages.append(self._emit(5,emit)); compound_sentence=_lang.sentence_case(compound_exact) if compound_exact else ""
-        stages.append(self._emit(6,emit)); metrics["resolved"]=len(tuple(_lang.MEANING_BY_SYMBOL[s] for s in canonical)); stages.append(self._emit(7,emit)); metrics["literal_unicode_used"]=0
-        stages.append(self._emit(8,emit)); clauses=self._split_clauses(normalized); metrics["clauses"]=len(clauses); stages.append(self._emit(9,emit)); metrics["relations"]=sum(1 for s in canonical if _lang.is_relation(s))
-        stages.append(self._emit(10,emit)); metrics["actions"]=sum(1 for s in canonical if _lang.is_action(s)); metrics["entities"]=sum(1 for s in canonical if s in _lang.ENTITY_PHRASES)
-        stages.append(self._emit(11,emit)); metrics["negations"]=canonical.count("❌")+canonical.count("⛔"); stages.append(self._emit(12,emit)); metrics["severity"]=sum(1 for s in canonical if s in {"🔴","⚠️","❌","🟡","🚧","🛑"})
-        stages.append(self._emit(13,emit)); numbers=tuple(NUMBER_RE.findall(normalized)); metrics["numbers"]=len(numbers); stages.append(self._emit(14,emit)); metrics["temporal"]=sum(1 for c in clauses if "⏱️" in c or "⏳" in c or "⌛" in c)
-        stages.append(self._emit(15,emit)); metrics["directional"]=sum(1 for s in canonical if s in {"➡️","⬅️","↔️","↕️","🚦"}); stages.append(self._emit(16,emit)); metrics["branches"]=1+(0 if compound_sentence else 2); stages.append(self._emit(17,emit)); metrics["interpretations"]=2
-        stages.append(self._emit(18,emit)); structures=[]
+            c=_lang.Candidate("Unable to translate empty input.",0.0,("empty-input",),0.0,0.0);return _lang.EngineResult(1,source if isinstance(source,str) else "",(c,),tuple(stages),{"status":"hold","quality_status":"fail"})
+        normalized=source.strip();stages.append(self._emit(2,emit));graphemes=_lang._core.split_graphemes(normalized);metrics["graphemes"]=len(graphemes)
+        stages.append(self._emit(3,emit));canonical=tuple(v for v in graphemes if v in _lang.MEANING_BY_SYMBOL);unknown=tuple(v for v in graphemes if any(ord(ch)>127 for ch in v) and v not in _lang.MEANING_BY_SYMBOL and not v.isspace());metrics["canonical"]=len(canonical);metrics["unknown"]=len(unknown)
+        stages.append(self._emit(4,emit));compound=_compounds.lookup_compound(normalized);metrics["compound_boundaries"]=1 if compound else 0
+        stages.append(self._emit(5,emit));compound_sentence=_lang.sentence_case(compound) if compound else ""
+        stages.append(self._emit(6,emit));metrics["resolved"]=len(canonical);stages.append(self._emit(7,emit));metrics["literal_unicode_used"]=0
+        stages.append(self._emit(8,emit));clauses=self._split_clauses(normalized);metrics["clauses"]=len(clauses)
+        stages.append(self._emit(9,emit));metrics["relations"]=sum(1 for marker in ("➡️","⬅️","↔️","➕","🔀","🚦","🔗") for _ in [0] if marker in normalized)
+        stages.append(self._emit(10,emit));metrics["actions"]=sum(1 for s in canonical if _lang.is_action(s));metrics["entities"]=sum(1 for s in canonical if s in _lang.ENTITY_PHRASES)
+        stages.append(self._emit(11,emit));metrics["negations"]=canonical.count("❌")+canonical.count("⛔")
+        stages.append(self._emit(12,emit));metrics["severity"]=sum(1 for s in canonical if s in {"🔴","⚠️","❌","🟡","🚧","🛑"})
+        stages.append(self._emit(13,emit));numbers=tuple(NUMBER_RE.findall(normalized));metrics["numbers"]=len(numbers)
+        stages.append(self._emit(14,emit));metrics["temporal"]=sum(1 for c in clauses if "⏱️" in c or "⏳" in c or "⌛" in c)
+        stages.append(self._emit(15,emit));metrics["directional"]=sum(1 for s in canonical if s in {"➡️","⬅️","↔️","↕️","🚦","🔗"})
+        stages.append(self._emit(16,emit));metrics["branches"]=1+(0 if compound_sentence else 2)
+        stages.append(self._emit(17,emit));metrics["interpretations"]=2
+        stages.append(self._emit(18,emit));structures=[]
         if compound_sentence:structures.append((compound_sentence,"authority-compound"))
-        structures.extend(((self._realize_document(normalized,concise=False),"faithful-structure"),(self._realize_document(normalized,concise=True),"concise-structure")))
-        stages.append(self._emit(19,emit)); realized=[(v,r) for v,r in structures if v and len(v.split())>=1]; stages.append(self._emit(20,emit)); filtered=[(v,r) for v,r in realized if not self._glossary_like(v)] or [("Unable to reconstruct a grammatical sentence from the available canonical EL concepts.","hold")]
-        stages.append(self._emit(21,emit)); source_signature=_lang.concept_signature_from_el(normalized); candidates=[]
+        faithful=self._realize_document(normalized,concise=False);structures.extend(((faithful,"faithful-semantic"),(faithful,"relationship-preserving")))
+        stages.append(self._emit(19,emit));realized=[(v,r) for v,r in structures if v and len(v.split())>=1]
+        stages.append(self._emit(20,emit));filtered=[(v,r) for v,r in realized if not self._glossary_like(v)] or [("Unable to reconstruct a grammatical sentence from the available canonical EL concepts.","hold")]
+        stages.append(self._emit(21,emit));source_signature=_lang.concept_signature_from_el(normalized);candidates=[]
         for order,(value,reason) in enumerate(filtered):
-            sig=_lang.concept_signature_from_abc(value); score,coverage,order_score=_lang.score_candidate(source_signature,sig,base=max(0.0,16.0-order)); retention=self._critical_retention(source_signature,value,normalized); score+=42.0*retention
-            if retention<.55:score-=55.0
-            candidates.append(_lang.Candidate(value,score,(reason,"meaning-coverage",f"order:{order_score:.3f}",f"critical-retention:{retention:.3f}"),coverage,0.0))
-        stages.append(self._emit(22,emit)); audited=[]
+            sig=_lang.concept_signature_from_abc(value);score,coverage,order_score=_lang.score_candidate(source_signature,sig,base=max(0.0,20.0-order));critical=self._critical_retention(source_signature,value,normalized);relation=self._relation_retention(normalized,value);score+=55*critical+42*relation
+            if critical<.75:score-=90
+            if relation<.75:score-=80
+            candidates.append(_lang.Candidate(value,score,(reason,"meaning-coverage",f"order:{order_score:.3f}",f"critical-retention:{critical:.3f}",f"relationship:{relation:.3f}"),coverage,0.0))
+        stages.append(self._emit(22,emit));audited=[]
         for c in candidates:
-            hallucination=self._hallucination_score(source_signature,c.value); audited.append(replace(c,score=c.score+20.0*hallucination,reasons=c.reasons+(f"hallucination-audit:{hallucination:.3f}",)))
-        stages.append(self._emit(23,emit)); verified=[]
+            hallucination=self._hallucination_score(source_signature,c.value);audited.append(replace(c,score=c.score+24*hallucination,reasons=c.reasons+(f"hallucination-audit:{hallucination:.3f}",)))
+        stages.append(self._emit(23,emit));verified=[]
         if cross_verify and verifier is not None:
             for c in audited:
-                try:reverse=verifier.translate(c.value,cross_verify=False,emit=False); reverse_signature=_lang.concept_signature_from_el(reverse.winner); similarity=_lang.multiset_similarity(source_signature,reverse_signature)
+                try:reverse=verifier.translate(c.value,cross_verify=False,emit=False);reverse_signature=_lang.concept_signature_from_el(reverse.winner);similarity=_lang.multiset_similarity(source_signature,reverse_signature)
                 except Exception:similarity=0.0
                 verified.append(_lang.apply_roundtrip(c,similarity))
         else:verified=[replace(c,roundtrip=1.0) for c in audited]
-        stages.append(self._emit(24,emit)); final=[]
+        stages.append(self._emit(24,emit));final=[]
         for c in verified:
             observed=int(preference_counts.get(c.value,0))
-            if observed:c=replace(c,score=c.score+min(40.0,observed*8.0),reasons=c.reasons+("observed-user-choice",))
+            if observed:c=replace(c,score=c.score+min(32.0,observed*6.0),reasons=c.reasons+("observed-user-choice",))
             final.append(c)
-        ranked=_lang.sort_candidates(final); metrics["candidates"]=len(ranked); metrics["coverage"]=ranked[0].coverage if ranked else 0.0; metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0; retention=self._critical_retention(source_signature,ranked[0].value,normalized) if ranked else 0.0; metrics["critical_retention"]=round(retention,4)
-        if unknown or not ranked or metrics["coverage"]<.50 or retention<.55:metrics["quality_status"]="fail"
-        elif metrics["coverage"]<.82 or metrics["roundtrip"]<.72 or retention<.80:metrics["quality_status"]="hold"
+        ranked=_lang.sort_candidates(final);metrics["candidates"]=len(ranked);metrics["coverage"]=ranked[0].coverage if ranked else 0.0;metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0
+        winner=ranked[0].value if ranked else "";critical=self._critical_retention(source_signature,winner,normalized) if ranked else 0.0;relation=self._relation_retention(normalized,winner) if ranked else 0.0;metrics["critical_retention"]=round(critical,4);metrics["relation_integrity"]=round(relation,4)
+        if unknown or not ranked or metrics["coverage"]<.55 or critical<.72 or relation<.72:metrics["quality_status"]="fail"
+        elif metrics["coverage"]<.86 or metrics["roundtrip"]<.78 or critical<.90 or relation<.90:metrics["quality_status"]="hold"
         else:metrics["quality_status"]="pass"
         return _lang.EngineResult(1,normalized,ranked,tuple(stages),metrics)
 
