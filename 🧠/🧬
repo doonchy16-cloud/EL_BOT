@@ -1,6 +1,7 @@
 """Deterministic semantic language foundation shared by both translation engines."""
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from importlib.machinery import SourceFileLoader
@@ -35,39 +36,64 @@ ORDINAL_BY_SYMBOL = {symbol: index for index, symbol in enumerate(CANONICAL_SYMB
 WORD_RE = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 NUMBER_UNIT_RE = re.compile(r"\b(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>milliseconds?|seconds?|minutes?|hours?|days?|weeks?|percent|%|kb|mb|gb|tb)?\b", re.I)
-STOPWORDS = frozenset("a an and are as at be been being but by can could did do does for from had has have if in into is it its may might must of on only or our should so than that the their them then there these they this those through to upon was were when where which while who will with without would you your".split())
+STOPWORDS = frozenset(
+    "a an and are as at be been being but by can could did do does for from had has have if in into is it its may might must of on only or our should so than that the their them then there these they this those through to upon was were when where which while who will with without would you your after before because unless following prior due caused every each again anything everything any all".split()
+)
 TEMPORAL_UNIT_SYMBOLS = frozenset("millisecond milliseconds second seconds minute minutes hour hours day days week weeks".split())
 
+# Deterministic conversational + technical synonym layer. Canonical authority still lives in 📚/🧾.
 ALIASES: tuple[tuple[str, str], ...] = (
-    ("critical error","🔴"),("critical error","❌"),("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),
+    ("hi there","👋"),("hey there","👋"),("hello there","👋"),("greetings","👋"),("hello","👋"),("hey","👋"),("hi","👋"),
+    ("thank you","🙏"),("thanks","🙏"),("thank you very much","🙏"),("please","🙏"),
+    ("yes","🙆"),("yep","🙆"),("yeah","🙆"),("approved","👍"),("approve","👍"),
+    ("no","🙅"),("nope","🙅"),("rejected","❌"),("reject","❌"),
+    ("all right","🆗"),("alright","🆗"),("okay","🆗"),("ok","🆗"),
+    ("help me","🆘"),("help","🆘"),("wait","🤚"),("hold on","🤚"),("why","❓"),("what","❓"),
+    ("critical error","🔴"),("critical error","❌"),("critical failure","🔴"),("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),("fails","❌"),
     ("artificial intelligence","🤖"),("ai bot","🤖"),("ai agent","🤖"),("ai","🤖"),("bot","🤖"),
     ("user interface","🖥️"),("computer interface","🖥️"),("interface","🖥️"),("dashboard","📊"),
-    ("database","🗃️"),("data store","🗃️"),("saved data","💾"),("connection","🔌"),("connect","🔌"),("reconnect","🔌"),
-    ("server","📡"),("service","⚙️"),("system","⚙️"),("application","⚙️"),("app","⚙️"),
-    ("timed out","⏱️"),("timeout","⏱️"),("crashed","💥"),("crash","💥"),("offline","📴"),
-    ("restart","🔄"),("refresh","🔄"),("update","🔄"),("retry","🔂"),("container","📦"),("docker","📦"),("package","📦"),
-    ("restore","❤️‍🩹"),("recover","❤️‍🩹"),("recovery","🧯"),("repair","🔧"),("fix","🔧"),
+    ("database connection","🗃️"),("database","🗃️"),("data store","🗃️"),("saved data","💾"),("connection","🔌"),("connect","🔌"),("reconnect","🔌"),
+    ("local server","📡"),("server","📡"),("service","⚙️"),("system","⚙️"),("application","⚙️"),("app","⚙️"),
+    ("timed out","⏱️"),("times out","⏱️"),("timeout","⏱️"),("crashed","💥"),("crashes","💥"),("crash","💥"),("offline","📴"),
+    ("restart","🔄"),("restarted","🔄"),("refresh","🔄"),("update","🔄"),("retry","🔂"),("container","📦"),("docker","📦"),("package","📦"),
+    ("restore","❤️‍🩹"),("restored","❤️‍🩹"),("recover","❤️‍🩹"),("recovered","❤️‍🩹"),("recovery","🧯"),("repair","🔧"),("fix","🔧"),
     ("immediately","‼️"),("urgent","❗"),("warning","⚠️"),("blocked","🚧"),("stop","⏹️"),("pause","⏸️"),("start","▶️"),
-    ("security system","🔐"),("security","🔐"),("authentication","🛂"),("authenticate","🛂"),("identity","🪪"),
-    ("credentials","🔑"),("credential","🔑"),("key","🔑"),("locked","🔒"),("lock","🔒"),("unlock","🔓"),("unauthorized","⛔"),
-    ("configuration","🎛️"),("settings","🎛️"),("setting","🎛️"),("workflow","🔁"),("session","🧵"),("context","🧵"),
-    ("vocabulary","📚"),("canonical","🔒"),("notification","🔔"),("notify","🔔"),("message","💬"),
-    ("file","📄"),("folder","📂"),("import","📥"),("load","📥"),("receive","📥"),("export","📤"),("send","📤"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
-    ("test","🧪"),("testing","🧪"),("diagnostics","🧪"),("diagnostic","🧪"),("validate","🧾"),("validation","🧾"),("verify","✔️"),("verified","✅"),
-    ("deploy","🚀"),("deployment","🚀"),("release","🚀"),("launch","🚀"),("complete","✅"),("completed","✅"),("success","✅"),("successful","✅"),("healthy","🟢"),
-    ("screenshot","📸"),("image","🖼️"),("vision","👁️"),("visible","👁️"),("ollama","🦙"),
-    ("dark mode","🖤"),("light mode","🤍"),("toggle","🔘"),("button","🔘"),("navigation","🧭"),("performance","📈"),("optimize","📈"),("speed","⚡"),("fast","⚡"),("slow","🐌"),("lag","🐌"),
+    ("security system","🔐"),("security boundary","🔐"),("security","🔐"),("authentication","🛂"),("authenticate","🛂"),("authenticated","🛂"),("identity","🪪"),
+    ("replacement credential","🔑"),("credentials","🔑"),("credential","🔑"),("key","🔑"),("locked","🔒"),("remain locked","🔒"),("keep locked","🔒"),("lock","🔒"),("unlock","🔓"),("unauthorized","⛔"),
+    ("configuration","🎛️"),("settings","🎛️"),("setting","🎛️"),("workflow","🔁"),("session context","🧵"),("active session","🧵"),("session","🧵"),("context","🧵"),
+    ("canonical vocabulary","📚"),("vocabulary","📚"),("canonical","🔒"),("notification","🔔"),("notify","🔔"),("message","💬"),
+    ("required check","📋"),("required checks","📋"),("requirements","📋"),("required","📋"),("file","📄"),("folder","📂"),("import","📥"),("load","📥"),("receive","📥"),("export","📤"),("send","📤"),("preserve","💾"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
+    ("run diagnostics","🧪"),("test","🧪"),("testing","🧪"),("diagnostics","🧪"),("diagnostic","🧪"),("validate","🧾"),("validation","🧾"),("verify","✔️"),("verification","✔️"),("verified","✅"),
+    ("deploy","🚀"),("deployment","🚀"),("release","🚀"),("launch","🚀"),("passes","✅"),("pass","✅"),("complete","✅"),("completed","✅"),("success","✅"),("succeeds","✅"),("successful","✅"),("healthy","🟢"),
+    ("screenshot","📸"),("screenshots","📸"),("image","🖼️"),("vision","👁️"),("visible","👁️"),("ollama","🦙"),
+    ("dark mode","🖤"),("light mode","🤍"),("toggle","🔘"),("button","🔘"),("navigation","🧭"),("performance","📈"),("optimize","📈"),("speed","⚡"),("quickly","⚡"),("fast","⚡"),("slow","🐌"),("lag","🐌"),
     ("cloud","☁️"),("network","🌐"),("local","🏠"),("home","🏠"),("computer","💻"),
     ("both directions","↔️"),("bidirectional","↔️"),("two way","↔️"),("winner","🏆"),("best","⭐"),("result","📤"),("output","📤"),("input","📥"),
 )
+
+# Longest/specific relationship phrases win before shorter phrases.
 RELATION_WORDS: tuple[tuple[tuple[str, ...], str, str], ...] = (
-    (("because","because of","due to","caused by"),"cause","➡️"),(("therefore","so that","resulting in"),"result","➡️"),
-    (("before","prior to"),"before","⬅️"),(("after","following"),"after","➡️"),(("if","when","only if","unless"),"condition","🚦"),
-    (("and","also","plus"),"and","➕"),(("or","alternatively"),"or","🔀"),(("not","never","without","cannot","can't","do not"),"negation","❌"),
+    (("only after",),"only_after","🚦➡️"),
+    (("only before",),"only_before","🚦⬅️"),
+    (("only if",),"only_if","🚦"),
+    (("because of","due to","caused by","because"),"cause","➡️"),
+    (("therefore","so that","resulting in"),"result","➡️"),
+    (("prior to","before"),"before","⬅️"),
+    (("following","after"),"after","➡️"),
+    (("unless",),"unless","🚦❌"),
+    (("if","when"),"condition","🚦"),
+    (("and","also","plus"),"and","➕"),
+    (("or","alternatively"),"or","🔀"),
+    (("do not","cannot","can't","without","never","not"),"negation","❌"),
     (("both directions","bidirectional","two way"),"bidirectional","↔️"),
 )
-ACTION_PHRASES = {"📥":"import","📤":"export","🧪":"test","🧾":"validate","🔍":"inspect","🔄":"restart or refresh","🔂":"retry once","🔧":"repair","🧹":"clean up","🗑️":"delete","💾":"save","🚀":"deploy","▶️":"start","⏹️":"stop","⏸️":"pause","🔒":"lock","🔓":"unlock","✔️":"verify","✅":"confirm completion","🔔":"notify","💬":"message","🛂":"authenticate","🔐":"secure","❤️‍🩹":"restore","🧯":"recover safely","🔨":"build","🏗️":"implement","📈":"optimize or improve","🔌":"connect"}
-ENTITY_PHRASES = {"🤖":"AI bot","🖥️":"computer interface","💻":"computer","📡":"server or event system","🗃️":"registry or structured data store","⚙️":"core system","📦":"package or build artifact","📄":"file","📂":"folder","🌐":"network","☁️":"cloud service","👤":"user","👥":"user group","🧵":"session context","🎛️":"configuration","🪪":"system identity","🔑":"credential","📸":"screenshot","🦙":"Ollama","👁️":"visual observation","🛡️":"reliability protection","🔐":"security system","📊":"dashboard or analytics","💾":"saved data","📚":"canonical knowledge","🧠":"reasoning system"}
+
+ACTION_PHRASES = {
+    "📥":"import","📤":"export","🧪":"run diagnostics","🧾":"validate","🔍":"inspect","🔄":"restart","🔂":"retry once","🔧":"repair","🧹":"clean up","🗑️":"delete","💾":"save","🚀":"deploy","▶️":"start","⏹️":"stop","⏸️":"pause","🔒":"lock","🔓":"unlock","✔️":"verify","✅":"confirm completion","🔔":"notify","💬":"message","🛂":"authenticate","🔐":"secure","❤️‍🩹":"restore","🧯":"recover safely","🔨":"build","🏗️":"implement","📈":"optimize","🔌":"connect"
+}
+ENTITY_PHRASES = {
+    "🤖":"AI bot","🖥️":"computer interface","💻":"computer","📡":"event/telemetry system","🗃️":"structured data store","⚙️":"core system","📦":"package or build artifact","📄":"file","📂":"folder","🌐":"network","☁️":"cloud service","👤":"user","👥":"user group","🧵":"session context","🎛️":"configuration","🪪":"system identity","🔑":"credential","📸":"screenshot","🦙":"Ollama","👁️":"visual observation","🛡️":"reliability protection","🔐":"security system","📊":"dashboard","💾":"saved data","📚":"canonical knowledge","🧠":"reasoning system"
+}
 STATUS_PHRASES = {"🔴":"critical","❌":"failed","⚠️":"warning","🟡":"on hold","🔵":"active","🟢":"healthy","✅":"verified complete","📴":"offline","🚧":"blocked","🛑":"stopped","🔒":"locked"}
 
 @dataclass(frozen=True, slots=True)
@@ -86,8 +112,11 @@ class ConceptMatch:
 class Relation:
     kind: str; marker: str; phrase: str; position: int
 @dataclass(frozen=True, slots=True)
+class SemanticRole:
+    kind: str; symbol: str; phrase: str; position: int
+@dataclass(frozen=True, slots=True)
 class SemanticClause:
-    source: str; concepts: tuple[ConceptMatch,...]; numbers: tuple[NumberBinding,...]; relations: tuple[Relation,...]; negated: bool; unknown_words: tuple[str,...]=()
+    source: str; concepts: tuple[ConceptMatch,...]; numbers: tuple[NumberBinding,...]; relations: tuple[Relation,...]; negated: bool; unknown_words: tuple[str,...]=(); roles: tuple[SemanticRole,...]=()
 @dataclass(frozen=True, slots=True)
 class SemanticDocument:
     source: str; clauses: tuple[SemanticClause,...]
@@ -127,7 +156,7 @@ def canonical_patterns():
     for symbol,meaning in MEANING_BY_SYMBOL.items():
         for raw in meaning.split("/"):
             phrase=raw.strip().lower()
-            if len(phrase)>=3:
+            if len(phrase)>=2:
                 rows.append((re.compile(r"(?<![a-z0-9])"+re.escape(phrase)+r"(?![a-z0-9])"),phrase,symbol,"authority",0.92))
     rows.sort(key=lambda r:(0 if r[3]=="alias" else 1,-len(r[1]),ORDINAL_BY_SYMBOL[r[2]],r[1]))
     return tuple(rows)
@@ -148,17 +177,37 @@ def match_concepts(text:str)->tuple[ConceptMatch,...]:
 
 @lru_cache(maxsize=4096)
 def detect_relations(text:str)->tuple[Relation,...]:
-    value=normalize_text(text).lower(); rows=[]
+    value=normalize_text(text).lower(); raw=[]
     for phrases,kind,marker in RELATION_WORDS:
         for phrase in phrases:
-            for m in re.finditer(r"(?<![a-z0-9])"+re.escape(phrase)+r"(?![a-z0-9])",value): rows.append(Relation(kind,marker,phrase,m.start()))
-    return tuple(sorted(rows,key=lambda r:(r.position,r.kind)))
+            for m in re.finditer(r"(?<![a-z0-9])"+re.escape(phrase)+r"(?![a-z0-9])",value):
+                raw.append((m.start(),m.end(),kind,marker,phrase))
+    raw.sort(key=lambda row:(row[0],-(row[1]-row[0]),row[2]))
+    accepted=[]; spans=[]
+    for start,end,kind,marker,phrase in raw:
+        if _overlaps(start,end,spans): continue
+        accepted.append(Relation(kind,marker,phrase,start)); spans.append((start,end))
+    return tuple(accepted)
+
+def assign_roles(text:str, concepts:tuple[ConceptMatch,...])->tuple[SemanticRole,...]:
+    if not concepts: return ()
+    ordered=sorted(concepts,key=lambda c:c.start); action_positions=[c.start for c in ordered if is_action(c.symbol)]
+    first_action=min(action_positions) if action_positions else None; roles=[]
+    for concept in ordered:
+        if is_action(concept.symbol): kind="action"
+        elif concept.symbol in STATUS_PHRASES: kind="state"
+        elif concept.symbol in ENTITY_PHRASES:
+            kind="actor" if first_action is not None and concept.start < first_action else "object"
+        else: kind="modifier"
+        roles.append(SemanticRole(kind,concept.symbol,concept.phrase,concept.start))
+    return tuple(roles)
 
 def unknown_content_words(text:str,concepts:tuple[ConceptMatch,...])->tuple[str,...]:
     value=normalize_text(text).lower(); spans=[(c.start,c.end) for c in concepts]; out=[]
+    relation_words={word for phrases,_,_ in RELATION_WORDS for phrase in phrases for word in phrase.split()}
     for m in WORD_RE.finditer(value):
         word=m.group(0)
-        if word in STOPWORDS or word.isdigit() or _overlaps(m.start(),m.end(),spans): continue
+        if word in STOPWORDS or word in relation_words or word.isdigit() or _overlaps(m.start(),m.end(),spans): continue
         if word not in out: out.append(word)
     return tuple(out)
 
@@ -167,8 +216,19 @@ def parse_abc_document(text:str)->SemanticDocument:
     clauses=[]
     for sentence in split_sentences(text):
         concepts=match_concepts(sentence); relations=detect_relations(sentence)
-        clauses.append(SemanticClause(sentence,concepts,find_number_bindings(sentence),relations,any(r.kind=="negation" for r in relations),unknown_content_words(sentence,concepts)))
+        clauses.append(SemanticClause(sentence,concepts,find_number_bindings(sentence),relations,any(r.kind=="negation" for r in relations),unknown_content_words(sentence,concepts),assign_roles(sentence,concepts)))
     return SemanticDocument(normalize_text(text),tuple(clauses))
+
+def content_word_count(text:str)->int:
+    relation_words={word for phrases,_,_ in RELATION_WORDS for phrase in phrases for word in phrase.split()}
+    return sum(1 for m in WORD_RE.finditer(normalize_text(text).lower()) if not m.group(0).isdigit() and m.group(0) not in STOPWORDS and m.group(0) not in relation_words)
+
+def unknown_density(document:SemanticDocument)->float:
+    unknown=sum(len(c.unknown_words) for c in document.clauses); total=sum(content_word_count(c.source) for c in document.clauses)
+    return unknown/max(1,total)
+
+def unresolved_clause_count(document:SemanticDocument)->int:
+    return sum(1 for c in document.clauses if c.unknown_words and not c.concepts)
 
 def canonical_symbols(text:str)->tuple[str,...]: return tuple(g for g in _core.split_graphemes(text) if g in MEANING_BY_SYMBOL)
 def valid_el(text:str)->bool:
@@ -187,10 +247,8 @@ def concept_signature_from_el(text:str)->tuple[str,...]: return tuple(s for s in
 def multiset_similarity(left,right)->float:
     if not left and not right:return 1.0
     if not left or not right:return 0.0
-    lc={};rc={}
-    for v in left:lc[v]=lc.get(v,0)+1
-    for v in right:rc[v]=rc.get(v,0)+1
-    keys=set(lc)|set(rc); over=sum(min(lc.get(k,0),rc.get(k,0)) for k in keys); total=sum(max(lc.get(k,0),rc.get(k,0)) for k in keys)
+    lc=Counter(left); rc=Counter(right); keys=set(lc)|set(rc)
+    over=sum(min(lc.get(k,0),rc.get(k,0)) for k in keys); total=sum(max(lc.get(k,0),rc.get(k,0)) for k in keys)
     return over/total if total else 1.0
 def order_similarity(left,right)->float:
     if not left or not right:return 0.0
@@ -215,10 +273,12 @@ def sentence_case(text:str)->str:
     if not value:return ""
     value=value[0].upper()+value[1:]
     return value if value[-1] in ".!?" else value+"."
-def score_candidate(source_signature,candidate_signature,base:float=0.0,order_weight:float=18.0):
+def score_candidate(source_signature,candidate_signature,base:float=0.0,order_weight:float=22.0):
     coverage=multiset_similarity(source_signature,candidate_signature); order=order_similarity(source_signature,candidate_signature)
-    return base+70.0*coverage+order_weight*order,coverage,order
-def apply_roundtrip(candidate:Candidate,similarity:float)->Candidate:return replace(candidate,score=candidate.score+30.0*similarity,roundtrip=similarity,reasons=candidate.reasons+("round-trip",))
+    return base+76.0*coverage+order_weight*order,coverage,order
+def apply_roundtrip(candidate:Candidate,similarity:float)->Candidate:
+    penalty=0.0 if similarity>=0.72 else (18.0 if similarity>=0.45 else 42.0)
+    return replace(candidate,score=candidate.score+55.0*similarity-penalty,roundtrip=similarity,reasons=candidate.reasons+("round-trip",f"round-trip:{similarity:.3f}"))
 def sort_candidates(candidates):
     unique={}
     for c in candidates:
