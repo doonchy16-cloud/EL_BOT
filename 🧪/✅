@@ -29,6 +29,8 @@ vocab = _load("_el_vocab", ROOT / "📚" / "📚")
 instructor = _load("_el_instructor", ROOT / "🧑‍🏫" / "🧑‍🏫")
 animation = _load("_el_animation_phase1", ROOT / "🎞️" / "🎞️")
 identity = _load("_el_identity_phase1", ROOT / "🪪" / "🪪")
+translation = _load("_el_translation_phase2", ROOT / "↔️" / "↔️")
+ai_policy = _load("_el_ai_policy_phase2", ROOT / "🔐" / "📸")
 
 compound = "🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
 explicit_compound = "🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
@@ -107,10 +109,61 @@ assert identity_snapshot.app_name == "EL Bot"
 assert identity_snapshot.app_user_model_id == "com.thespark.elbot"
 assert identity_snapshot.icon_asset == "🎨"
 
+# Phase 2: normal translation is deterministic and cannot perform model inference.
+translation_source = (ROOT / "↔️" / "↔️").read_text(encoding="utf-8")
+for forbidden in ("_ollama", "OllamaConnector", "generate_internal", "chat_internal"):
+    assert forbidden not in translation_source
+translation_engine = translation.TranslationEngine()
+assert translation_engine.ai_inference_enabled is False
+text_out = translation_engine.process(1, "🤖😀↔️⚡🖥️📸")
+assert any(char.isalpha() for char in text_out)
+el_out = translation_engine.process(2, "The AI bot quickly works in both directions through the computer interface and supports screenshots.")
+assert not any(char.isalpha() for char in el_out)
+for marker in ("🤖", "↔️", "⚡", "🖥️", "📸"):
+    assert marker in el_out
+
+policy = ai_policy.AIUsePolicy()
+assert policy.allows("📸")
+assert not policy.allows("↔️")
+assert not policy.allows("🔤")
+try:
+    policy.require("↔️")
+except PermissionError:
+    pass
+else:
+    raise AssertionError("AI policy allowed normal translation")
+
+vision_source = (ROOT / "📸" / "📸").read_text(encoding="utf-8")
+for marker in (
+    "policy.require(\"📸\")",
+    "You are NOT a translator",
+    "VisionObservation",
+    "_observation_prompt",
+    "TranslationEngine().ranked_to_el(observation_text)",
+):
+    assert marker in vision_source
+assert "_candidate_prompt" not in vision_source
+assert "_single_prompt" not in vision_source
+assert vision_source.count("chat_internal(") == 1
+
+# Any model inference call outside the provider implementation must live only in 📸/📸.
+allowed_inference_file = ROOT / "📸" / "📸"
+for path in ROOT.rglob("*"):
+    if not path.is_file() or path == allowed_inference_file or "🦙" in path.parts or "🧪" in path.parts:
+        continue
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        continue
+    assert "chat_internal(" not in text
+    assert "generate_internal(" not in text
+
 report = diagnostics.DiagnosticsEngine().run()
 print(report.render_el())
 print("🎨✅")
 print("🧩✅")
 print("⏳✅")
 print("🪪✅")
+print("🤖➡️📸🔒✅")
+print("↔️🤖❌✅")
 raise SystemExit(0 if report.passed else 1)
