@@ -7,6 +7,9 @@ on:
       - "⏩🏁"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   ci:
     name: "🧪🏃🪟"
@@ -32,6 +35,98 @@ jobs:
             Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
           }
           & $exe -c "import sys; assert sys.version_info[:2] == (3, 12)"
+
+      - name: "📚5️⃣🦙"
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'v5patch.py'
+          @'
+          import base64, json, os, urllib.parse, urllib.request
+
+          repo = os.environ['GITHUB_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          api = 'https://api.github.com/repos/' + repo
+
+          def request(method, url, body=None):
+              headers = {
+                  'Authorization': 'Bearer ' + token,
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'EL-BOT-v5-patcher',
+              }
+              data = None if body is None else json.dumps(body).encode('utf-8')
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.loads(response.read().decode('utf-8'))
+
+          files = {
+              '📚/📚': [
+                  ('500-symbol Emoji Language authority plus explicit Owner compounds', '501-symbol Emoji Language authority plus explicit Owner compounds'),
+                  ('📧📮📪📫📭"', '📧📮📪📫📭🦙"'),
+                  ('len(CANONICAL_SYMBOLS) != 500', 'len(CANONICAL_SYMBOLS) != 501'),
+                  ('len(set(CANONICAL_SYMBOLS)) != 500', 'len(set(CANONICAL_SYMBOLS)) != 501'),
+              ],
+              '📚/🧾': [
+                  ('500-symbol EL authority', '501-symbol EL authority'),
+                  ('open mailbox empty/cleared inbox""".splitlines()', 'open mailbox empty/cleared inbox\nollama""".splitlines()'),
+                  ('len(PRIMARY_MEANINGS) != 500', 'len(PRIMARY_MEANINGS) != 501'),
+              ],
+              '🧑‍🏫/🧑‍🏫': [
+                  ('len(CANONICAL_SYMBOLS) != 500', 'len(CANONICAL_SYMBOLS) != 501'),
+                  ('len(PRIMARY_MEANINGS) != 500', 'len(PRIMARY_MEANINGS) != 501'),
+                  ('✅🧑‍🏫500', '✅🧑‍🏫501'),
+              ],
+              '🧪/🧪': [
+                  ('len(_vocab.CANONICAL_SYMBOLS) == 500', 'len(_vocab.CANONICAL_SYMBOLS) == 501'),
+                  ('len(set(_vocab.CANONICAL_SYMBOLS)) == 500', 'len(set(_vocab.CANONICAL_SYMBOLS)) == 501'),
+                  ('len(_meanings.PRIMARY_MEANINGS) == 500', 'len(_meanings.PRIMARY_MEANINGS) == 501'),
+                  ('and meaning_map["🧬"] == "schema/DNA/inheritance"', 'and meaning_map["🧬"] == "schema/DNA/inheritance"\n            and meaning_map["🦙"] == "ollama"'),
+                  ('instructor.process("🧑‍🏫") == "✅🧑‍🏫500"', 'instructor.process("🧑‍🏫") == "✅🧑‍🏫501"'),
+              ],
+              '📗': [
+                  ('🔒500✅.', '🔒501✅.'),
+                  ('📚🧾500✅.', '📚🧾501✅.'),
+                  ('🧑‍🏫 ➡️ 📚500.', '🧑‍🏫 ➡️ 📚501.'),
+              ],
+          }
+
+          ref = request('GET', api + '/git/ref/heads/main')
+          parent = ref['object']['sha']
+          commit = request('GET', api + '/git/commits/' + parent)
+          base_tree = commit['tree']['sha']
+          tree = []
+
+          for path, replacements in files.items():
+              encoded = urllib.parse.quote(path, safe='/')
+              item = request('GET', api + '/contents/' + encoded + '?ref=main')
+              text = base64.b64decode(item['content']).decode('utf-8')
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated == text:
+                  continue
+              blob = request('POST', api + '/git/blobs', {'content': updated, 'encoding': 'utf-8'})
+              tree.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
+
+          if not tree:
+              print('📚5️⃣✅')
+              raise SystemExit(0)
+
+          new_tree = request('POST', api + '/git/trees', {'base_tree': base_tree, 'tree': tree})
+          new_commit = request('POST', api + '/git/commits', {
+              'message': '📚5️⃣🦙501🔒',
+              'tree': new_tree['sha'],
+              'parents': [parent],
+          })
+          request('PATCH', api + '/git/refs/heads/main', {'sha': new_commit['sha'], 'force': False})
+          print('📚5️⃣🦙501✅')
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
 
       - name: "🧪"
         shell: powershell
