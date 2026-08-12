@@ -12,6 +12,14 @@ const TRANSLATE = path.join(ROOT, '↔️', '↔️');
 const VISION = path.join(ROOT, '📸', '📸');
 const PRELOAD = path.join(__dirname, '🔌');
 const VIEW = path.join(__dirname, '🖥️');
+const IDENTITY_DIR = path.join(ROOT, '🪪');
+const IDENTITY_CONFIG = JSON.parse(fs.readFileSync(path.join(IDENTITY_DIR, '🎛️'), 'utf8'));
+const APP_NAME = String(IDENTITY_CONFIG.name || 'EL Bot');
+const APP_ID = String(IDENTITY_CONFIG.app_id || 'com.thespark.elbot');
+const APP_ICON_SOURCE = path.join(IDENTITY_DIR, String(IDENTITY_CONFIG.icon_asset || '🎨'));
+
+app.setName(APP_NAME);
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 function hasCommand(command, args = []) {
   try {
@@ -46,6 +54,160 @@ function pythonCandidate() {
 
 function rankDbPath() {
   return path.join(app.getPath('userData'), '🏆');
+}
+
+function ensureAppIconPath() {
+  const encoded = fs.readFileSync(APP_ICON_SOURCE, 'utf8').trim();
+  const bytes = Buffer.from(encoded, 'base64');
+  const pngSignature = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
+  if (bytes.length < 100 || !bytes.subarray(0,8).equals(pngSignature)) {
+    throw new Error('invalid EL Bot icon asset');
+  }
+
+  const folder = app.getPath('userData');
+  fs.mkdirSync(folder, { recursive: true });
+  const target = path.join(folder, 'el-bot-icon.png');
+  let current = null;
+  try { current = fs.readFileSync(target); } catch (_) {}
+  if (!current || !current.equals(bytes)) fs.writeFileSync(target, bytes);
+  return target;
+}
+
+function phaseOneHtml(source) {
+  const style = `<style id="phase-one-style">
+.panel{display:flex!important;flex-direction:column!important}
+.inputStack,.outputStack{flex:1 1 auto!important;min-height:0!important}
+.toolbar,.modes,.controlBar{flex-wrap:nowrap!important}
+#leftPanel>.controlBar{display:flex!important;align-items:center!important;gap:10px!important;width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;padding-bottom:3px!important;scrollbar-width:thin}
+#leftPanel>.controlBar button{flex:0 0 auto!important}
+.phaseOutputViewport{position:relative;min-height:0;height:100%}
+.phaseProcessing{position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:12px;text-align:center;border:1px solid #34486d;border-radius:15px;background:#070b13f2;padding:24px;z-index:5}
+.phaseProcessing.on{display:grid}
+.phaseHourglass{font-size:clamp(54px,7vw,88px);line-height:1;transform-origin:center center;filter:drop-shadow(0 0 14px #ffd16655)}
+.phaseHourglass.spin{animation:hourglassFlip .82s linear infinite}
+.phaseStage{font-size:clamp(17px,1.3vw,22px);font-weight:700;color:#f7f9ff}
+.phaseMeta{font-size:15px;color:#9aa8bf;min-height:1.2em}
+@keyframes hourglassFlip{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+</style>`;
+
+  const runtime = `<script id="phase-one-runtime">
+(()=>{
+  const left=document.getElementById('leftPanel');
+  const modes=left&&left.querySelector('.modes');
+  const toolbar=left&&left.querySelector('.toolbar');
+  if(modes&&toolbar){
+    modes.classList.add('controlBar');
+    while(toolbar.firstChild)modes.appendChild(toolbar.firstChild);
+    toolbar.remove();
+  }
+
+  const output=document.getElementById('output');
+  if(output&&output.parentElement){
+    const stack=output.parentElement;
+    const viewport=document.createElement('div');
+    viewport.className='phaseOutputViewport';
+    stack.insertBefore(viewport,output);
+    viewport.appendChild(output);
+
+    const processing=document.createElement('div');
+    processing.id='processing';
+    processing.className='phaseProcessing';
+    processing.setAttribute('aria-live','polite');
+
+    const hourglass=document.createElement('div');
+    hourglass.id='hourglass';
+    hourglass.className='phaseHourglass';
+    hourglass.textContent='⏳';
+
+    const stage=document.createElement('div');
+    stage.id='stage';
+    stage.className='phaseStage';
+    stage.textContent='⚪';
+
+    const meta=document.createElement('div');
+    meta.id='stageMeta';
+    meta.className='phaseMeta';
+
+    processing.append(hourglass,stage,meta);
+    viewport.appendChild(processing);
+
+    const state=document.getElementById('state');
+    const input=document.getElementById('input');
+    const mode1=document.getElementById('mode1');
+    const preview=document.getElementById('preview');
+    let active=false;
+    let started=0;
+    let timer=0;
+    let baseMeta='';
+
+    const refresh=()=>{
+      if(!active)return;
+      const elapsed=((performance.now()-started)/1000).toFixed((performance.now()-started)<10000?1:0);
+      meta.textContent=(baseMeta?baseMeta+'  •  ':'')+'⏱️ '+elapsed+'s';
+    };
+
+    const begin=(label,detail='')=>{
+      if(timer)clearInterval(timer);
+      active=true;
+      started=performance.now();
+      baseMeta=String(detail||'');
+      stage.textContent=String(label||'🔵');
+      processing.classList.add('on');
+      hourglass.classList.add('spin');
+      refresh();
+      timer=setInterval(refresh,100);
+    };
+
+    const finish=()=>{
+      if(timer)clearInterval(timer);
+      timer=0;
+      active=false;
+      started=0;
+      baseMeta='';
+      hourglass.classList.remove('spin');
+      processing.classList.remove('on');
+      stage.textContent='⚪';
+      meta.textContent='';
+    };
+
+    const translationState=()=>{
+      if(preview&&preview.classList.contains('on'))return ['📸🦙 Vision inspection','📸'];
+      if(mode1&&mode1.classList.contains('on'))return ['😀➡️🔤 Emoji → ABC Engine','1️⃣'];
+      return ['🔤➡️😀 ABC → Emoji Engine','2️⃣'];
+    };
+
+    const run=document.getElementById('run');
+    const diag=document.getElementById('diag');
+    const ollama=document.getElementById('ollama');
+    const clear=document.getElementById('clear');
+    const mode2=document.getElementById('mode2');
+
+    if(run)run.addEventListener('click',()=>{const x=translationState();begin(x[0],x[1]);},true);
+    if(diag)diag.addEventListener('click',()=>begin('🧪 Diagnostics Engine','🧪'),true);
+    if(ollama)ollama.addEventListener('click',()=>begin('🦙 Status Check','🦙🔍'),true);
+    if(clear)clear.addEventListener('click',finish,true);
+    if(mode1)mode1.addEventListener('click',finish,true);
+    if(mode2)mode2.addEventListener('click',finish,true);
+    if(input)input.addEventListener('keydown',(event)=>{
+      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){
+        const x=translationState();
+        begin(x[0],x[1]);
+      }
+    },true);
+
+    if(state){
+      new MutationObserver(()=>{
+        if(active&&state.textContent!=='🔵')finish();
+      }).observe(state,{childList:true,subtree:true,characterData:true});
+    }
+  }
+})();
+</script>`;
+
+  return String(source)
+    .replace('<title>🤖😀</title>', '<title>EL Bot</title>')
+    .replace('</head>', style + '\n</head>')
+    .replace('</body>', runtime + '\n</body>');
 }
 
 function runPython(target, source, timeoutMs, extraArgs = []) {
@@ -117,17 +279,25 @@ async function runVision(mode, imageDataUrl) {
 }
 
 function createWindow() {
+  const iconPath = ensureAppIconPath();
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 780,
     minHeight: 580,
-    title: '🤖😀',
+    title: APP_NAME,
+    icon: iconPath,
     backgroundColor: '#080b12',
     autoHideMenuBar: true,
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  const html = fs.readFileSync(VIEW, 'utf8');
+
+  if (process.platform === 'win32') {
+    try { win.setAppDetails({ appId: APP_ID, appIconPath: iconPath }); } catch (_) {}
+    try { win.setThumbnailToolTip(APP_NAME); } catch (_) {}
+  }
+
+  const html = phaseOneHtml(fs.readFileSync(VIEW, 'utf8'));
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 }
 

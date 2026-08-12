@@ -4,12 +4,24 @@ from __future__ import annotations
 
 
 class AnimationEngine:
+    """Own both legacy status frames and the canonical live-processing symbol."""
+
     def __init__(self) -> None:
         self._frames = ("⚪", "🔵", "🟢")
+        self._processing_symbol = "⏳"
+        self._terminal_states = ("⚪", "✅", "🟡", "❌")
 
     @property
     def frames(self) -> tuple[str, ...]:
         return self._frames
+
+    @property
+    def processing_symbol(self) -> str:
+        return self._processing_symbol
+
+    @property
+    def terminal_states(self) -> tuple[str, ...]:
+        return self._terminal_states
 
     def render(self) -> str:
         return "🎞️" + "➡️".join(self._frames)
@@ -17,6 +29,8 @@ class AnimationEngine:
     def process(self, text: str) -> str:
         if text == "🎞️":
             return self.render()
+        if text == "⏳":
+            return "🎞️⏳🔁"
         return "🟡🎞️❓"
 
     def render_el_status(self) -> str:

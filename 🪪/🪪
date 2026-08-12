@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from json import loads
+from pathlib import Path
+
+
+_ROOT = Path(__file__).resolve().parent
+_CONFIG = loads((_ROOT / "🎛️").read_text(encoding="utf-8"))
+
+APP_NAME = str(_CONFIG["name"])
+APP_USER_MODEL_ID = str(_CONFIG["app_id"])
+APP_ICON_ASSET = str(_CONFIG["icon_asset"])
+APP_PROTOCOL = int(_CONFIG["protocol"])
 
 
 @dataclass(frozen=True, slots=True)
 class IdentitySnapshot:
     kind: str = "🤖"
-    protocol: int = 1
+    protocol: int = APP_PROTOCOL
+    app_name: str = APP_NAME
+    app_user_model_id: str = APP_USER_MODEL_ID
+    icon_asset: str = APP_ICON_ASSET
 
     def render_el(self) -> str:
         return "✅🪪" + self.kind + str(self.protocol)

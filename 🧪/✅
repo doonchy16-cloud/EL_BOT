@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Emoji-only self-test entry point."""
 
+from base64 import b64decode
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
+from json import loads
 from pathlib import Path
 import sys
 
@@ -25,6 +27,8 @@ diagnostics = _load("_el_diag", ROOT / "🧪" / "🧪")
 core = _load("_el_core", ROOT / "⚙️" / "⚙️")
 vocab = _load("_el_vocab", ROOT / "📚" / "📚")
 instructor = _load("_el_instructor", ROOT / "🧑‍🏫" / "🧑‍🏫")
+animation = _load("_el_animation_phase1", ROOT / "🎞️" / "🎞️")
+identity = _load("_el_identity_phase1", ROOT / "🪪" / "🪪")
 
 compound = "🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
 explicit_compound = "🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
@@ -68,8 +72,45 @@ for marker in (
     assert marker in rich_ui
 assert ".innerHTML" not in rich_ui
 
+electron_main = (ROOT / "⚡" / "⚡").read_text(encoding="utf-8")
+for marker in (
+    "app.setAppUserModelId(APP_ID)",
+    "ensureAppIconPath",
+    "phaseOneHtml",
+    "controlBar",
+    "flex-wrap:nowrap!important",
+    "hourglassFlip",
+    "phase-one-runtime",
+    "processing.id='processing'",
+    "hourglass.id='hourglass'",
+    "stage.id='stage'",
+    "icon: iconPath",
+    "win.setAppDetails",
+    "win.setThumbnailToolTip",
+):
+    assert marker in electron_main
+
+identity_config = loads((ROOT / "🪪" / "🎛️").read_text(encoding="utf-8"))
+assert identity_config["name"] == "EL Bot"
+assert identity_config["app_id"] == "com.thespark.elbot"
+assert identity_config["icon_asset"] == "🎨"
+icon_bytes = b64decode((ROOT / "🪪" / "🎨").read_text(encoding="utf-8").strip(), validate=True)
+assert icon_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+assert len(icon_bytes) > 100
+
+animation_engine = animation.AnimationEngine()
+assert animation_engine.processing_symbol == "⏳"
+assert animation_engine.process("⏳") == "🎞️⏳🔁"
+
+identity_snapshot = identity.IdentityEngine().snapshot()
+assert identity_snapshot.app_name == "EL Bot"
+assert identity_snapshot.app_user_model_id == "com.thespark.elbot"
+assert identity_snapshot.icon_asset == "🎨"
+
 report = diagnostics.DiagnosticsEngine().run()
 print(report.render_el())
 print("🎨✅")
 print("🧩✅")
+print("⏳✅")
+print("🪪✅")
 raise SystemExit(0 if report.passed else 1)
