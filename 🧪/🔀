@@ -43,6 +43,14 @@ def main() -> int:
     text_ranked = engine.rank_text_candidates(compound, ["grinning robot"])
     assert "qwen2.5vl:7b" in text_ranked.winner
 
+    source = "🤖😀↔️⚡🖥️📸"
+    glossary_dump = "Forgey/AI agent/bot | non-canonical grinning face | two-way/bidirectional | fast/power/performance | UI/terminal/computer interface | screenshot/captured evidence"
+    sentence = "The Forgey AI agent communicates bidirectionally at high speed through a computer interface using captured screenshots."
+    sentence_ranked = engine.rank_text_candidates(source, [glossary_dump, sentence])
+    assert sentence_ranked.winner == sentence
+    assert "|" not in sentence_ranked.winner
+    assert rank._text_sentence_adjustment(sentence)[0] > rank._text_sentence_adjustment(glossary_dump)[0]
+
     first = engine.rank_el_candidates("x", ["🔥", "🚀"], ())
     assert first.winner == "🔥"
     engine.record_selection(2, "x", "🚀")
