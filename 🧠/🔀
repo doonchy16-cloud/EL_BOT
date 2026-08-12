@@ -17,7 +17,6 @@ import os
 from pathlib import Path
 import re
 import sys
-import unicodedata
 
 
 def _load(name: str, path: Path):
@@ -131,6 +130,10 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 
+def _word_list(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.lower())
+
+
 def _canonical_symbols(text: str) -> tuple[str, ...]:
     return tuple(g for g in _core.split_graphemes(text) if g in MEANING_BY_SYMBOL)
 
@@ -184,6 +187,68 @@ def _text_semantic_coverage(source_symbols: tuple[str, ...], candidate: str) -> 
     return 30.0 * len(expected_words & candidate_words) / len(expected_words)
 
 
+def _text_sentence_adjustment(value: str) -> tuple[float, tuple[str, ...]]:
+    """Prefer coherent natural-language readings over glossary dumps."""
+    text = value.strip()
+    words = _word_list(text)
+    if not words:
+        return -100.0, ("no-natural-language",)
+
+    score = 0.0
+    reasons: list[str] = []
+
+    pipe_count = text.count("|")
+    equals_count = text.count("=")
+    slash_count = text.count("/")
+    if pipe_count:
+        score -= 35.0 + 8.0 * pipe_count
+        reasons.append("glossary-pipe-penalty")
+    if equals_count:
+        score -= 35.0 + 8.0 * equals_count
+        reasons.append("glossary-equals-penalty")
+    if slash_count >= 2:
+        score -= min(70.0, 10.0 * slash_count)
+        reasons.append("synonym-cluster-penalty")
+
+    if len(words) >= 5:
+        score += 14.0
+        reasons.append("sentence-length")
+    elif len(words) <= 2:
+        score -= 12.0
+        reasons.append("fragment-penalty")
+
+    verbs = {
+        "is","are","was","were","be","being","been","has","have","had","does","do","did",
+        "can","could","will","would","should","must","uses","use","using","runs","run","running",
+        "connects","connect","connecting","sends","send","receives","receive","displays","display",
+        "shows","show","translates","translate","processes","process","moves","move","communicates",
+        "communicate","captures","capture","contains","contain","represents","represent","indicates",
+        "indicate","performs","perform","works","work","provides","provide","requires","require"
+    }
+    if set(words) & verbs:
+        score += 22.0
+        reasons.append("sentence-clause")
+    elif len(words) >= 5:
+        score -= 14.0
+        reasons.append("clause-missing-penalty")
+
+    if re.search(r"[.!?]\s*$", text):
+        score += 5.0
+        reasons.append("sentence-terminal")
+
+    glossary_signals = (
+        "non-canonical ", "canonical meaning", "means ", "meaning ", "symbol ", "emoji ",
+        " = ", " | ", "interpretation:"
+    )
+    lowered = text.lower()
+    hits = sum(1 for signal in glossary_signals if signal in lowered)
+    if hits:
+        score -= 18.0 * hits
+        reasons.append("explanation-penalty")
+
+    return score, tuple(reasons)
+
+
 def _extract_json_candidates(raw: str) -> list[str]:
     text = raw.strip()
     if not text:
@@ -234,6 +299,10 @@ class SemanticRanker:
             score += coverage
             if coverage:
                 reasons.append("canonical-coverage")
+            if not (exact and value == exact):
+                sentence_adjustment, sentence_reasons = _text_sentence_adjustment(value)
+                score += sentence_adjustment
+                reasons.extend(sentence_reasons)
             count = observed.get(value, 0)
             if count:
                 score += min(80.0, 18.0 * count)
@@ -275,10 +344,13 @@ class SemanticRanker:
 
 
 def candidate_prompt_mode1(source: str, evidence: str) -> str:
-    return f"""Generate distinct plausible semantic interpretations of this Emoji Language sequence.
+    return f"""Translate this Emoji Language sequence into coherent natural-language sentences.
 Do not pick a winner. Return strict JSON only: {{\"candidates\":[{{\"value\":\"...\"}}]}}.
-Generate up to 8 materially different interpretations that are supported by the evidence.
-Canonical EL meanings override the pictorial/literal Unicode appearance. Never reinterpret a canonical symbol as a facial expression or object when its supplied EL meaning differs.
+Generate up to 8 materially different plausible readings supported by the evidence.
+EVERY candidate value must be a complete natural-language sentence or a concise grammatical statement that expresses the sequence as one combined meaning.
+Do NOT output a glossary, symbol-by-symbol explanation, list of definitions, pipe-separated meanings, equals-sign definitions, or slash-separated synonym clusters.
+Resolve the symbols together into what the sequence is saying. Prefer the most common contextual reading while preserving materially plausible alternatives.
+Canonical EL meanings override pictorial/literal Unicode appearance. Never reinterpret a canonical symbol as a facial expression or object when its supplied EL meaning differs.
 Preserve order, arrows, directionality, severity, negation, numbers and compound structure. Do not invent hidden facts.
 
 Canonical evidence:
