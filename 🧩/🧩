@@ -1,0 +1,195 @@
+"""N03: deterministic concept decomposition engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_context = _load("_el_phase3_context_decomp", _ROOT / "🧭" / "🧭")
+_graph = _load("_el_phase3_graph_decomp", _ROOT / "🗺️" / "🗺️")
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticComponent:
+    role: str
+    concept: str
+    weight: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticRelation:
+    source: str
+    relation: str
+    target: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConceptDecomposition:
+    source: str
+    normalized: str
+    sense_id: str
+    components: tuple[SemanticComponent, ...]
+    relations: tuple[SemanticRelation, ...]
+    resolved: bool
+    confidence: float
+    reason: str
+
+    @property
+    def concept_keys(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(item.concept for item in self.components))
+
+
+_TEMPLATES: dict[str, tuple[tuple[SemanticComponent, ...], tuple[SemanticRelation, ...]]] = {
+    "conversion-tool": (
+        (
+            SemanticComponent("entity", "tool", 0.82),
+            SemanticComponent("input", "input", 1.0),
+            SemanticComponent("action", "transform-action", 1.0),
+            SemanticComponent("output", "output", 1.0),
+        ),
+        (
+            SemanticRelation("input", "then", "transform-action"),
+            SemanticRelation("transform-action", "then", "output"),
+            SemanticRelation("tool", "performs", "transform-action"),
+        ),
+    ),
+    "transform-action": (
+        (
+            SemanticComponent("input", "input", 0.8),
+            SemanticComponent("action", "transform-action", 1.0),
+            SemanticComponent("output", "output", 0.8),
+        ),
+        (
+            SemanticRelation("input", "then", "transform-action"),
+            SemanticRelation("transform-action", "then", "output"),
+        ),
+    ),
+    "chatgpt-assistant": (
+        (
+            SemanticComponent("entity", "ai", 1.0),
+            SemanticComponent("capability", "conversation", 0.95),
+            SemanticComponent("role", "assistant", 0.9),
+            SemanticComponent("medium", "text-unit", 0.7),
+        ),
+        (
+            SemanticRelation("ai", "has-capability", "conversation"),
+            SemanticRelation("ai", "has-role", "assistant"),
+        ),
+    ),
+    "language-word": (
+        (
+            SemanticComponent("entity", "text-unit", 1.0),
+            SemanticComponent("domain", "language", 0.8),
+        ),
+        (SemanticRelation("text-unit", "belongs-to", "language"),),
+    ),
+    "microsoft-word-product": (
+        (
+            SemanticComponent("entity", "software", 1.0),
+            SemanticComponent("action", "document-editing", 0.9),
+            SemanticComponent("object", "document", 0.9),
+        ),
+        (
+            SemanticRelation("software", "performs", "document-editing"),
+            SemanticRelation("document-editing", "targets", "document"),
+        ),
+    ),
+    "translation-tool": (
+        (
+            SemanticComponent("entity", "tool", 0.8),
+            SemanticComponent("input", "input", 1.0),
+            SemanticComponent("action", "transform-action", 1.0),
+            SemanticComponent("domain", "language", 0.95),
+            SemanticComponent("output", "output", 1.0),
+        ),
+        (
+            SemanticRelation("input", "then", "transform-action"),
+            SemanticRelation("transform-action", "then", "output"),
+        ),
+    ),
+    "encoding-tool": (
+        (SemanticComponent("entity", "tool", 0.8), SemanticComponent("input", "input"), SemanticComponent("action", "transform-action"), SemanticComponent("medium", "text-unit", 0.8), SemanticComponent("output", "output")),
+        (SemanticRelation("input", "then", "transform-action"), SemanticRelation("transform-action", "then", "output")),
+    ),
+    "decoding-tool": (
+        (SemanticComponent("entity", "tool", 0.8), SemanticComponent("input", "input"), SemanticComponent("action", "transform-action"), SemanticComponent("medium", "text-unit", 0.8), SemanticComponent("output", "output")),
+        (SemanticRelation("input", "then", "transform-action"), SemanticRelation("transform-action", "then", "output")),
+    ),
+    "parsing-tool": ((SemanticComponent("entity", "tool", 0.8), SemanticComponent("object", "text-unit")), ()),
+    "rendering-tool": ((SemanticComponent("entity", "tool", 0.8), SemanticComponent("entity", "software", 0.7), SemanticComponent("output", "output")), ()),
+    "generation-tool": ((SemanticComponent("entity", "tool", 0.8), SemanticComponent("output", "output")), ()),
+    "validation-tool": ((SemanticComponent("entity", "tool", 0.8), SemanticComponent("action", "validation-tool", 1.0)), ()),
+}
+
+
+class ConceptDecompositionEngine:
+    """Break a resolved sense into semantic components; never selects emoji."""
+
+    def __init__(self) -> None:
+        self.context = _context.ContextSenseDisambiguationEngine()
+        self.graph = _graph.SemanticGraphEngine()
+
+    def decompose(self, term: str, context: str = "") -> ConceptDecomposition:
+        decision = self.context.resolve(term, context)
+        if not decision.resolved:
+            return ConceptDecomposition(term, decision.normalized, decision.sense_id, (), (), False, 0.0, decision.reason)
+
+        template = _TEMPLATES.get(decision.sense_id)
+        if template is not None:
+            components, relations = template
+            return ConceptDecomposition(term, decision.normalized, decision.sense_id, components, relations, True, decision.confidence, decision.reason)
+
+        if decision.sense_id == "generic-tool":
+            components = (
+                SemanticComponent("entity", "tool", 0.8),
+                SemanticComponent("action", decision.concept, 0.8),
+            )
+            return ConceptDecomposition(term, decision.normalized, decision.sense_id, components, (), True, decision.confidence, decision.reason)
+
+        node = self.graph.node(decision.concept)
+        if node is not None:
+            return ConceptDecomposition(term, decision.normalized, decision.sense_id, (SemanticComponent(node.kind, node.key, 1.0),), (), True, decision.confidence, decision.reason)
+
+        return ConceptDecomposition(term, decision.normalized, decision.sense_id, (), (), False, 0.0, "resolved-sense-without-decomposition")
+
+    def decompose_terms(self, terms: tuple[str, ...] | list[str], context: str = "") -> tuple[ConceptDecomposition, ...]:
+        results: list[ConceptDecomposition] = []
+        seen: set[tuple[str, str]] = set()
+        for term in terms:
+            item = self.decompose(term, context)
+            key = (item.normalized, item.sense_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(item)
+        return tuple(results)
+
+    def semantic_terms(self, decomposition: ConceptDecomposition) -> tuple[str, ...]:
+        terms: list[str] = []
+        for component in decomposition.components:
+            expanded = self.graph.semantic_terms(component.concept, depth=2)
+            if expanded:
+                terms.extend(expanded)
+            else:
+                terms.extend(component.concept.replace("-", " ").split())
+        return tuple(dict.fromkeys(term.lower() for term in terms if term))
+
+    def render_el_status(self) -> str:
+        return "✅🧩"
