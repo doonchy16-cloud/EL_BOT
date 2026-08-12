@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Self-contained deterministic checks for the emoji-path EL Bot tree."""
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+ROOT = Path(__file__).resolve().parent.parent
+core = _load("_el_core", ROOT / "⚙️" / "⚙️")
+vocab = _load("_el_vocab", ROOT / "📚" / "📚")
+intel = _load("_el_intel", ROOT / "🧠" / "🧠")
+valid = _load("_el_valid", ROOT / "🧾" / "🧾")
+session = _load("_el_session", ROOT / "🧵" / "🧵")
+
+checks = 0
+
+
+def check(condition: bool) -> None:
+    global checks
+    assert condition
+    checks += 1
+
+
+surface = core.CoreEngine().parse("🔥➡️1️⃣.\n  ✅")
+check(surface.status is core.ValidationStatus.PASS)
+check(surface.reconstructed == "🔥➡️1️⃣.\n  ✅")
+check(core.CoreEngine().parse("🔥abc").status is core.ValidationStatus.FAIL)
+check(core.CoreEngine().parse("🔥", el_mode=False).status is core.ValidationStatus.HOLD)
+
+check(len(vocab.CANONICAL_SYMBOLS) == 500)
+check(len(set(vocab.CANONICAL_SYMBOLS)) == 500)
+check(vocab.VocabularyEngine.lookup("🔥").ordinal == 1)
+check(vocab.VocabularyEngine.lookup("📭").ordinal == 500)
+check(vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🙂")).status is core.ValidationStatus.HOLD)
+
+r = vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🔥➡️🚀"))
+i = intel.IntelligenceEngine().interpret(r)
+check(i.status is core.ValidationStatus.PASS)
+check(i.lines[0].el_relationships == ("🔥➡️🚀",))
+
+r2 = vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🔥🚀"))
+i2 = intel.IntelligenceEngine().interpret(r2)
+check(i2.lines[0].el_relationships == ())
+
+report = valid.ValidationEngine().validate(i, "🔥➡️🚀")
+check(report.releasable)
+check(report.safe_output() == "🔥➡️🚀")
+check(valid.ValidationEngine().validate(i, "words").status is core.ValidationStatus.FAIL)
+check(valid.ValidationEngine().validate(i, "🙂").status is core.ValidationStatus.HOLD)
+
+s = session.SessionEngine()
+turn = s.ingest("🔥➡️🚀")
+check(turn.safe_output() == "🔥➡️🚀")
+check(s.render_el_status() == "✅🧵")
+check(len(s.turns) == 1)
+s.clear()
+check(s.render_el_status() == "⚪🧵")
+
+print(f"✅🧪{checks}")
