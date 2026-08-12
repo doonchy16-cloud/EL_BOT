@@ -27,14 +27,22 @@ vocab = _load("_el_vocab", ROOT / "📚" / "📚")
 instructor = _load("_el_instructor", ROOT / "🧑‍🏫" / "🧑‍🏫")
 
 compound = "🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
+explicit_compound = "🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
 old_compound = "💻🦙🤖🧠👁️7️⃣:🐝"
+expected = "local ollama model qwen2.5vl:7b"
 resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(compound))
+explicit_resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(explicit_compound))
 old_resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(old_compound))
 assert resolved.status is core.ValidationStatus.PASS
 assert resolved.is_explicit_compound
-assert resolved.compound_meaning == "local ollama model qwen2.5-vl:7b"
-assert instructor.InstructorEngine().translate_compound_to_text(compound) == "local ollama model qwen2.5-vl:7b"
+assert resolved.compound_meaning == expected
+assert explicit_resolved.status is core.ValidationStatus.PASS
+assert explicit_resolved.is_explicit_compound
+assert explicit_resolved.compound_meaning == expected
+assert instructor.InstructorEngine().translate_compound_to_text(compound) == expected
+assert instructor.InstructorEngine().translate_compound_to_text(explicit_compound) == expected
 assert instructor.InstructorEngine().process("🧑‍🏫" + compound) == "✅🧑‍🏫🧩"
+assert instructor.InstructorEngine().process("🧑‍🏫" + explicit_compound) == "✅🧑‍🏫🧩"
 assert old_resolved.status is core.ValidationStatus.HOLD
 assert not old_resolved.is_explicit_compound
 
