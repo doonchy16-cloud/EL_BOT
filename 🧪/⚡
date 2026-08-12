@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic translation throughput acceptance check."""
+"""Deterministic translation throughput plus runtime-render safety acceptance check."""
 
 from __future__ import annotations
 
@@ -27,7 +27,31 @@ emoji = _load("_el_perf_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
 lang = _load("_el_perf_lang", ROOT / "🧠" / "🧬")
 
 
+def assert_runtime_render_contract() -> None:
+    main_js = (ROOT / "⚡" / "⚡").read_text(encoding="utf-8")
+    view = (ROOT / "⚡" / "🖥️").read_text(encoding="utf-8")
+
+    assert view.lstrip().lower().startswith("<!doctype html>")
+    for marker in ('id="mode1"', 'id="mode2"', 'id="run"', 'id="image"', 'id="input"', 'id="output"', 'id="state"'):
+        assert marker in view, f"UI marker missing: {marker}"
+
+    assert "function materializeHtmlView()" in main_js
+    assert "function validateViewSource(source)" in main_js
+    assert "async function verifyRenderedView(win)" in main_js
+    assert "async function loadApplicationView(win)" in main_js
+    assert "el-bot-${digest}.html" in main_js
+    assert "path.extname(runtimeView).toLowerCase() !== '.html'" in main_js
+    assert "show: false" in main_js
+    assert "await loadApplicationView(win)" in main_js
+    assert "if (!win.isDestroyed()) win.show()" in main_js
+    assert "win.loadFile(VIEW_SOURCE)" not in main_js
+    assert "win.loadFile(VIEW)" not in main_js
+    assert "raw source code" in main_js
+
+
 def main() -> int:
+    assert_runtime_render_contract()
+
     abc_engine = abc.ABCToEmojiEngine()
     emoji_engine = emoji.EmojiToABCEngine()
     lang.canonical_patterns()
@@ -51,6 +75,7 @@ def main() -> int:
     translations = iterations * 2
     per_minute = int(translations * 60.0 / elapsed)
     assert per_minute >= 1000, f"throughput below requirement: {per_minute}/min"
+    print(f"✅🖥️🌐")
     print(f"✅⚡🔤{per_minute}/min")
     return 0
 
