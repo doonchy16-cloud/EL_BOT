@@ -7,4 +7,10 @@ contextBridge.exposeInMainWorld('😀', Object.freeze({
   '↔️': (mode, source) => ipcRenderer.invoke('↔️', mode, source),
   '🏆': (mode, source, value) => ipcRenderer.invoke('🏆', mode, source, value),
   '📸': (mode, imageDataUrl) => ipcRenderer.invoke('📸➡️🦙', mode, imageDataUrl),
+  '⏳': (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('⏳', listener);
+    return () => ipcRenderer.removeListener('⏳', listener);
+  },
 }));

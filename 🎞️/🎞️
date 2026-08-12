@@ -1,15 +1,16 @@
-"""Engine 17: deterministic emoji-only animation frames."""
+"""Engine 17: deterministic EL Bot animation state."""
 
 from __future__ import annotations
 
 
 class AnimationEngine:
-    """Own both legacy status frames and the canonical live-processing symbol."""
+    """Own status frames and the canonical 180-degree processing flip."""
 
     def __init__(self) -> None:
         self._frames = ("⚪", "🔵", "🟢")
         self._processing_symbol = "⏳"
         self._terminal_states = ("⚪", "✅", "🟡", "❌")
+        self._flip_degrees = 180
 
     @property
     def frames(self) -> tuple[str, ...]:
@@ -23,6 +24,10 @@ class AnimationEngine:
     def terminal_states(self) -> tuple[str, ...]:
         return self._terminal_states
 
+    @property
+    def flip_degrees(self) -> int:
+        return self._flip_degrees
+
     def render(self) -> str:
         return "🎞️" + "➡️".join(self._frames)
 
@@ -30,8 +35,8 @@ class AnimationEngine:
         if text == "🎞️":
             return self.render()
         if text == "⏳":
-            return "🎞️⏳🔁"
+            return "🎞️⏳↪️180"
         return "🟡🎞️❓"
 
     def render_el_status(self) -> str:
-        return "✅🎞️" + str(len(self._frames))
+        return "✅🎞️⏳180"

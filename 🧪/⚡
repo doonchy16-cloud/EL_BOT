@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Deterministic translation throughput acceptance check."""
+
+from __future__ import annotations
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+from time import perf_counter
+
+
+def _load(name: str, path: Path):
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+ROOT = Path(__file__).resolve().parent.parent
+abc = _load("_el_perf_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
+emoji = _load("_el_perf_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
+lang = _load("_el_perf_lang", ROOT / "🧠" / "🧬")
+
+
+def main() -> int:
+    abc_engine = abc.ABCToEmojiEngine()
+    emoji_engine = emoji.EmojiToABCEngine()
+    lang.canonical_patterns()
+    abc_engine.translate("Restart the local server after 30 seconds.", cross_verify=False, emit=False)
+    emoji_engine.translate("🔴📡❌⏱️30➡️🔄⚙️", cross_verify=False, emit=False)
+
+    iterations = 250
+    start = perf_counter()
+    for index in range(iterations):
+        abc_engine.translate(
+            f"Critical server error after {30 + index} seconds. Restart the service immediately and verify success.",
+            cross_verify=False,
+            emit=False,
+        )
+        emoji_engine.translate(
+            f"🔴📡❌⏱️{30 + index}➡️🔄⚙️‼️➡️🧾➡️✅",
+            cross_verify=False,
+            emit=False,
+        )
+    elapsed = max(0.001, perf_counter() - start)
+    translations = iterations * 2
+    per_minute = int(translations * 60.0 / elapsed)
+    assert per_minute >= 1000, f"throughput below requirement: {per_minute}/min"
+    print(f"✅⚡🔤{per_minute}/min")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

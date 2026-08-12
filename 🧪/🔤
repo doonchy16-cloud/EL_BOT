@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Deterministic translation-quality acceptance checks for phases 3-8."""
+
+from __future__ import annotations
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+ROOT = Path(__file__).resolve().parent.parent
+abc = _load("_el_quality_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
+emoji = _load("_el_quality_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
+
+
+def main() -> int:
+    abc_engine = abc.ABCToEmojiEngine()
+    emoji_engine = emoji.EmojiToABCEngine()
+    passed = 0
+
+    critical = abc_engine.translate(
+        "A critical database connection timed out after 30 seconds. The local server crashed and went offline. Restart the container immediately to restore the service.",
+        verifier=emoji_engine,
+        cross_verify=True,
+        emit=False,
+    )
+    assert critical.winner != "🟡❓"
+    assert "🔴" in critical.winner and "❌" in critical.winner
+    assert "⏱️30" in critical.winner
+    assert "📡" in critical.winner and "💥" in critical.winner and "📴" in critical.winner
+    assert "🔄" in critical.winner and "📦" in critical.winner and "‼️" in critical.winner
+    passed += 1
+
+    security = abc_engine.translate(
+        "The security system is locked because the key failed. Authenticate the replacement credential, unlock access, and verify success.",
+        verifier=emoji_engine,
+        cross_verify=True,
+        emit=False,
+    )
+    for marker in ("🔐", "🔒", "🔑", "❌", "🛂", "🔓"):
+        assert marker in security.winner
+    passed += 1
+
+    dashboard = abc_engine.translate(
+        "Add a dark mode toggle button to the main dashboard navigation area and optimize loading performance so the interface is fast without lag.",
+        verifier=emoji_engine,
+        cross_verify=True,
+        emit=False,
+    )
+    for marker in ("🖤", "🔘", "📊", "🧭", "📈", "⚡"):
+        assert marker in dashboard.winner
+    passed += 1
+
+    process = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", verifier=abc_engine, cross_verify=True, emit=False)
+    lowered = process.winner.lower()
+    assert "import" in lowered and "test" in lowered and "valid" in lowered and "deploy" in lowered
+    assert "the el sequence communicates" not in lowered and "|" not in process.winner and " = " not in process.winner
+    passed += 1
+
+    security_text = emoji_engine.translate("🔐🔒➡️❌🔑➡️🛂➡️🔓➡️✅", verifier=abc_engine, cross_verify=True, emit=False)
+    lowered = security_text.winner.lower()
+    assert "security" in lowered and "lock" in lowered and "credential" in lowered and "authenticate" in lowered and "unlock" in lowered
+    passed += 1
+
+    long_source = " ".join(
+        [
+            "The local server failed after 45 seconds and went offline. Restart the service immediately and verify that it is healthy.",
+            "Keep the security system locked if authentication fails and preserve the current session and saved data.",
+            "Load the package, test every file, validate the result, deploy only after success, and notify the user when complete.",
+            "Use the screenshot vision system only for visible image facts and keep normal translation deterministic.",
+        ] * 10
+    )
+    long_result = abc_engine.translate(long_source, verifier=emoji_engine, cross_verify=True, emit=False)
+    assert long_result.winner != "🟡❓"
+    assert "⏱️45" in long_result.winner
+    assert len(long_result.winner) > 200
+    assert long_result.metrics.get("clauses", 0) >= 20
+    passed += 1
+
+    print(f"✅🧪🔤{passed}/6")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

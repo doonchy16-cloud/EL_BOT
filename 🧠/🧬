@@ -1,0 +1,500 @@
+"""Deterministic semantic language foundation shared by both EL translation engines."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import re
+import sys
+import unicodedata
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_lang_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_lang_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_el_lang_meanings", _ROOT / "📚" / "🧾")
+_compounds = _load("_el_lang_compounds", _ROOT / "📚" / "🧩")
+
+CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
+PRIMARY_MEANINGS = _meanings.PRIMARY_MEANINGS
+MEANING_BY_SYMBOL = dict(zip(CANONICAL_SYMBOLS, PRIMARY_MEANINGS, strict=True))
+ORDINAL_BY_SYMBOL = {symbol: index for index, symbol in enumerate(CANONICAL_SYMBOLS, start=1)}
+
+WORD_RE = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
+NUMBER_UNIT_RE = re.compile(
+    r"\b(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>milliseconds?|seconds?|minutes?|hours?|days?|weeks?|percent|%|kb|mb|gb|tb)?\b",
+    re.I,
+)
+SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+STOPWORDS = frozenset(
+    "a an and are as at be been being but by can could did do does for from had has have if in into is it its "
+    "may might must of on only or our should so than that the their them then there these they this those through "
+    "to upon was were when where which while who will with without would you your".split()
+)
+
+LEXICAL_ALIASES: tuple[tuple[str, str], ...] = (
+    ("artificial intelligence", "🤖"), ("ai bot", "🤖"), ("ai agent", "🤖"), ("ai", "🤖"), ("bot", "🤖"),
+    ("user interface", "🖥️"), ("computer interface", "🖥️"), ("dashboard", "📊"),
+    ("database", "🗃️"), ("data store", "🗃️"), ("saved data", "💾"),
+    ("connection", "🔌"), ("connected", "🔌"), ("connect", "🔌"), ("reconnect", "🔌"),
+    ("server", "📡"), ("service", "⚙️"), ("system", "⚙️"), ("application", "⚙️"), ("app", "⚙️"),
+    ("critical error", "🔴"), ("critical", "🔴"), ("error", "❌"), ("failure", "❌"), ("failed", "❌"),
+    ("crashed", "💥"), ("crash", "💥"), ("offline", "📴"), ("disabled", "📴"),
+    ("timed out", "⏱️"), ("timeout", "⏱️"), ("latency", "🐌"), ("slow", "🐌"), ("fast", "⚡"),
+    ("immediately", "‼️"), ("urgent", "❗"), ("warning", "⚠️"), ("risk", "⚠️"),
+    ("restart", "🔄"), ("refresh", "🔄"), ("update", "🔄"), ("retry", "🔂"),
+    ("container", "📦"), ("docker", "📦"), ("package", "📦"), ("build artifact", "📦"),
+    ("recover", "❤️‍🩹"), ("restore", "❤️‍🩹"), ("recovery", "🧯"), ("repair", "🔧"), ("fix", "🔧"),
+    ("validate", "🧾"), ("validation", "🧾"), ("verify", "✔️"), ("verified", "✅"),
+    ("test", "🧪"), ("testing", "🧪"), ("diagnostics", "🧪"), ("diagnostic", "🧪"),
+    ("deploy", "🚀"), ("deployment", "🚀"), ("release", "🚀"), ("launch", "🚀"),
+    ("complete", "✅"), ("completed", "✅"), ("success", "✅"), ("successful", "✅"),
+    ("healthy", "🟢"), ("active", "🔵"), ("waiting", "⏳"), ("pending", "⏳"),
+    ("security", "🔐"), ("authentication", "🛂"), ("authenticate", "🛂"), ("identity", "🪪"),
+    ("credential", "🔑"), ("credentials", "🔑"), ("key", "🔑"), ("locked", "🔒"), ("unlock", "🔓"),
+    ("unauthorized", "⛔"), ("not authorized", "⛔"), ("access", "🛂"),
+    ("configuration", "🎛️"), ("settings", "🎛️"), ("setting", "🎛️"),
+    ("workflow", "🔁"), ("vocabulary", "📚"), ("canonical vocabulary", "📚"), ("session", "🧵"), ("context", "🧵"), ("persistence", "💾"),
+    ("event", "📡"), ("events", "📡"), ("notification", "🔔"), ("notifications", "🔔"),
+    ("message", "💬"), ("email", "📧"), ("file", "📄"), ("files", "📄"), ("folder", "📂"),
+    ("import", "📥"), ("load", "📥"), ("receive", "📥"), ("export", "📤"), ("send", "📤"),
+    ("save", "💾"), ("delete", "🗑️"), ("cleanup", "🧹"), ("inspect", "🔍"), ("search", "🔍"),
+    ("screenshot", "📸"), ("image", "🖼️"), ("vision", "👁️"), ("ollama", "🦙"),
+    ("dark mode", "🖤"), ("light mode", "🤍"), ("toggle", "🔘"), ("button", "🔘"),
+    ("navigation", "🧭"), ("performance", "📈"), ("optimize", "📈"), ("speed", "⚡"),
+    ("cloud", "☁️"), ("network", "🌐"), ("local", "🏠"), ("home", "🏠"), ("computer", "💻"),
+    ("both directions", "↔️"), ("bidirectional", "↔️"), ("two way", "↔️"),
+    ("increase", "➕"), ("decrease", "➖"), ("before", "⬅️"), ("after", "➡️"),
+    ("stop", "⏹️"), ("start", "▶️"), ("pause", "⏸️"), ("continue", "➡️"),
+    ("hold", "🟡"), ("unknown", "⚪"), ("blocked", "🚧"), ("hard stop", "🛑"),
+    ("result", "📤"), ("output", "📤"), ("input", "📥"), ("winner", "🏆"), ("best", "⭐"),
+)
+
+RELATION_WORDS: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (("because", "because of", "due to", "caused by"), "cause", "➡️"),
+    (("therefore", "so that", "so", "resulting in"), "result", "➡️"),
+    (("before", "prior to"), "before", "⬅️"),
+    (("after", "following"), "after", "➡️"),
+    (("if", "when", "only if", "unless"), "condition", "🚦"),
+    (("and", "also", "plus"), "and", "➕"),
+    (("or", "alternatively"), "or", "🔀"),
+    (("not", "never", "without", "cannot", "can't", "do not"), "negation", "❌"),
+    (("both directions", "bidirectional", "two way"), "bidirectional", "↔️"),
+)
+
+ACTION_PHRASES: dict[str, str] = {
+    "📥": "import", "📤": "export", "🧪": "test", "🧾": "validate", "🔍": "inspect",
+    "🔄": "restart or refresh", "🔂": "retry once", "🔧": "repair", "🧹": "clean up",
+    "🗑️": "delete", "💾": "save", "🚀": "deploy", "▶️": "start", "⏹️": "stop",
+    "⏸️": "pause", "🔒": "lock", "🔓": "unlock", "✔️": "verify", "✅": "confirm completion",
+    "🔔": "notify", "💬": "message", "📨": "send a message", "📩": "receive a message",
+    "🛂": "authenticate", "🔐": "secure", "❤️‍🩹": "restore", "🧯": "recover safely",
+    "🔨": "build", "🏗️": "implement", "📈": "optimize or improve", "🔌": "connect",
+}
+
+ENTITY_PHRASES: dict[str, str] = {
+    "🤖": "AI bot", "🖥️": "computer interface", "💻": "computer", "📡": "server or event system",
+    "🗃️": "registry or structured data store", "⚙️": "core system", "📦": "package or build artifact",
+    "📄": "file", "📂": "folder", "🌐": "network", "☁️": "cloud service", "👤": "user",
+    "👥": "user group", "🧵": "session context", "🎛️": "configuration", "🪪": "system identity",
+    "🔑": "credential", "📸": "screenshot", "🦙": "Ollama", "👁️": "visual observation",
+    "🛡️": "reliability protection", "🔐": "security system", "📊": "dashboard or analytics",
+    "💾": "saved data", "📚": "canonical knowledge", "🧠": "reasoning system",
+}
+
+STATUS_PHRASES: dict[str, str] = {
+    "🔴": "critical", "❌": "failed", "⚠️": "warning", "🟡": "on hold",
+    "🔵": "active", "🟢": "healthy", "✅": "verified complete", "📴": "offline",
+    "🚧": "blocked", "🛑": "stopped", "🔒": "locked",
+}
+
+TEMPORAL_UNIT_SYMBOLS = frozenset({"millisecond", "milliseconds", "second", "seconds", "minute", "minutes", "hour", "hours", "day", "days", "week", "weeks"})
+
+
+@dataclass(frozen=True, slots=True)
+class NumberBinding:
+    number: str
+    unit: str
+    start: int
+    end: int
+
+    @property
+    def el(self) -> str:
+        unit = self.unit.lower()
+        if unit in TEMPORAL_UNIT_SYMBOLS:
+            return "⏱️" + self.number
+        if unit in {"percent", "%"}:
+            return "💯" + self.number
+        return "🔢" + self.number
+
+
+@dataclass(frozen=True, slots=True)
+class ConceptMatch:
+    symbol: str
+    phrase: str
+    meaning: str
+    start: int
+    end: int
+    source: str
+    confidence: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Relation:
+    kind: str
+    marker: str
+    phrase: str
+    position: int
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticClause:
+    source: str
+    concepts: tuple[ConceptMatch, ...]
+    numbers: tuple[NumberBinding, ...]
+    relations: tuple[Relation, ...]
+    negated: bool
+    unknown_words: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticDocument:
+    source: str
+    clauses: tuple[SemanticClause, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Candidate:
+    value: str
+    score: float
+    reasons: tuple[str, ...] = ()
+    coverage: float = 0.0
+    roundtrip: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class EngineResult:
+    mode: int
+    source: str
+    candidates: tuple[Candidate, ...]
+    stages: tuple[str, ...]
+    metrics: dict[str, float | int | str] = field(default_factory=dict)
+
+    @property
+    def winner(self) -> str:
+        if self.candidates:
+            return self.candidates[0].value
+        return "🟡❓" if self.mode == 2 else "Unable to translate the available EL input."
+
+    def as_dict(self) -> dict:
+        return {
+            "mode": self.mode,
+            "winner": self.winner,
+            "candidates": [
+                {
+                    "value": item.value,
+                    "score": round(item.score, 3),
+                    "reasons": list(item.reasons),
+                    "coverage": round(item.coverage, 3),
+                    "roundtrip": round(item.roundtrip, 3),
+                }
+                for item in self.candidates
+            ],
+            "stages": list(self.stages),
+            "metrics": dict(self.metrics),
+        }
+
+
+def emit_stage(index: int, total: int, label: str, enabled: bool = True) -> None:
+    if not enabled:
+        return
+    payload = json.dumps({"index": index, "total": total, "label": label}, ensure_ascii=False, separators=(",", ":"))
+    print("EL_STAGE\t" + payload, file=sys.stderr, flush=True)
+
+
+@lru_cache(maxsize=1)
+def canonical_lexicon() -> tuple[tuple[str, str, str], ...]:
+    rows: list[tuple[str, str, str]] = []
+    for symbol, meaning in MEANING_BY_SYMBOL.items():
+        for raw in meaning.split("/"):
+            phrase = raw.strip().lower()
+            if len(phrase) >= 2:
+                rows.append((phrase, symbol, "authority"))
+    for phrase, symbol in LEXICAL_ALIASES:
+        if symbol in MEANING_BY_SYMBOL:
+            rows.append((phrase.lower(), symbol, "alias"))
+    rows.sort(key=lambda item: (-len(item[0]), ORDINAL_BY_SYMBOL[item[1]], item[0]))
+    return tuple(rows)
+
+
+@lru_cache(maxsize=4096)
+def normalize_text(text: str) -> str:
+    value = unicodedata.normalize("NFKC", str(text or "")).replace("’", "'").replace("–", "-").replace("—", "-")
+    return re.sub(r"[ \t]+", " ", value).strip()
+
+
+@lru_cache(maxsize=4096)
+def split_sentences(text: str) -> tuple[str, ...]:
+    normalized = normalize_text(text)
+    if not normalized:
+        return ()
+    parts = [part.strip() for part in SENTENCE_RE.split(normalized) if part.strip()]
+    return tuple(parts)
+
+
+@lru_cache(maxsize=4096)
+def find_number_bindings(text: str) -> tuple[NumberBinding, ...]:
+    out: list[NumberBinding] = []
+    for match in NUMBER_UNIT_RE.finditer(text):
+        number = match.group("number")
+        unit = (match.group("unit") or "").lower()
+        out.append(NumberBinding(number, unit, match.start(), match.end()))
+    return tuple(out)
+
+
+def _overlaps(start: int, end: int, accepted: list[tuple[int, int]]) -> bool:
+    return any(not (end <= left or start >= right) for left, right in accepted)
+
+
+@lru_cache(maxsize=1)
+def canonical_patterns() -> tuple[tuple[re.Pattern[str], str, str, str], ...]:
+    rows: list[tuple[re.Pattern[str], str, str, str]] = []
+    for phrase, symbol, source_kind in canonical_lexicon():
+        pattern = re.compile(r"(?<![a-z0-9])" + re.escape(phrase) + r"(?![a-z0-9])")
+        rows.append((pattern, phrase, symbol, source_kind))
+    return tuple(rows)
+
+
+@lru_cache(maxsize=4096)
+def match_concepts(text: str) -> tuple[ConceptMatch, ...]:
+    lowered = normalize_text(text).lower()
+    matches: list[ConceptMatch] = []
+    occupied_by_symbol: dict[str, list[tuple[int, int]]] = {}
+    for pattern, phrase, symbol, source_kind in canonical_patterns():
+        symbol_spans = occupied_by_symbol.setdefault(symbol, [])
+        for found in pattern.finditer(lowered):
+            if _overlaps(found.start(), found.end(), symbol_spans):
+                continue
+            matches.append(
+                ConceptMatch(
+                    symbol=symbol,
+                    phrase=found.group(0),
+                    meaning=MEANING_BY_SYMBOL[symbol],
+                    start=found.start(),
+                    end=found.end(),
+                    source=source_kind,
+                    confidence=1.0 if source_kind == "authority" else 0.94,
+                )
+            )
+            symbol_spans.append((found.start(), found.end()))
+    matches.sort(key=lambda item: (item.start, item.end, ORDINAL_BY_SYMBOL[item.symbol]))
+    return tuple(matches)
+
+
+@lru_cache(maxsize=4096)
+def detect_relations(text: str) -> tuple[Relation, ...]:
+    lowered = normalize_text(text).lower()
+    rows: list[Relation] = []
+    for phrases, kind, marker in RELATION_WORDS:
+        for phrase in phrases:
+            pattern = r"(?<![a-z0-9])" + re.escape(phrase) + r"(?![a-z0-9])"
+            for found in re.finditer(pattern, lowered):
+                rows.append(Relation(kind, marker, phrase, found.start()))
+    rows.sort(key=lambda row: (row.position, row.kind))
+    return tuple(rows)
+
+
+def unknown_content_words(text: str, concepts: tuple[ConceptMatch, ...]) -> tuple[str, ...]:
+    lowered = normalize_text(text).lower()
+    covered_spans = [(item.start, item.end) for item in concepts]
+    unknown: list[str] = []
+    for found in WORD_RE.finditer(lowered):
+        word = found.group(0)
+        if word in STOPWORDS or word.isdigit():
+            continue
+        if _overlaps(found.start(), found.end(), covered_spans):
+            continue
+        if word not in unknown:
+            unknown.append(word)
+    return tuple(unknown)
+
+
+@lru_cache(maxsize=2048)
+def parse_abc_document(text: str) -> SemanticDocument:
+    clauses: list[SemanticClause] = []
+    for sentence in split_sentences(text):
+        concepts = match_concepts(sentence)
+        numbers = find_number_bindings(sentence)
+        relations = detect_relations(sentence)
+        negated = any(row.kind == "negation" for row in relations)
+        clauses.append(
+            SemanticClause(
+                source=sentence,
+                concepts=concepts,
+                numbers=numbers,
+                relations=relations,
+                negated=negated,
+                unknown_words=unknown_content_words(sentence, concepts),
+            )
+        )
+    return SemanticDocument(normalize_text(text), tuple(clauses))
+
+
+def canonical_symbols(text: str) -> tuple[str, ...]:
+    return tuple(token for token in _core.split_graphemes(text) if token in MEANING_BY_SYMBOL)
+
+
+def valid_el(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip() or any(ch.isalpha() for ch in text):
+        return False
+    parsed = _core.CoreEngine().parse(text, el_mode=True)
+    if parsed.status is _core.ValidationStatus.FAIL:
+        return False
+    return _vocab.VocabularyEngine().resolve(parsed).status is _core.ValidationStatus.PASS
+
+
+def dedupe_adjacent(items: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    out: list[str] = []
+    for item in items:
+        if item and (not out or out[-1] != item):
+            out.append(item)
+    return tuple(out)
+
+
+def concept_signature_from_abc(text: str) -> tuple[str, ...]:
+    return tuple(item.symbol for item in match_concepts(text))
+
+
+def concept_signature_from_el(text: str) -> tuple[str, ...]:
+    return tuple(symbol for symbol in canonical_symbols(text) if symbol not in {"➡️", "➕"})
+
+
+def multiset_similarity(left: tuple[str, ...], right: tuple[str, ...]) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    lcounts: dict[str, int] = {}
+    rcounts: dict[str, int] = {}
+    for value in left:
+        lcounts[value] = lcounts.get(value, 0) + 1
+    for value in right:
+        rcounts[value] = rcounts.get(value, 0) + 1
+    keys = set(lcounts) | set(rcounts)
+    overlap = sum(min(lcounts.get(key, 0), rcounts.get(key, 0)) for key in keys)
+    total = sum(max(lcounts.get(key, 0), rcounts.get(key, 0)) for key in keys)
+    return overlap / total if total else 1.0
+
+
+def order_similarity(left: tuple[str, ...], right: tuple[str, ...]) -> float:
+    if not left or not right:
+        return 0.0
+    positions: dict[str, list[int]] = {}
+    for index, symbol in enumerate(right):
+        positions.setdefault(symbol, []).append(index)
+    seq: list[int] = []
+    used: dict[str, int] = {}
+    for symbol in left:
+        slots = positions.get(symbol)
+        if not slots:
+            continue
+        offset = used.get(symbol, 0)
+        if offset < len(slots):
+            seq.append(slots[offset])
+            used[symbol] = offset + 1
+    if len(seq) < 2:
+        return 1.0 if seq else 0.0
+    good = sum(1 for a, b in zip(seq, seq[1:]) if b >= a)
+    return good / (len(seq) - 1)
+
+
+def number_binding_score(source: str, el_value: str) -> float:
+    bindings = find_number_bindings(source)
+    if not bindings:
+        return 1.0
+    hits = 0
+    for item in bindings:
+        expected = item.el
+        if expected in el_value:
+            hits += 1
+    return hits / len(bindings)
+
+
+def preferred_phrase(symbol: str) -> str:
+    if symbol in ENTITY_PHRASES:
+        return ENTITY_PHRASES[symbol]
+    if symbol in STATUS_PHRASES:
+        return STATUS_PHRASES[symbol]
+    if symbol in ACTION_PHRASES:
+        return ACTION_PHRASES[symbol]
+    meaning = MEANING_BY_SYMBOL.get(symbol, "unknown concept")
+    return meaning.split("/", 1)[0].strip()
+
+
+def is_action(symbol: str) -> bool:
+    return symbol in ACTION_PHRASES
+
+
+def is_status(symbol: str) -> bool:
+    return symbol in STATUS_PHRASES
+
+
+def is_relation(symbol: str) -> bool:
+    return symbol in {"➡️", "⬅️", "↔️", "➕", "🔀", "🚦"}
+
+
+def sentence_case(text: str) -> str:
+    value = re.sub(r"\s+", " ", text).strip(" ,;")
+    if not value:
+        return ""
+    value = value[0].upper() + value[1:]
+    if value[-1] not in ".!?":
+        value += "."
+    return value
+
+
+def score_candidate(
+    source_signature: tuple[str, ...],
+    candidate_signature: tuple[str, ...],
+    base: float = 0.0,
+    order_weight: float = 18.0,
+) -> tuple[float, float, float]:
+    coverage = multiset_similarity(source_signature, candidate_signature)
+    order = order_similarity(source_signature, candidate_signature)
+    return base + 70.0 * coverage + order_weight * order, coverage, order
+
+
+def apply_roundtrip(candidate: Candidate, similarity: float) -> Candidate:
+    return replace(
+        candidate,
+        score=candidate.score + 30.0 * similarity,
+        roundtrip=similarity,
+        reasons=candidate.reasons + ("round-trip",),
+    )
+
+
+def sort_candidates(candidates: list[Candidate] | tuple[Candidate, ...]) -> tuple[Candidate, ...]:
+    unique: dict[str, Candidate] = {}
+    for candidate in candidates:
+        current = unique.get(candidate.value)
+        if current is None or candidate.score > current.score:
+            unique[candidate.value] = candidate
+    return tuple(sorted(unique.values(), key=lambda item: (-item.score, -item.coverage, -item.roundtrip, len(item.value), item.value))[:8])

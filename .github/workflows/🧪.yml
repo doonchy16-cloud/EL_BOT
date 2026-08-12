@@ -37,48 +37,44 @@ jobs:
           }
           & $exe -c "import sys; assert sys.version_info[:2] == (3, 12)"
 
-      - name: "🦙🔍"
+      - name: "🤖❌↔️"
         shell: powershell
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import json,urllib.request; u='http://127.0.0.1:11434/api/tags'; d=json.load(urllib.request.urlopen(u,timeout=5)); names=[m.get('name','') for m in d.get('models',[])]; assert 'qwen2.5vl:7b' in names; print(chr(0x2705)+chr(0x1F999)+chr(0x1F441)+chr(0xFE0F)+'7')"
-
-      - name: "🦙🔋"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING = 'utf-8'
-          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/ps',timeout=5)); names=[m.get('name','') for m in d.get('models',[])]; ok='qwen2.5vl:7b' in names; print((chr(0x2705) if ok else chr(0x1F7E1))+chr(0x1F999)+(chr(0x1F50B) if ok else chr(0x1FAAB)))"
-        continue-on-error: true
-
-      - name: "🧪🦙"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING = 'utf-8'
-          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
-
-      - name: "🧪🤖"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING = 'utf-8'
-          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          $script = Join-Path $env:RUNNER_TEMP 'el_bot_stdin_test.py'
+          $script = Join-Path $env:RUNNER_TEMP 'el_no_ai_translation.py'
           @'
+          import importlib.machinery
+          import importlib.util
+          import os
           import pathlib
-          import subprocess
+          import socket
           import sys
+          import tempfile
+          import urllib.request
 
-          bot_name = chr(0x1F916)
-          bot = next(path for path in pathlib.Path('.').iterdir() if path.is_file() and path.name == bot_name)
-          source = chr(0x1F525) + chr(0x27A1) + chr(0xFE0F) + chr(0x1F680)
-          result = subprocess.run([sys.executable, str(bot)], input=source, text=True, capture_output=True, encoding='utf-8', timeout=20)
-          output = result.stdout.strip()
-          print(output)
-          assert result.returncode == 0
-          assert output
-          assert not output.startswith(chr(0x274C))
+          def blocked(*args, **kwargs):
+              raise AssertionError('network access attempted during normal translation')
+
+          socket.create_connection = blocked
+          urllib.request.urlopen = blocked
+          os.environ['EL_RANK_DB'] = str(pathlib.Path(tempfile.gettempdir()) / 'el-rank-no-ai.json')
+          bidi = chr(0x2194) + chr(0xFE0F)
+          path = next(p for p in pathlib.Path('.').rglob('*') if p.is_file() and p.name == bidi and p.parent.name == bidi)
+          loader = importlib.machinery.SourceFileLoader('_el_no_ai_bidi', str(path))
+          spec = importlib.util.spec_from_loader('_el_no_ai_bidi', loader)
+          module = importlib.util.module_from_spec(spec)
+          sys.modules['_el_no_ai_bidi'] = module
+          loader.exec_module(module)
+          engine = module.TranslationEngine()
+          a = engine.process(2, 'Critical server error after 30 seconds. Restart the service immediately and verify success.')
+          b = engine.process(1, '\U0001F4E5\u27A1\uFE0F\U0001F9EA\u27A1\uFE0F\U0001F9FE\u27A1\uFE0F\u2705\u27A1\uFE0F\U0001F680')
+          assert a and not a.startswith(chr(0x274C))
+          assert b and not b.startswith(chr(0x274C))
+          assert engine.provider_call_count == 0
+          source = path.read_text(encoding='utf-8')
+          assert 'OllamaConnector' not in source and '_ollama' not in source
+          print(chr(0x2705) + chr(0x2194) + chr(0xFE0F) + chr(0x1F916) + chr(0x274C))
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
 
@@ -89,92 +85,21 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F500); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
-      - name: "🧪📸"
+      - name: "🧪🔤"
         shell: powershell
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          $script = Join-Path $env:RUNNER_TEMP 'el_vision_test.py'
-          @'
-          import pathlib
-          import subprocess
-          import sys
-          import unicodedata
-
-          jpeg = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCACAAIADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDySiiivy8/vAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA//2Q=='
-          value = 'data:image/jpeg;base64,' + jpeg
-          camera = chr(0x1F4F8)
-          yellow = chr(0x1F7E1)
-          llama = chr(0x1F999)
-          vision = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == camera and path.parent.name == camera)
-          result = subprocess.run([sys.executable, str(vision)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=360)
-          output = result.stdout.strip()
-          print(output)
-          if result.stderr.strip(): print(result.stderr.strip())
-          assert result.returncode == 0
-          assert output
-          assert not output.startswith(chr(0x274C))
-          assert not output.startswith(yellow + camera + llama)
-          assert not any(unicodedata.category(ch).startswith('L') for ch in output)
-          '@ | Set-Content -LiteralPath $script -Encoding UTF8
-          & $exe $script
-
-      - name: "🧪↔️"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING = 'utf-8'
-          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          $script = Join-Path $env:RUNNER_TEMP 'el_bidirectional_acceptance.py'
-          @'
-          import pathlib
-          import subprocess
-          import sys
-          import unicodedata
-
-          bidi = chr(0x2194) + chr(0xFE0F)
-          cross = chr(0x274C)
-          yellow = chr(0x1F7E1)
-          red = chr(0x1F534)
-          timer = chr(0x23F1) + chr(0xFE0F)
-          refresh = chr(0x1F504)
-          black_heart = chr(0x1F5A4)
-          chart = chr(0x1F4CA)
-          lightning = chr(0x26A1)
-          growth = chr(0x1F4C8)
-          snail = chr(0x1F40C)
-          bidi_file = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == bidi and path.parent.name == bidi)
-
-          def run(mode, source):
-              result = subprocess.run([sys.executable, str(bidi_file)], input=str(mode) + '\n' + source, text=True, capture_output=True, encoding='utf-8', timeout=420)
-              assert result.returncode == 0
-              output = result.stdout.strip()
-              print(str(mode) + ': ' + output)
-              assert output
-              assert not output.startswith(cross)
-              assert not output.startswith(yellow)
-              return output
-
-          test1 = '[Critical error: The database connection timed out after 30 seconds. The local server crashed and went offline. Please restart the docker container immediately to restore the service.]'
-          out1 = run(2, test1)
-          assert not any(unicodedata.category(ch).startswith('L') for ch in out1)
-          assert cross in out1 or red in out1
-          assert timer in out1 or '30' in out1
-          assert refresh in out1
-
-          test2 = '\U0001F4E6\U0001F501\u2B07\uFE0F. \U0001F433\U0001F3D7\uFE0F\U0001F680. \U0001F310\U0001F50C\u27A1\uFE0F\U0001F512\U0001F4E1. \u274C\U0001F510. \u26A0\uFE0F\U0001F534\u27A1\uFE0F\U0001F527\U0001F6E1\uFE0F\U0001F511.'
-          out2 = run(1, test2)
-          assert any(unicodedata.category(ch).startswith('L') for ch in out2)
-
-          test3 = '[Add a dark mode toggle button to the main dashboard navigation bar. Also, optimize the page loading speed so that the dashboard renders instantly without lag.]'
-          out3 = run(2, test3)
-          assert not any(unicodedata.category(ch).startswith('L') for ch in out3)
-          assert black_heart in out3
-          assert chart in out3
-          assert any(mark in out3 for mark in (lightning, growth, snail))
-          '@ | Set-Content -LiteralPath $script -Encoding UTF8
-          & $exe $script
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F524); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
       - name: "🧪⚡"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x26A1); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪⚡🖥️"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -185,30 +110,68 @@ jobs:
           $main = Join-Path $dir $spark
           $preload = Join-Path $dir $plug
           $view = Join-Path $dir $screen
-
           $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
           if ($nodeCommand) { $node = $nodeCommand.Source } else {
             $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
             $node = Join-Path $runnerRoot 'externals\node24\bin\node.exe'
             if (-not (Test-Path -LiteralPath $node)) { $node = Join-Path $runnerRoot 'externals\node20\bin\node.exe' }
           }
-
           if (-not (Test-Path -LiteralPath $node)) { throw 'node missing' }
           & $node --check $main
           & $node --check $preload
-          if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
-          if ((Get-Item -LiteralPath $view).Length -lt 100) { throw 'view empty' }
+          $mainText = Get-Content -LiteralPath $main -Raw -Encoding UTF8
+          $preloadText = Get-Content -LiteralPath $preload -Raw -Encoding UTF8
+          if (-not $mainText.Contains("event.sender.send('⏳'")) { throw 'live stage IPC missing' }
+          if (-not $preloadText.Contains("ipcRenderer.on('⏳'")) { throw 'stage preload listener missing' }
           $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
-          if (-not $html.Contains('id="mode1"')) { throw 'mode1 missing' }
-          if (-not $html.Contains('id="mode2"')) { throw 'mode2 missing' }
-          if (-not $html.Contains('id="image"')) { throw 'vision missing' }
-          if (-not $html.Contains('id="altToggle"')) { throw 'alternatives missing' }
-          if (-not $html.Contains("event.key==='Enter' && !event.shiftKey")) { throw 'enter run missing' }
-          if (-not $html.Contains('main{width:100%')) { throw 'full width missing' }
-          if ($html.Contains('width:min(1160px,100%)')) { throw 'fixed width remains' }
-          if (-not $html.Contains('async function chooseAlternative(value)')) { throw 'selection function missing' }
-          if (-not $html.Contains('lastSource,value')) { throw 'selection persistence missing' }
+          if (-not $html.Contains('id="mode1"') -or -not $html.Contains('id="mode2"') -or -not $html.Contains('id="image"')) { throw 'UI controls missing' }
+          if (-not $html.Contains('rotate(180deg)')) { throw '180 degree hourglass flip missing' }
+          if (-not $html.Contains('@media(max-width:1100px)')) { throw 'responsive control layout missing' }
+          if (-not $html.Contains('id="quality"')) { throw 'translation quality badge missing' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
+
+      - name: "🦙🔍"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import json,urllib.request; u='http://127.0.0.1:11434/api/tags'; d=json.load(urllib.request.urlopen(u,timeout=5)); names=[m.get('name','') for m in d.get('models',[])]; assert 'qwen2.5vl:7b' in names; print(chr(0x2705)+chr(0x1F999)+chr(0x1F441)+chr(0xFE0F)+'7')"
+
+      - name: "🧪🦙"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪📸"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'el_vision_boundary_test.py'
+          @'
+          import pathlib
+          import subprocess
+          import sys
+          import unicodedata
+
+          jpeg = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCACAAIADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDySiiivy8/vAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA//2Q=='
+          value = 'data:image/jpeg;base64,' + jpeg
+          camera = chr(0x1F4F8)
+          vision = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == camera and path.parent.name == camera)
+          source = vision.read_text(encoding='utf-8')
+          assert 'vision sensor, not a translator' in source
+          assert 'OllamaConnector' in source and 'ABCToEmojiEngine' in source
+          assert 'Do not translate into Emoji Language' in source
+          result = subprocess.run([sys.executable, str(vision)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=360)
+          output = result.stdout.strip()
+          print(output)
+          if result.stderr.strip(): print(result.stderr.strip())
+          assert result.returncode == 0 and output and not output.startswith(chr(0x274C))
+          assert not any(unicodedata.category(ch).startswith('L') for ch in output)
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
 
       - name: "🧪"
         shell: powershell

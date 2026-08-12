@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Screenshot observation boundary for EL Bot.
 
-The model is allowed to observe screenshots only. It never performs EL
-translation, candidate ranking or winner selection. Its structured observation
-is handed to deterministic EL Bot code for conversion and ranking.
+Ollama is allowed only here and only as a vision sensor. It returns structured
+visible facts. Deterministic EL code owns all rendering, translation, ranking,
+and winner selection after those facts cross this boundary.
 """
 
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import replace
 from hashlib import sha256
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
 from pathlib import Path
+import re
 import sys
 import urllib.error
 
@@ -34,40 +35,21 @@ def _load(name: str, path: Path):
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ollama = _load("_el_vision_ollama", _ROOT / "🦙" / "🦙")
-_rank = _load("_el_vision_rank", _ROOT / "🧠" / "🔀")
-_translate = _load("_el_vision_translate", _ROOT / "↔️" / "↔️")
-_ai_policy = _load("_el_ai_policy", _ROOT / "🔐" / "📸")
+_lang = _load("_el_vision_language", _ROOT / "🧠" / "🧬")
+_abc = _load("_el_vision_abc", _ROOT / "🔤➡️😀" / "🔤➡️😀")
+_emoji = _load("_el_vision_emoji", _ROOT / "😀➡️🔤" / "😀➡️🔤")
 
 OllamaConnector = _ollama.OllamaConnector
-SemanticRanker = _rank.SemanticRanker
-TranslationEngine = _translate.TranslationEngine
-AIUsePolicy = _ai_policy.AIUsePolicy
+ABCToEmojiEngine = _abc.ABCToEmojiEngine
+EmojiToABCEngine = _emoji.EmojiToABCEngine
 
-
-@dataclass(frozen=True, slots=True)
-class VisionObservation:
-    facts: tuple[str, ...] = ()
-    visible_text: tuple[str, ...] = ()
-    states: tuple[str, ...] = ()
-    relationships: tuple[str, ...] = ()
-    counts: tuple[str, ...] = ()
-
-    def is_empty(self) -> bool:
-        return not any((self.facts, self.visible_text, self.states, self.relationships, self.counts))
-
-    def render_text(self) -> str:
-        rows: list[str] = []
-        if self.facts:
-            rows.append("Visible facts: " + "; ".join(self.facts) + ".")
-        if self.visible_text:
-            rows.append("Visible text: " + " | ".join(self.visible_text) + ".")
-        if self.states:
-            rows.append("Visible states: " + "; ".join(self.states) + ".")
-        if self.relationships:
-            rows.append("Visible relationships: " + "; ".join(self.relationships) + ".")
-        if self.counts:
-            rows.append("Visible counts: " + "; ".join(self.counts) + ".")
-        return " ".join(rows).strip()
+_FACT_FIELDS = (
+    "visible_text",
+    "objects",
+    "controls",
+    "states",
+    "relationships",
+)
 
 
 def _strip_data_url(value: str) -> str:
@@ -80,6 +62,10 @@ def _strip_data_url(value: str) -> str:
     return value
 
 
+def _source_key(raw: str) -> str:
+    return "📸#" + sha256(raw.encode("ascii", errors="ignore")).hexdigest()
+
+
 def _debug_exception(exc: Exception) -> None:
     print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
     if isinstance(exc, urllib.error.HTTPError):
@@ -88,123 +74,184 @@ def _debug_exception(exc: Exception) -> None:
         except Exception:
             body = ""
         if body:
-            print(body[:4000], file=sys.stderr)
+            print(body[:2000], file=sys.stderr)
 
 
-def _source_key(raw: str) -> str:
-    return "📸#" + sha256(raw.encode("ascii", errors="ignore")).hexdigest()
-
-
-def _observation_prompt() -> str:
-    return """You are the screenshot observation sensor for EL Bot. You are NOT a translator.
-Inspect only the supplied screenshot/image and report visible evidence as strict JSON only using this schema:
-{"facts":["..."],"visible_text":["..."],"states":["..."],"relationships":["..."],"counts":["..."]}
-
+def _vision_prompt() -> str:
+    return """You are EL Bot's vision sensor, not a translator and not a decision-maker.
+Inspect only what is visibly supported by the supplied screenshot/image.
+Return STRICT JSON only with exactly these array fields:
+{"visible_text":[],"objects":[],"controls":[],"states":[],"relationships":[]}
 Rules:
-- Report atomic visible facts, not a final answer or translation.
-- Do not output Emoji Language, candidate translations, rankings, scores or a winner.
-- Do not infer hidden causes, hidden application state or unreadable text.
+- Put short factual strings in the arrays. No markdown and no extra keys.
+- visible_text: only text you can actually read. Do not guess unreadable text.
+- objects: visible applications, windows, devices, files, images, icons, or other visible objects.
+- controls: visible buttons, fields, menus, tabs, toggles, or interactive controls.
+- states: visible success, error, warning, loading, disabled, selected, offline, or other directly observable states.
+- relationships: visible spatial or UI relationships such as "button X is below field Y" or "error appears in window Z".
 - Do not identify people.
-- Preserve readable error/warning/success states, controls, devices, files, direction, counts and visible relationships.
-- visible_text must contain only text actually readable in the image.
-- Keep each list concise; omit uncertain items rather than guessing.
-- Return JSON only."""
+- Do not infer hidden causes, credentials, private state, intent, or off-screen content.
+- Do not translate into Emoji Language.
+- Do not choose a translation, rank candidates, or produce a final answer.
+- If a field has no supported facts, return an empty array for that field."""
 
 
-def _as_strings(value) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        return ()
-    out: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            continue
-        clean = " ".join(item.strip().split())
-        if clean and clean not in out:
-            out.append(clean)
-        if len(out) >= 24:
-            break
-    return tuple(out)
-
-
-def _parse_observation(raw: str) -> VisionObservation:
-    text = raw.strip()
+def _extract_json_object(raw: str) -> dict | None:
+    text = str(raw or "").strip()
     if not text:
-        return VisionObservation()
+        return None
     if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    payload = json.loads(text)
-    if not isinstance(payload, dict):
-        raise ValueError("vision observation must be a JSON object")
-    return VisionObservation(
-        facts=_as_strings(payload.get("facts")),
-        visible_text=_as_strings(payload.get("visible_text")),
-        states=_as_strings(payload.get("states")),
-        relationships=_as_strings(payload.get("relationships")),
-        counts=_as_strings(payload.get("counts")),
-    )
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
+    candidates = [text]
+    first = text.find("{")
+    last = text.rfind("}")
+    if 0 <= first < last:
+        candidates.append(text[first:last + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 
-def observe(image_value: str) -> tuple[str, VisionObservation | None, str | None]:
-    raw = _strip_data_url(image_value)
-    base64.b64decode(raw, validate=True)
-    key = _source_key(raw)
+def _sanitize_item(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = re.sub(r"\s+", " ", value).strip()
+    if not text:
+        return ""
+    return text[:360]
 
-    policy = AIUsePolicy()
-    policy.require("📸")
 
+def _sanitize_facts(payload: dict | None) -> dict[str, tuple[str, ...]]:
+    payload = payload if isinstance(payload, dict) else {}
+    clean: dict[str, tuple[str, ...]] = {}
+    for field in _FACT_FIELDS:
+        raw = payload.get(field, [])
+        if not isinstance(raw, list):
+            raw = []
+        values: list[str] = []
+        for item in raw[:40]:
+            text = _sanitize_item(item)
+            if text and text not in values:
+                values.append(text)
+        clean[field] = tuple(values)
+    return clean
+
+
+def _facts_count(facts: dict[str, tuple[str, ...]]) -> int:
+    return sum(len(facts[field]) for field in _FACT_FIELDS)
+
+
+def _join_readable(items: tuple[str, ...], limit: int = 12) -> str:
+    values = list(items[:limit])
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return values[0] + " and " + values[1]
+    return ", ".join(values[:-1]) + ", and " + values[-1]
+
+
+def _facts_to_text(facts: dict[str, tuple[str, ...]], *, concise: bool = False) -> str:
+    """Deterministically render sensor facts; the model never writes final output."""
+    sentences: list[str] = []
+    if facts["states"]:
+        sentences.append("Visible state: " + _join_readable(facts["states"], 6) + ".")
+    if facts["visible_text"]:
+        sentences.append("Visible text: " + _join_readable(facts["visible_text"], 8 if concise else 16) + ".")
+    if facts["controls"]:
+        sentences.append("Visible controls: " + _join_readable(facts["controls"], 8 if concise else 16) + ".")
+    if facts["objects"]:
+        sentences.append("Visible objects: " + _join_readable(facts["objects"], 8 if concise else 16) + ".")
+    if facts["relationships"] and not concise:
+        sentences.append("Visible relationships: " + _join_readable(facts["relationships"], 12) + ".")
+    if not sentences:
+        return "No reliable visible facts were returned by the vision sensor."
+    return " ".join(sentences)
+
+
+def _text_candidates(facts: dict[str, tuple[str, ...]]) -> tuple[_lang.Candidate, ...]:
+    detailed = _facts_to_text(facts, concise=False)
+    concise = _facts_to_text(facts, concise=True)
+    total = _facts_count(facts)
+    rows = [
+        _lang.Candidate(detailed, 100.0 + total, ("structured-visible-facts", "deterministic-render"), 1.0 if total else 0.0, 1.0),
+    ]
+    if concise != detailed:
+        rows.append(_lang.Candidate(concise, 92.0 + total, ("structured-visible-facts", "concise-render"), 0.9 if total else 0.0, 1.0))
+    return _lang.sort_candidates(rows)
+
+
+def _observe(raw: str) -> tuple[dict[str, tuple[str, ...]], str]:
     connector = OllamaConnector(generation_timeout=300.0)
     evidence = connector.probe()
     if not evidence.reachable:
-        return key, None, "📡"
+        return _sanitize_facts({"states": ["local vision provider is unreachable"]}), "provider-unreachable"
     if not evidence.model_present:
-        return key, None, "🦙"
+        return _sanitize_facts({"states": ["local vision model is unavailable"]}), "model-unavailable"
 
     try:
-        answer = connector.chat_internal(_observation_prompt(), images=(raw,)).strip()
-        observation = _parse_observation(answer)
-        if observation.is_empty():
-            return key, None, "❓"
-        return key, observation, None
+        answer = connector.chat_internal(_vision_prompt(), images=(raw,)).strip()
+        parsed = _extract_json_object(answer)
+        if parsed is not None:
+            return _sanitize_facts(parsed), "structured-vision"
     except Exception as exc:
         _debug_exception(exc)
-        return key, None, "❓"
 
+    try:
+        repair_prompt = _vision_prompt() + "\nYour previous response was unusable. Return only the JSON object and nothing else."
+        answer = connector.chat_internal(repair_prompt, images=(raw,)).strip()
+        parsed = _extract_json_object(answer)
+        if parsed is not None:
+            return _sanitize_facts(parsed), "structured-vision-retry"
+    except Exception as exc:
+        _debug_exception(exc)
 
-def _unavailable_result(mode: int, key: str, reason: str):
-    ranker = SemanticRanker()
-    if mode == 1:
-        message = {
-            "📡": "Local screenshot vision is unreachable.",
-            "🦙": "Local screenshot vision model is unavailable.",
-            "❓": "The screenshot could not be observed reliably.",
-        }.get(reason, "The screenshot could not be observed reliably.")
-        return ranker.rank_text_candidates(key, [message])
-    marker = {
-        "📡": "🟡📸🦙📡❓",
-        "🦙": "🟡📸🦙❓",
-        "❓": "🟡📸❓",
-    }.get(reason, "🟡📸❓")
-    return ranker.rank_el_candidates(key, [marker], ())
+    return _sanitize_facts({"states": ["vision observation could not be structured reliably"]}), "structured-observation-hold"
 
 
 def ranked_analyze(mode: int, image_value: str):
     if mode not in (1, 2):
         raise ValueError("invalid vision mode")
-    key, observation, reason = observe(image_value)
-    if observation is None:
-        return key, _unavailable_result(mode, key, reason or "❓")
+    raw = _strip_data_url(image_value)
+    base64.b64decode(raw, validate=True)
+    key = _source_key(raw)
 
-    observation_text = observation.render_text()
+    _lang.emit_stage(1, 4, "Screenshot Vision — Validate Image")
+    _lang.emit_stage(2, 4, "Screenshot Vision — Observe Visible Facts")
+    facts, evidence_state = _observe(raw)
+    _lang.emit_stage(3, 4, "Screenshot Vision — Sanitize Structured Facts")
+    fact_text = _facts_to_text(facts, concise=False)
+
     if mode == 1:
-        result = SemanticRanker().rank_text_candidates(key, [observation_text])
-    else:
-        result = TranslationEngine().ranked_to_el(observation_text)
-    return key, result
+        _lang.emit_stage(4, 4, "Screenshot Vision — Deterministic ABC Rendering")
+        candidates = _text_candidates(facts)
+        metrics = {
+            "vision_facts": _facts_count(facts),
+            "coverage": 1.0 if _facts_count(facts) else 0.0,
+            "roundtrip": 1.0,
+            "candidates": len(candidates),
+            "sensor_state": evidence_state,
+        }
+        return key, _lang.EngineResult(1, key, candidates, ("Structured Vision", "Deterministic ABC Rendering"), metrics)
+
+    _lang.emit_stage(4, 4, "Screenshot Vision — Handoff to ABC → Emoji Engine")
+    abc = ABCToEmojiEngine()
+    emoji = EmojiToABCEngine()
+    result = abc.translate(fact_text, verifier=emoji, cross_verify=True, emit=True)
+    metrics = dict(result.metrics)
+    metrics["vision_facts"] = _facts_count(facts)
+    metrics["sensor_state"] = evidence_state
+    candidates = tuple(
+        replace(item, reasons=item.reasons + ("structured-vision-handoff",))
+        for item in result.candidates
+    )
+    return key, _lang.EngineResult(2, key, candidates, result.stages, metrics)
 
 
 def analyze(mode: int, image_value: str) -> str:

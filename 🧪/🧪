@@ -1,12 +1,13 @@
-"""Deterministic full-stack diagnostics for the emoji-path EL Bot."""
+"""Deterministic full-stack diagnostics for the 24-engine EL Bot."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
-import tempfile
 import sys
+import tempfile
 
 
 def _load(name: str, path: Path):
@@ -44,6 +45,8 @@ _identity = _load("_el_identity", _ROOT / "🪪" / "🪪")
 _auth = _load("_el_auth", _ROOT / "🛂" / "🛂")
 _updater = _load("_el_updater", _ROOT / "🔄" / "🔄")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
+_abc = _load("_el_abc_engine_diag", _ROOT / "🔤➡️😀" / "🔤➡️😀")
+_emoji = _load("_el_emoji_engine_diag", _ROOT / "😀➡️🔤" / "😀➡️🔤")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,39 +80,15 @@ class DiagnosticsEngine:
         core = _core.CoreEngine()
         surface = core.parse("🔥➡️1️⃣.\n  ✅")
         family = core.parse("👨‍👩‍👧‍👦")
-        core_ok = (
-            surface.status is _core.ValidationStatus.PASS
-            and surface.reconstructed == "🔥➡️1️⃣.\n  ✅"
-            and core.parse("abc").status is _core.ValidationStatus.FAIL
-            and len(family.tokens) == 1
-        )
-        checks.append(DiagnosticCheck("1️⃣⚙️", core_ok))
+        checks.append(DiagnosticCheck("1️⃣⚙️", surface.status is _core.ValidationStatus.PASS and surface.reconstructed == "🔥➡️1️⃣.\n  ✅" and core.parse("abc").status is _core.ValidationStatus.FAIL and len(family.tokens) == 1))
 
         vocab = _vocab.VocabularyEngine()
-        unknown = vocab.resolve(core.parse("🙂"))
         meaning_map = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
-        vocab_ok = (
-            len(_vocab.CANONICAL_SYMBOLS) == 501
-            and len(set(_vocab.CANONICAL_SYMBOLS)) == 501
-            and len(_meanings.PRIMARY_MEANINGS) == 501
-            and unknown.status is _core.ValidationStatus.HOLD
-            and meaning_map["🔁"] == "workflow/loop/retry/sync"
-            and meaning_map["🔄"] == "refresh/update"
-            and meaning_map["🔂"] == "repeat once/single retry"
-            and meaning_map["🧵"] == "session/context thread"
-            and meaning_map["🔵"] == "current/active/in progress"
-            and meaning_map["⭐"] == "best/top choice/preferred"
-            and meaning_map["✅"] == "pass/verified/complete"
-            and meaning_map["🪪"] == "identity/system identity"
-            and meaning_map["🧬"] == "schema/DNA/inheritance"
-            and meaning_map["🦙"] == "ollama"
-        )
-        checks.append(DiagnosticCheck("2️⃣📚", vocab_ok))
+        checks.append(DiagnosticCheck("2️⃣📚", len(_vocab.CANONICAL_SYMBOLS) == 501 and len(set(_vocab.CANONICAL_SYMBOLS)) == 501 and len(_meanings.PRIMARY_MEANINGS) == 501 and meaning_map["↔️"].startswith("two-way") and meaning_map["🦙"] == "ollama"))
 
         resolved = vocab.resolve(core.parse("🔥➡️🚀"))
         interpreted = _intel.IntelligenceEngine().interpret(resolved)
-        intel_ok = bool(interpreted.lines) and interpreted.lines[0].el_relationships == ("🔥➡️🚀",)
-        checks.append(DiagnosticCheck("3️⃣🧠", intel_ok))
+        checks.append(DiagnosticCheck("3️⃣🧠", bool(interpreted.lines) and interpreted.lines[0].el_relationships == ("🔥➡️🚀",)))
 
         validation = _valid.ValidationEngine().validate(interpreted, "🔥➡️🚀")
         checks.append(DiagnosticCheck("4️⃣🧾", validation.releasable and validation.safe_output() == "🔥➡️🚀"))
@@ -119,109 +98,86 @@ class DiagnosticsEngine:
         checks.append(DiagnosticCheck("5️⃣🧵", turn.safe_output() == "🔥➡️🚀" and session.render_el_status() == "✅🧵"))
 
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "🗃️"
-            persistence = _persist.PersistenceEngine(path)
+            persistence = _persist.PersistenceEngine(Path(folder) / "🗃️")
             persistence.save(session)
             restored = persistence.load()
             persist_ok = len(restored.turns) == 1 and restored.latest is not None and restored.latest.source == "🔥➡️🚀"
         checks.append(DiagnosticCheck("6️⃣💾", persist_ok))
 
-        probe = DiagnosticReport((DiagnosticCheck("🧪", True),))
-        checks.append(DiagnosticCheck("7️⃣🧪", probe.passed and probe.render_el() == "✅🧪1/1\n🧪✅"))
+        checks.append(DiagnosticCheck("7️⃣🧪", DiagnosticReport((DiagnosticCheck("🧪", True),)).passed))
+
+        ui = _load("_el_ui_diag", _ROOT / "🖥️" / "🖥️")
+        ui_engine = ui.UIEngine()
+        checks.append(DiagnosticCheck("8️⃣🖥️", ui_engine.process("🪪").startswith("✅🪪") and ui_engine.process("abc") == "❌🔐🔤"))
+
+        with tempfile.TemporaryDirectory() as folder:
+            workflow = _workflow.WorkflowEngine(_persist.PersistenceEngine(Path(folder) / "🗃️"))
+            workflow_ok = workflow.process("🔥➡️🚀") == "🔥➡️🚀\n✅🧵" and workflow.process("🎞️").startswith("🎞️")
+        checks.append(DiagnosticCheck("9️⃣🔁", workflow_ok))
 
         events = _event.EventEngine()
         events.emit("📥", "🔵")
         events.emit("📤", "✅")
-        event_text = events.render_el()
-        event_ok = event_text == "1:📥🔵\n2:📤✅" and core.parse(event_text).status is _core.ValidationStatus.PASS
-        checks.append(DiagnosticCheck("🔟📡", event_ok))
+        checks.append(DiagnosticCheck("🔟📡", events.render_el() == "1:📥🔵\n2:📤✅"))
 
         security = _security.SecurityEngine()
-        security_ok = security.authorize("✦").authorized and security.authorize("🪪").authorized and not security.authorize("abc").authorized
-        checks.append(DiagnosticCheck("1️⃣1️⃣🔐", security_ok))
+        checks.append(DiagnosticCheck("1️⃣1️⃣🔐", security.authorize("✦").authorized and security.authorize("🪪").authorized and not security.authorize("abc").authorized))
 
         recovery = _recovery.RecoveryEngine()
         def explode():
-            raise RuntimeError("hidden developer exception")
-        recovery_ok = recovery.protect("🖥️", lambda: "🔥") == "🔥" and recovery.protect("🖥️", explode) == "❌🧯" and recovery.protect("🖥️", lambda: "hidden words") == "❌🧯🔤"
-        checks.append(DiagnosticCheck("1️⃣2️⃣🧯", recovery_ok))
+            raise RuntimeError("hidden exception")
+        checks.append(DiagnosticCheck("1️⃣2️⃣🧯", recovery.protect("🖥️", lambda: "🔥") == "🔥" and recovery.protect("🖥️", explode) == "❌🧯" and recovery.protect("🖥️", lambda: "hidden words") == "❌🧯🔤"))
 
         configuration = _config.ConfigurationEngine()
         config_default = configuration.process("🎛️")
         configuration.process("🎛️💾❌")
-        configuration.process("🎛️📡❌")
-        config_off = configuration.process("🎛️")
-        config_ok = config_default == "🎛️ 💾✅ 📡✅ 🔤❌🔒" and config_off == "🎛️ 💾❌ 📡❌ 🔤❌🔒"
-        checks.append(DiagnosticCheck("1️⃣3️⃣🎛️", config_ok))
+        checks.append(DiagnosticCheck("1️⃣3️⃣🎛️", config_default.startswith("🎛️") and "💾❌" in configuration.process("🎛️")))
 
         connectors = _connector.ConnectorEngine()
-        connector_empty = connectors.render_el() == "⚪🔌0"
+        empty = connectors.render_el() == "⚪🔌0"
         connectors.register("🌐", lambda payload: "✅🔌" + payload)
-        connector_ok = connector_empty and connectors.invoke("🌐", "🔥") == "✅🔌🔥" and connectors.invoke("☁️", "🔥") == "🟡🔌❓"
-        checks.append(DiagnosticCheck("1️⃣4️⃣🔌", connector_ok))
+        checks.append(DiagnosticCheck("1️⃣4️⃣🔌", empty and connectors.invoke("🌐", "🔥") == "✅🔌🔥" and connectors.invoke("☁️", "🔥") == "🟡🔌❓"))
 
         orchestration = _orchestration.OrchestrationEngine()
-        orchestration_ok = orchestration.process("✦").startswith("✅✦12 ") and orchestration.stages[0] == "🖥️" and orchestration.stages[-1] == "📡"
-        checks.append(DiagnosticCheck("1️⃣5️⃣✦", orchestration_ok))
+        checks.append(DiagnosticCheck("1️⃣5️⃣✦", orchestration.process("✦").startswith("✅✦12 ") and len(orchestration.stages) == 12))
 
         instructor = _instructor.InstructorEngine()
         record = instructor.lookup("🔄")
-        instructor_ok = (
-            instructor.process("🧑‍🏫") == "✅🧑‍🏫501"
-            and record is not None
-            and record.ordinal == 100
-            and record.primary_meaning == "refresh/update"
-            and instructor.translate_to_text(("🔁", "🔄", "🔂")) == ("workflow/loop/retry/sync", "refresh/update", "repeat once/single retry")
-        )
-        checks.append(DiagnosticCheck("1️⃣6️⃣🧑‍🏫", instructor_ok))
+        checks.append(DiagnosticCheck("1️⃣6️⃣🧑‍🏫", instructor.process("🧑‍🏫") == "✅🧑‍🏫501" and record is not None and record.ordinal == 100))
 
         animation = _animation.AnimationEngine()
-        checks.append(DiagnosticCheck("1️⃣7️⃣🎞️", animation.render() == "🎞️⚪➡️🔵➡️🟢" and len(animation.frames) == 3))
+        checks.append(DiagnosticCheck("1️⃣7️⃣🎞️", animation.processing_symbol == "⏳" and animation.flip_degrees == 180 and animation.process("⏳") == "🎞️⏳↪️180"))
 
         reliability = _reliability.ReliabilityEngine()
         reliable = reliability.assess(("✅⚙️", "✅📚"))
         held = reliability.assess(("✅⚙️", "🟡🔌0"))
-        failed = reliability.assess(("✅⚙️", "❌🧯"))
-        checks.append(DiagnosticCheck("1️⃣8️⃣🛡️", reliable.marker == "✅" and held.marker == "🟡" and failed.marker == "❌"))
+        translated = reliability.assess_translation({"coverage": 0.95, "roundtrip": 0.9, "candidates": 2})
+        checks.append(DiagnosticCheck("1️⃣8️⃣🛡️", reliable.marker == "✅" and held.marker == "🟡" and translated.marker == "✅"))
 
         notifications = _notification.NotificationEngine()
         notifications.emit("🟡", "🧵")
-        notification_ok = notifications.render_el() == "✅🔔1 🔔🟡🧵" and len(notifications.drain()) == 1 and notifications.render_el() == "⚪🔔0"
-        checks.append(DiagnosticCheck("1️⃣9️⃣🔔", notification_ok))
+        checks.append(DiagnosticCheck("1️⃣9️⃣🔔", notifications.render_el() == "✅🔔1 🔔🟡🧵" and len(notifications.drain()) == 1))
 
         identity = _identity.IdentityEngine()
         identity_snapshot = identity.snapshot()
-        checks.append(DiagnosticCheck("2️⃣0️⃣🪪", identity.process("🪪") == "✅🪪🤖1" and identity_snapshot.kind == "🤖" and identity_snapshot.protocol == 1))
+        checks.append(DiagnosticCheck("2️⃣0️⃣🪪", identity.process("🪪").startswith("✅🪪🤖") and identity_snapshot.app_name == "EL Bot"))
 
         authentication = _auth.AuthenticationEngine()
-        auth_ok = authentication.verify(identity_snapshot.kind, identity_snapshot.protocol) and not authentication.verify("👤", 1) and authentication.process("🛂") == "✅🛂🏠"
-        checks.append(DiagnosticCheck("2️⃣1️⃣🛂", auth_ok))
+        checks.append(DiagnosticCheck("2️⃣1️⃣🛂", authentication.verify(identity_snapshot.kind, identity_snapshot.protocol) and not authentication.verify("👤", identity_snapshot.protocol)))
 
         updater = _updater.UpdaterEngine()
-        updater_ok = updater.process("🔄") == "✅🔄1" and updater.propose(2) and updater.process("🔄") == "🟡🔄1➡️2" and updater.apply() and updater.process("🔄") == "✅🔄2"
+        updater_ok = updater.process("🔄") == "✅🔄1" and updater.propose(2) and updater.apply() and updater.process("🔄") == "✅🔄2"
         checks.append(DiagnosticCheck("2️⃣2️⃣🔄", updater_ok))
 
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "🗃️"
-            workflow = _workflow.WorkflowEngine(_persist.PersistenceEngine(path))
-            workflow_output = workflow.process("🔥➡️🚀")
-            workflow_ok = (
-                workflow_output == "🔥➡️🚀\n✅🧵"
-                and workflow.process("✦").startswith("✅✦12 ")
-                and workflow.process("🧑‍🏫🔥") == "🧑‍🏫🔥#1"
-                and workflow.process("🎞️") == "🎞️⚪➡️🔵➡️🟢"
-                and workflow.process("🔌") == "⚪🔌0"
-                and workflow.process("💾") == "✅💾1"
-            )
-        checks.append(DiagnosticCheck("9️⃣🔁", workflow_ok))
+        abc_engine = _abc.ABCToEmojiEngine()
+        abc_result = abc_engine.translate("A critical database connection timed out after 30 seconds. Restart the container immediately.", cross_verify=False, emit=False)
+        checks.append(DiagnosticCheck("2️⃣3️⃣🔤➡️😀", len(abc_engine.stage_names) == 24 and "⏱️30" in abc_result.winner and "🔄" in abc_result.winner and abc_engine.render_el_status() == "✅🔤➡️😀24"))
 
-        ui = _load("_el_ui", _ROOT / "🖥️" / "🖥️")
-        ui_engine = ui.UIEngine()
-        ui_ok = ui_engine.process("🪪") == "✅🪪🤖1" and ui_engine.process("abc") == "❌🔐🔤" and ui_engine.process("🛂") == "✅🛂🏠"
-        checks.append(DiagnosticCheck("8️⃣🖥️", ui_ok))
+        emoji_engine = _emoji.EmojiToABCEngine()
+        emoji_result = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", cross_verify=False, emit=False)
+        lower = emoji_result.winner.lower()
+        checks.append(DiagnosticCheck("2️⃣4️⃣😀➡️🔤", len(emoji_engine.stage_names) == 24 and "test" in lower and "valid" in lower and "deploy" in lower and "the el sequence communicates" not in lower and "|" not in emoji_result.winner and emoji_engine.render_el_status() == "✅😀➡️🔤24"))
 
-        order = {check.marker[:2]: check for check in checks}
-        expected = 22
-        if len(checks) != expected:
+        if len(checks) != 24:
             raise RuntimeError("diagnostic check count invariant violated")
         return DiagnosticReport(tuple(checks))

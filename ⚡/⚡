@@ -23,8 +23,7 @@ if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 function hasCommand(command, args = []) {
   try {
-    const result = spawnSync(command, args, { windowsHide: true, stdio: 'ignore', timeout: 4000 });
-    return result.status === 0;
+    return spawnSync(command, args, { windowsHide: true, stdio: 'ignore', timeout: 4000 }).status === 0;
   } catch (_) {
     return false;
   }
@@ -44,8 +43,8 @@ function pythonCandidate() {
   );
   for (const candidate of candidates) {
     if (candidate.command.includes(path.sep) || /^[A-Za-z]:\\/.test(candidate.command)) {
-      if (!fs.existsSync(candidate.command)) continue;
-      return candidate;
+      if (fs.existsSync(candidate.command)) return candidate;
+      continue;
     }
     if (hasCommand(candidate.command, [...candidate.prefix, '--version'])) return candidate;
   }
@@ -59,11 +58,8 @@ function rankDbPath() {
 function ensureAppIconPath() {
   const encoded = fs.readFileSync(APP_ICON_SOURCE, 'utf8').trim();
   const bytes = Buffer.from(encoded, 'base64');
-  const pngSignature = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
-  if (bytes.length < 100 || !bytes.subarray(0,8).equals(pngSignature)) {
-    throw new Error('invalid EL Bot icon asset');
-  }
-
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < 100 || !bytes.subarray(0, 8).equals(signature)) throw new Error('invalid EL Bot icon asset');
   const folder = app.getPath('userData');
   fs.mkdirSync(folder, { recursive: true });
   const target = path.join(folder, 'el-bot-icon.png');
@@ -73,172 +69,47 @@ function ensureAppIconPath() {
   return target;
 }
 
-function phaseOneHtml(source) {
-  const style = `<style id="phase-one-style">
-.panel{display:flex!important;flex-direction:column!important}
-.inputStack,.outputStack{flex:1 1 auto!important;min-height:0!important}
-.toolbar,.modes,.controlBar{flex-wrap:nowrap!important}
-#leftPanel>.controlBar{display:flex!important;align-items:center!important;gap:10px!important;width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;padding-bottom:3px!important;scrollbar-width:thin}
-#leftPanel>.controlBar button{flex:0 0 auto!important}
-.phaseOutputViewport{position:relative;min-height:0;height:100%}
-.phaseProcessing{position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:12px;text-align:center;border:1px solid #34486d;border-radius:15px;background:#070b13f2;padding:24px;z-index:5}
-.phaseProcessing.on{display:grid}
-.phaseHourglass{font-size:clamp(54px,7vw,88px);line-height:1;transform-origin:center center;filter:drop-shadow(0 0 14px #ffd16655)}
-.phaseHourglass.spin{animation:hourglassFlip .82s linear infinite}
-.phaseStage{font-size:clamp(17px,1.3vw,22px);font-weight:700;color:#f7f9ff}
-.phaseMeta{font-size:15px;color:#9aa8bf;min-height:1.2em}
-@keyframes hourglassFlip{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-</style>`;
-
-  const runtime = `<script id="phase-one-runtime">
-(()=>{
-  const left=document.getElementById('leftPanel');
-  const modes=left&&left.querySelector('.modes');
-  const toolbar=left&&left.querySelector('.toolbar');
-  if(modes&&toolbar){
-    modes.classList.add('controlBar');
-    while(toolbar.firstChild)modes.appendChild(toolbar.firstChild);
-    toolbar.remove();
-  }
-
-  const output=document.getElementById('output');
-  if(output&&output.parentElement){
-    const stack=output.parentElement;
-    const viewport=document.createElement('div');
-    viewport.className='phaseOutputViewport';
-    stack.insertBefore(viewport,output);
-    viewport.appendChild(output);
-
-    const processing=document.createElement('div');
-    processing.id='processing';
-    processing.className='phaseProcessing';
-    processing.setAttribute('aria-live','polite');
-
-    const hourglass=document.createElement('div');
-    hourglass.id='hourglass';
-    hourglass.className='phaseHourglass';
-    hourglass.textContent='⏳';
-
-    const stage=document.createElement('div');
-    stage.id='stage';
-    stage.className='phaseStage';
-    stage.textContent='⚪';
-
-    const meta=document.createElement('div');
-    meta.id='stageMeta';
-    meta.className='phaseMeta';
-
-    processing.append(hourglass,stage,meta);
-    viewport.appendChild(processing);
-
-    const state=document.getElementById('state');
-    const input=document.getElementById('input');
-    const mode1=document.getElementById('mode1');
-    const preview=document.getElementById('preview');
-    let active=false;
-    let started=0;
-    let timer=0;
-    let baseMeta='';
-
-    const refresh=()=>{
-      if(!active)return;
-      const elapsed=((performance.now()-started)/1000).toFixed((performance.now()-started)<10000?1:0);
-      meta.textContent=(baseMeta?baseMeta+'  •  ':'')+'⏱️ '+elapsed+'s';
-    };
-
-    const begin=(label,detail='')=>{
-      if(timer)clearInterval(timer);
-      active=true;
-      started=performance.now();
-      baseMeta=String(detail||'');
-      stage.textContent=String(label||'🔵');
-      processing.classList.add('on');
-      hourglass.classList.add('spin');
-      refresh();
-      timer=setInterval(refresh,100);
-    };
-
-    const finish=()=>{
-      if(timer)clearInterval(timer);
-      timer=0;
-      active=false;
-      started=0;
-      baseMeta='';
-      hourglass.classList.remove('spin');
-      processing.classList.remove('on');
-      stage.textContent='⚪';
-      meta.textContent='';
-    };
-
-    const translationState=()=>{
-      if(preview&&preview.classList.contains('on'))return ['📸🦙 Vision inspection','📸'];
-      if(mode1&&mode1.classList.contains('on'))return ['😀➡️🔤 Emoji → ABC Engine','1️⃣'];
-      return ['🔤➡️😀 ABC → Emoji Engine','2️⃣'];
-    };
-
-    const run=document.getElementById('run');
-    const diag=document.getElementById('diag');
-    const ollama=document.getElementById('ollama');
-    const clear=document.getElementById('clear');
-    const mode2=document.getElementById('mode2');
-
-    if(run)run.addEventListener('click',()=>{const x=translationState();begin(x[0],x[1]);},true);
-    if(diag)diag.addEventListener('click',()=>begin('🧪 Diagnostics Engine','🧪'),true);
-    if(ollama)ollama.addEventListener('click',()=>begin('🦙 Status Check','🦙🔍'),true);
-    if(clear)clear.addEventListener('click',finish,true);
-    if(mode1)mode1.addEventListener('click',finish,true);
-    if(mode2)mode2.addEventListener('click',finish,true);
-    if(input)input.addEventListener('keydown',(event)=>{
-      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){
-        const x=translationState();
-        begin(x[0],x[1]);
-      }
-    },true);
-
-    if(state){
-      new MutationObserver(()=>{
-        if(active&&state.textContent!=='🔵')finish();
-      }).observe(state,{childList:true,subtree:true,characterData:true});
-    }
-  }
-})();
-</script>`;
-
-  return String(source)
-    .replace('<title>🤖😀</title>', '<title>EL Bot</title>')
-    .replace('</head>', style + '\n</head>')
-    .replace('</body>', runtime + '\n</body>');
+function emitStage(event, payload) {
+  try {
+    if (event && event.sender && !event.sender.isDestroyed()) event.sender.send('⏳', payload);
+  } catch (_) {}
 }
 
-function runPython(target, source, timeoutMs, extraArgs = []) {
+function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
   return new Promise((resolve) => {
     if (typeof source !== 'string') { resolve('❌🔣'); return; }
     const python = pythonCandidate();
     if (!python) { resolve('❌🐍'); return; }
-
     const child = spawn(python.command, [...python.prefix, target, ...extraArgs], {
       cwd: ROOT,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_RANK_DB: rankDbPath() },
     });
-
-    let stdout = '';
-    let stderr = '';
+    let stdout = '', stderr = '', stderrBuffer = '';
     let settled = false;
     const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
-    const timer = setTimeout(() => {
-      try { child.kill(); } catch (_) {}
-      finish('🟡⏱️');
-    }, timeoutMs);
-
+    const timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish('🟡⏱️'); }, timeoutMs);
+    const consumeLine = (line) => {
+      if (line.startsWith('EL_STAGE\t')) {
+        try { const payload = JSON.parse(line.slice('EL_STAGE\t'.length)); if (onStage) onStage(payload); } catch (_) {}
+      } else if (line.trim()) stderr += line + '\n';
+    };
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.stderr.on('data', (chunk) => {
+      stderrBuffer += chunk;
+      let newline;
+      while ((newline = stderrBuffer.indexOf('\n')) >= 0) {
+        consumeLine(stderrBuffer.slice(0, newline).replace(/\r$/, ''));
+        stderrBuffer = stderrBuffer.slice(newline + 1);
+      }
+    });
     child.on('error', () => { clearTimeout(timer); finish('❌🐍'); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (stderrBuffer) consumeLine(stderrBuffer.replace(/\r$/, ''));
       if (settled) return;
       if (code === 0 && stdout.trim()) finish(stdout.trim());
       else if (stderr.trim()) finish('❌🧯');
@@ -248,34 +119,31 @@ function runPython(target, source, timeoutMs, extraArgs = []) {
   });
 }
 
-function runBot(source) { return runPython(BOT, source, 30000); }
-function validMode(mode) { return mode === 1 || mode === 2; }
-
 function parseRanked(raw) {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed.winner === 'string' && Array.isArray(parsed.candidates)) return parsed;
   } catch (_) {}
-  return { winner: raw, candidates: raw ? [{ value: raw, score: 0, reasons: [] }] : [] };
+  return { winner: raw, candidates: raw ? [{ value: raw, score: 0, reasons: [], coverage: 0, roundtrip: 0 }] : [], metrics: {} };
 }
 
-async function runTranslation(mode, source) {
-  if (!validMode(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [] };
-  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀']);
+async function runTranslation(event, mode, source) {
+  if (![1, 2].includes(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [], metrics: {} };
+  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀'], (payload) => emitStage(event, payload));
+  return parseRanked(raw);
+}
+
+async function runVision(event, mode, imageDataUrl) {
+  if (![1, 2].includes(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+    return { winner: '❌📸🔣', candidates: [], metrics: {} };
+  }
+  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 420000, ['🔀'], (payload) => emitStage(event, payload));
   return parseRanked(raw);
 }
 
 async function recordSelection(mode, source, value) {
-  if (!validMode(mode) || typeof source !== 'string' || typeof value !== 'string') return '❌🏆';
+  if (![1, 2].includes(mode) || typeof source !== 'string' || typeof value !== 'string') return '❌🏆';
   return runPython(TRANSLATE, JSON.stringify({ mode, source, value }), 30000, ['✅']);
-}
-
-async function runVision(mode, imageDataUrl) {
-  if (!validMode(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
-    return { winner: '❌📸🔣', candidates: [] };
-  }
-  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 420000, ['🔀']);
-  return parseRanked(raw);
 }
 
 function createWindow() {
@@ -291,24 +159,20 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-
   if (process.platform === 'win32') {
     try { win.setAppDetails({ appId: APP_ID, appIconPath: iconPath }); } catch (_) {}
     try { win.setThumbnailToolTip(APP_NAME); } catch (_) {}
   }
-
-  const html = phaseOneHtml(fs.readFileSync(VIEW, 'utf8'));
-  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  win.loadFile(VIEW);
 }
 
-ipcMain.handle('😀➡️🤖', async (_event, source) => runBot(source));
-ipcMain.handle('↔️', async (_event, mode, source) => runTranslation(mode, source));
+ipcMain.handle('😀➡️🤖', async (_event, source) => runPython(BOT, source, 30000));
+ipcMain.handle('↔️', async (event, mode, source) => runTranslation(event, mode, source));
 ipcMain.handle('🏆', async (_event, mode, source, value) => recordSelection(mode, source, value));
-ipcMain.handle('📸➡️🦙', async (_event, mode, imageDataUrl) => runVision(mode, imageDataUrl));
+ipcMain.handle('📸➡️🦙', async (event, mode, imageDataUrl) => runVision(event, mode, imageDataUrl));
 
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

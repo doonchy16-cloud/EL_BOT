@@ -1,4 +1,4 @@
-"""Engine 18: evidence-derived reliability aggregation."""
+"""Engine 18: evidence-derived runtime and translation reliability."""
 
 from __future__ import annotations
 
@@ -14,11 +14,25 @@ class ReliabilitySnapshot:
         return self.marker + "🛡️" + str(len(self.statuses))
 
 
+@dataclass(frozen=True, slots=True)
+class TranslationReliability:
+    coverage: float
+    roundtrip: float
+    candidates: int
+    marker: str
+
+    def render_el(self) -> str:
+        coverage = max(0, min(100, round(self.coverage * 100)))
+        roundtrip = max(0, min(100, round(self.roundtrip * 100)))
+        return f"{self.marker}🛡️🔤{coverage}/{roundtrip}"
+
+
 class ReliabilityEngine:
-    """Aggregate only supplied component evidence; never invent health."""
+    """Aggregate supplied evidence only; runtime success is not translation quality."""
 
     def __init__(self) -> None:
         self._latest: ReliabilitySnapshot | None = None
+        self._translation: TranslationReliability | None = None
 
     def assess(self, statuses: tuple[str, ...] | list[str]) -> ReliabilitySnapshot:
         evidence = tuple(statuses)
@@ -33,7 +47,30 @@ class ReliabilityEngine:
         self._latest = snapshot
         return snapshot
 
+    def assess_translation(self, metrics: dict) -> TranslationReliability:
+        try:
+            coverage = float(metrics.get("coverage", 0.0))
+            roundtrip = float(metrics.get("roundtrip", 0.0))
+            candidates = int(metrics.get("candidates", 0))
+        except Exception:
+            coverage = 0.0
+            roundtrip = 0.0
+            candidates = 0
+        coverage = max(0.0, min(1.0, coverage))
+        roundtrip = max(0.0, min(1.0, roundtrip))
+        if candidates <= 0 or coverage < 0.55 or roundtrip < 0.45:
+            marker = "❌"
+        elif coverage < 0.82 or roundtrip < 0.72:
+            marker = "🟡"
+        else:
+            marker = "✅"
+        snapshot = TranslationReliability(coverage, roundtrip, candidates, marker)
+        self._translation = snapshot
+        return snapshot
+
     def process(self, text: str) -> str:
+        if text == "🛡️🔤":
+            return "⚪🛡️🔤0/0" if self._translation is None else self._translation.render_el()
         if text != "🛡️":
             return "🟡🛡️❓"
         if self._latest is None:

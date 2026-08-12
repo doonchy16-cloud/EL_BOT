@@ -1,0 +1,316 @@
+"""Engine 23: deterministic 24-stage ABC -> Emoji translation engine."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_lang = _load("_el_language_foundation", _ROOT / "🧠" / "🧬")
+_compounds = _load("_el_abc_compounds", _ROOT / "📚" / "🧩")
+
+TOTAL_STAGES = 24
+STAGES = (
+    "Input Integrity",
+    "Structural Segmentation",
+    "Tokenization",
+    "Phrase Detection",
+    "Canonical Phrase Lookup",
+    "Linguistic Normalization",
+    "Semantic Concept Extraction",
+    "Semantic Role Assignment",
+    "Relationship Extraction",
+    "Negation Detection",
+    "Severity Detection",
+    "Quantity + Number Binding",
+    "Temporal Analysis",
+    "Direction + Order Analysis",
+    "Canonical Symbol Resolution",
+    "Compound Resolution",
+    "Ambiguity Expansion",
+    "Candidate Construction",
+    "Hard Constraint Filtering",
+    "Meaning Coverage Audit",
+    "Grammar + Relationship Audit",
+    "Information-Loss Score",
+    "Round-Trip Verification",
+    "Final Ranking + Winner Selection",
+)
+
+_REVERSE_COMPOUNDS = {meaning.lower(): source for source, meaning in _compounds.COMPOUND_MEANINGS.items()}
+
+
+class ABCToEmojiEngine:
+    """Translate natural language to canonical EL without any model/provider calls."""
+
+    def __init__(self) -> None:
+        self.stage_names = STAGES
+
+    @staticmethod
+    def _emit(index: int, enabled: bool) -> str:
+        label = STAGES[index - 1]
+        _lang.emit_stage(index, TOTAL_STAGES, "ABC → Emoji Engine — " + label, enabled)
+        return label
+
+    @staticmethod
+    def _ordered_clause_items(clause) -> list[tuple[int, str, str]]:
+        rows: list[tuple[int, str, str]] = []
+        for concept in clause.concepts:
+            rows.append((concept.start, "concept", concept.symbol))
+        for number in clause.numbers:
+            rows.append((number.start, "number", number.el))
+        for relation in clause.relations:
+            rows.append((relation.position, "relation", relation.marker))
+        rows.sort(key=lambda row: (row[0], {"relation": 0, "concept": 1, "number": 2}[row[1]]))
+        return rows
+
+    @classmethod
+    def _clause_to_el(cls, clause, compact: bool = False, relationship_rich: bool = True) -> str:
+        rows = cls._ordered_clause_items(clause)
+        tokens: list[str] = []
+        seen: set[str] = set()
+        for _, kind, value in rows:
+            if kind == "relation" and not relationship_rich:
+                continue
+            if compact and kind == "concept" and value in seen and value not in {"❌", "✅", "⚠️", "🔴"}:
+                continue
+            if kind == "concept":
+                seen.add(value)
+            if tokens and tokens[-1] == value and value not in {"❌", "✅"}:
+                continue
+            tokens.append(value)
+
+        if not tokens:
+            return "🟡❓"
+
+        if clause.unknown_words and len(clause.concepts) == 0:
+            tokens.extend(("🟡", "❓"))
+        elif len(clause.unknown_words) >= 4:
+            tokens.extend(("🟡", "❓"))
+
+        relation_markers = {"➡️", "⬅️", "↔️", "➕", "🔀", "🚦"}
+        rendered: list[str] = []
+        for value in _lang.dedupe_adjacent(tokens):
+            if value in relation_markers:
+                if not rendered:
+                    rendered.append(value)
+                elif rendered[-1] in relation_markers:
+                    rendered[-1] = value
+                else:
+                    rendered.append(value)
+                continue
+            if rendered and rendered[-1] not in relation_markers:
+                rendered.append("➡️")
+            rendered.append(value)
+        return "".join(rendered)
+
+    @classmethod
+    def _document_candidate(cls, document, compact: bool = False, relationship_rich: bool = True) -> str:
+        clauses: list[str] = []
+        for clause in document.clauses:
+            clauses.append(cls._clause_to_el(clause, compact=compact, relationship_rich=relationship_rich))
+        return ". ".join(clauses) if clauses else "🟡❓"
+
+    @staticmethod
+    def _expected_signature(document) -> tuple[str, ...]:
+        return tuple(
+            concept.symbol
+            for clause in document.clauses
+            for concept in clause.concepts
+            if concept.symbol not in {"➡️", "➕"}
+        )
+
+    @staticmethod
+    def _number_integrity(document, value: str) -> float:
+        bindings = tuple(binding for clause in document.clauses for binding in clause.numbers)
+        if not bindings:
+            return 1.0
+        return sum(1 for binding in bindings if binding.el in value) / len(bindings)
+
+    @staticmethod
+    def _relation_integrity(document, value: str) -> float:
+        expected = [relation.marker for clause in document.clauses for relation in clause.relations if relation.kind != "and"]
+        if not expected:
+            return 1.0
+        symbols = set(_lang.canonical_symbols(value))
+        return sum(1 for marker in expected if marker in symbols) / len(expected)
+
+    def translate(
+        self,
+        source: str,
+        *,
+        verifier=None,
+        preference_counts: dict[str, int] | None = None,
+        cross_verify: bool = True,
+        emit: bool = True,
+    ):
+        stages: list[str] = []
+        metrics: dict[str, float | int | str] = {}
+        preference_counts = preference_counts or {}
+
+        stages.append(self._emit(1, emit))
+        if not isinstance(source, str) or not source.strip():
+            candidate = _lang.Candidate("🟡❓", 0.0, ("empty-input",), 0.0, 0.0)
+            return _lang.EngineResult(2, source if isinstance(source, str) else "", (candidate,), tuple(stages), {"status": "hold"})
+
+        stages.append(self._emit(2, emit))
+        sentences = _lang.split_sentences(source)
+        metrics["clauses"] = len(sentences)
+
+        stages.append(self._emit(3, emit))
+        tokens = tuple(_lang.WORD_RE.findall(source))
+        metrics["tokens"] = len(tokens)
+
+        stages.append(self._emit(4, emit))
+        phrase_matches = tuple(_lang.match_concepts(sentence) for sentence in sentences)
+        metrics["phrase_matches"] = sum(len(row) for row in phrase_matches)
+
+        stages.append(self._emit(5, emit))
+        metrics["authority_matches"] = sum(1 for row in phrase_matches for item in row if item.source == "authority")
+
+        stages.append(self._emit(6, emit))
+        normalized = _lang.normalize_text(source)
+
+        stages.append(self._emit(7, emit))
+        document = _lang.parse_abc_document(normalized)
+        expected_signature = self._expected_signature(document)
+        metrics["concepts"] = len(expected_signature)
+
+        stages.append(self._emit(8, emit))
+        metrics["actions"] = sum(1 for symbol in expected_signature if _lang.is_action(symbol))
+        metrics["statuses"] = sum(1 for symbol in expected_signature if _lang.is_status(symbol))
+        metrics["entities"] = sum(1 for symbol in expected_signature if symbol in _lang.ENTITY_PHRASES)
+
+        stages.append(self._emit(9, emit))
+        relations = tuple(relation for clause in document.clauses for relation in clause.relations)
+        metrics["relations"] = len(relations)
+
+        stages.append(self._emit(10, emit))
+        metrics["negations"] = sum(1 for relation in relations if relation.kind == "negation")
+
+        stages.append(self._emit(11, emit))
+        metrics["severity"] = sum(1 for symbol in expected_signature if symbol in {"🔴", "❌", "⚠️", "🟡", "🛑", "🚧"})
+
+        stages.append(self._emit(12, emit))
+        number_bindings = tuple(binding for clause in document.clauses for binding in clause.numbers)
+        metrics["numbers"] = len(number_bindings)
+
+        stages.append(self._emit(13, emit))
+        metrics["temporal"] = sum(1 for binding in number_bindings if binding.unit in _lang.TEMPORAL_UNIT_SYMBOLS)
+
+        stages.append(self._emit(14, emit))
+        metrics["directional"] = sum(1 for relation in relations if relation.kind in {"before", "after", "bidirectional", "result", "cause"})
+
+        stages.append(self._emit(15, emit))
+        metrics["canonical_resolved"] = sum(1 for symbol in expected_signature if symbol in _lang.MEANING_BY_SYMBOL)
+
+        stages.append(self._emit(16, emit))
+        exact_compound = _REVERSE_COMPOUNDS.get(normalized.lower())
+        metrics["compound"] = 1 if exact_compound else 0
+
+        stages.append(self._emit(17, emit))
+        metrics["branches"] = 3
+
+        stages.append(self._emit(18, emit))
+        raw_values: list[tuple[str, str]] = []
+        if exact_compound:
+            raw_values.append((exact_compound, "authority-compound"))
+        raw_values.extend(
+            (
+                (self._document_candidate(document, compact=False, relationship_rich=True), "faithful"),
+                (self._document_candidate(document, compact=True, relationship_rich=True), "compact"),
+                (self._document_candidate(document, compact=False, relationship_rich=False), "relationship-light"),
+            )
+        )
+
+        stages.append(self._emit(19, emit))
+        valid_rows = [(value, reason) for value, reason in raw_values if _lang.valid_el(value)]
+        if not valid_rows:
+            valid_rows = [("🟡❓", "hold")]
+
+        stages.append(self._emit(20, emit))
+        candidates: list[_lang.Candidate] = []
+        for order, (value, reason) in enumerate(valid_rows):
+            candidate_signature = _lang.concept_signature_from_el(value)
+            score, coverage, order_score = _lang.score_candidate(expected_signature, candidate_signature, base=max(0.0, 12.0 - order))
+            candidates.append(
+                _lang.Candidate(value, score, (reason, "meaning-coverage", f"order:{order_score:.3f}"), coverage, 0.0)
+            )
+
+        stages.append(self._emit(21, emit))
+        audited: list[_lang.Candidate] = []
+        for candidate in candidates:
+            relation_score = self._relation_integrity(document, candidate.value)
+            audited.append(
+                replace(
+                    candidate,
+                    score=candidate.score + 12.0 * relation_score,
+                    reasons=candidate.reasons + (f"relationship:{relation_score:.3f}",),
+                )
+            )
+
+        stages.append(self._emit(22, emit))
+        loss_scored: list[_lang.Candidate] = []
+        for candidate in audited:
+            number_score = self._number_integrity(document, candidate.value)
+            unknown_penalty = sum(len(clause.unknown_words) for clause in document.clauses)
+            score = candidate.score + 18.0 * number_score - min(18.0, unknown_penalty * 0.35)
+            if candidate.value == "🟡❓" and expected_signature:
+                score -= 100.0
+            loss_scored.append(
+                replace(candidate, score=score, reasons=candidate.reasons + (f"number-binding:{number_score:.3f}",))
+            )
+
+        stages.append(self._emit(23, emit))
+        verified: list[_lang.Candidate] = []
+        if cross_verify and verifier is not None:
+            for candidate in loss_scored:
+                try:
+                    reverse = verifier.translate(candidate.value, cross_verify=False, emit=False)
+                    reverse_signature = _lang.concept_signature_from_abc(reverse.winner)
+                    similarity = _lang.multiset_similarity(expected_signature, reverse_signature)
+                except Exception:
+                    similarity = 0.0
+                verified.append(_lang.apply_roundtrip(candidate, similarity))
+        else:
+            verified = [replace(item, roundtrip=1.0) for item in loss_scored]
+
+        stages.append(self._emit(24, emit))
+        final_rows: list[_lang.Candidate] = []
+        for candidate in verified:
+            observed = int(preference_counts.get(candidate.value, 0))
+            if observed:
+                candidate = replace(
+                    candidate,
+                    score=candidate.score + min(40.0, observed * 8.0),
+                    reasons=candidate.reasons + ("observed-user-choice",),
+                )
+            final_rows.append(candidate)
+        ranked = _lang.sort_candidates(final_rows)
+        metrics["candidates"] = len(ranked)
+        metrics["coverage"] = ranked[0].coverage if ranked else 0.0
+        metrics["roundtrip"] = ranked[0].roundtrip if ranked else 0.0
+        return _lang.EngineResult(2, normalized, ranked, tuple(stages), metrics)
+
+    def process(self, source: str) -> str:
+        return self.translate(source, cross_verify=False, emit=False).winner
+
+    def render_el_status(self) -> str:
+        return "✅🔤➡️😀24"

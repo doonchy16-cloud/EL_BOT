@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic bidirectional translation boundary for EL Bot.
+"""Deterministic bidirectional translation facade for EL Bot.
 
-1 = emoji/symbol -> text
-2 = text -> canonical EL
+1 = Emoji Language -> ABC
+2 = ABC -> Emoji Language
 
-AI/model inference is intentionally forbidden here. Screenshot AI lives behind
-the screenshot-only vision boundary and may only supply observations to this
-system. Passing 🔀 returns ranked candidates as JSON. Passing ✅ records an
-explicit user selection as observed ranking evidence.
+Normal translation never imports or calls Ollama. The facade coordinates the
+two independent 24-stage engines, round-trip verification, and observed user
+choice evidence.
 """
 
 from __future__ import annotations
@@ -16,9 +15,7 @@ from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
 from pathlib import Path
-import re
 import sys
-import unicodedata
 
 
 def _load(name: str, path: Path):
@@ -35,228 +32,64 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent.parent
-_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
-_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
-_meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
-_rank = _load("_el_rank", _ROOT / "🧠" / "🔀")
+_lang = _load("_el_bidi_foundation", _ROOT / "🧠" / "🧬")
+_rank = _load("_el_bidi_rank", _ROOT / "🧠" / "🔀")
+_abc = _load("_el_abc_engine", _ROOT / "🔤➡️😀" / "🔤➡️😀")
+_emoji = _load("_el_emoji_engine", _ROOT / "😀➡️🔤" / "😀➡️🔤")
 
-SemanticRanker = _rank.SemanticRanker
-RankedResult = _rank.RankedResult
-_SYMBOL_TO_MEANING = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
-
-_CORE = (
-    "🔥","⚙️","🖥️","🤖","🧠","📡","🧪","🧯","🔌","🧾","🛡️","💾","🚀","🔒","✅","📸","👁️",
-    "❌","🔍","🔐","🏁","📚","🔁","⚪","🔵","🟢","🟡","🔴","🎛️","🔔","🧩","🗃️","🧱","🧰",
-    "🌐","📋","🧹","🧭","⏱️","📈","🎯","🔧","🔨","🏗️","🚧","⚠️","❗","‼️","❓","🛑","⛔",
-    "📴","🟰","➕","➖","📝","📄","📂","🗄️","🗑️","🔄","⬆️","⬇️","📥","📤","⬅️","➡️","🔀",
-    "⏸️","▶️","⏹️","⏳","📊","📉","💬","🖼️","🔑","🔓","❤️‍🩹","🪫","🔋","⚡","🐌","💻","📱",
-    "☁️","🖧","👥","👤","🏠","🏢","🏭","🏦","💰","💳","📦","🚚","🎉","💥","💪","🔢","🔤","🔣",
-    "🔘","🖤","🤍","👍","👎","🤷","🤦","💼","🏫","🏥","🏡","🏘️","📷","📹","📺","📞","📰","📁",
-    "📌","📍","🔬","🔭","☑️","✔️","✖️","❎","🚨","🆗","🆙","🆓","🆖","🆚","⏯️","⏺️","⏩","⏪",
-    "↩️","↪️","↔️","↕️","🔼","🔽","🟥","🟧","🟨","🟩","🟦","🟪"
-)
-
-_PHRASES: tuple[tuple[str, str], ...] = (
-    ("artificial intelligence","🤖"),("ai bot","🤖"),("ai agent","🤖"),("emoji language","😀"),
-    ("both directions","↔️"),("bidirectional","↔️"),("two way","↔️"),("two-way","↔️"),
-    ("dark mode","🖤"),("light mode","🤍"),("timed out","⏱️"),("time out","⏱️"),("timeout","⏱️"),
-    ("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),("database","🗃️"),("schema","🧬"),
-    ("connection","🔌"),("connect","🔌"),("network","🌐"),("server","📡"),("backend","⚙️"),("crashed","💥"),
-    ("crash","💥"),("offline","📴"),("restart","🔄"),("refresh","🔄"),("docker","📦"),("container","📦"),
-    ("package","📦"),("restore","❤️‍🩹"),("recover","❤️‍🩹"),("recovery","🧯"),("service","⚙️"),
-    ("immediately","‼️"),("urgent","❗"),("warning","⚠️"),("security","🔐"),("locked","🔒"),("unlock","🔓"),
-    ("key","🔑"),("toggle","🔘"),("button","🔘"),("dashboard","📊"),("navigation","🧭"),("page","📄"),
-    ("loading","⏳"),("load","📥"),("quickly","⚡"),("speed","⚡"),("fast","⚡"),("instantly","⚡"),("optimize","📈"),
-    ("performance","📈"),("lag","🐌"),("slow","🐌"),("render","🖥️"),("display","🖥️"),("interface","🖥️"),
-    ("screen","🖥️"),("file","📄"),("folder","📂"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
-    ("test","🧪"),("diagnostic","🧪"),("validate","🧾"),("audit","🧾"),("deploy","🚀"),("release","🚀"),
-    ("launch","🚀"),("start","▶️"),("stop","⏹️"),("pause","⏸️"),("next","➡️"),("previous","⬅️"),
-    ("retry","🔂"),("workflow","🔁"),("update","🔄"),("user","👤"),("group","👥"),("home","🏠"),
-    ("local","🏠"),("cloud","☁️"),("computer","💻"),("phone","📱"),("image","🖼️"),("screenshots","📸"),
-    ("screenshot","📸"),("video","🎥"),("message","💬"),("email","📧"),("notification","🔔"),("money","💰"),
-    ("payment","💳"),("success","✅"),("complete","✅"),("healthy","🟢"),("active","🔵"),("unknown","⚪"),
-    ("hold","🟡"),("blocked","🚧"),("blocker","🚧"),("risk","⚠️"),("fix","🔧"),("repair","🔧"),
-    ("build","🔨"),("tool","🧰"),("config","🎛️"),("setting","🎛️")
-)
-
-_TEXT_OVERRIDES = {
-    "🤖": "AI bot",
-    "😀": "Emoji Language",
-    "↔️": "in both directions",
-    "⚡": "quickly",
-    "🖥️": "computer interface",
-    "📸": "screenshots",
-    "➡️": "then",
-    "⬅️": "back",
-    "⬆️": "up",
-    "⬇️": "down",
-    "✅": "complete",
-    "❌": "error",
-    "🔴": "critical",
-    "🟡": "warning",
-}
-
-
-def _unicode_label(grapheme: str) -> str:
-    names: list[str] = []
-    for char in grapheme:
-        if ord(char) in (0xFE0E, 0xFE0F, 0x200D):
-            continue
-        name = unicodedata.name(char, "")
-        if name:
-            names.append(name.lower())
-    return " + ".join(names) if names else "unknown unicode symbol"
-
-
-def _preferred_meaning(symbol: str) -> str:
-    if symbol in _TEXT_OVERRIDES:
-        return _TEXT_OVERRIDES[symbol]
-    meaning = _SYMBOL_TO_MEANING.get(symbol, "")
-    if not meaning:
-        return ""
-    first = meaning.split("/", 1)[0].strip()
-    return first or meaning.strip()
-
-
-def _sentence_from_symbols(source: str) -> str:
-    graphemes = _core.split_graphemes(source)
-    canonical = [g for g in graphemes if g in _SYMBOL_TO_MEANING]
-    if not canonical:
-        labels = [_unicode_label(g) for g in graphemes if any(ord(ch) > 127 for ch in g)]
-        if not labels:
-            return "Unable to interpret input from available authority."
-        return "The sequence contains " + ", ".join(labels) + "."
-
-    present = set(canonical)
-    if {"🤖","↔️","🖥️","📸"}.issubset(present):
-        subject = "The AI bot"
-        language = " uses Emoji Language" if "😀" in present else ""
-        speed = " quickly" if "⚡" in present else ""
-        return f"{subject}{speed}{language} works in both directions through the computer interface and supports screenshots."
-
-    pieces: list[str] = []
-    for symbol in canonical:
-        label = _preferred_meaning(symbol)
-        if label and (not pieces or label != pieces[-1]):
-            pieces.append(label)
-    if not pieces:
-        return "Unable to interpret input from available authority."
-    if len(pieces) == 1:
-        return pieces[0].capitalize() + "."
-    if len(pieces) == 2:
-        body = pieces[0] + " and " + pieces[1]
-    else:
-        body = ", ".join(pieces[:-1]) + ", and " + pieces[-1]
-    return "The EL sequence communicates " + body + "."
-
-
-def _candidate_symbols(text: str, limit: int = 120) -> tuple[str, ...]:
-    lowered = text.lower()
-    words = set(re.findall(r"[a-z0-9]+", lowered))
-    selected: list[str] = []
-    forced: list[tuple[int, int, str]] = []
-    for order, (phrase, symbol) in enumerate(_PHRASES):
-        index = lowered.find(phrase)
-        if index >= 0:
-            forced.append((index, order, symbol))
-    forced.sort()
-    for _, _, symbol in forced:
-        if symbol not in selected:
-            selected.append(symbol)
-    scored: list[tuple[int, int, str]] = []
-    for ordinal, (symbol, meaning) in enumerate(_SYMBOL_TO_MEANING.items()):
-        if symbol in selected:
-            continue
-        meaning_words = set(re.findall(r"[a-z0-9]+", meaning.lower()))
-        score = len(words & meaning_words)
-        if score:
-            scored.append((-score, ordinal, symbol))
-    scored.sort()
-    for _, _, symbol in scored:
-        if symbol not in selected:
-            selected.append(symbol)
-        if len(selected) >= limit:
-            return tuple(selected[:limit])
-    for symbol in _CORE:
-        if symbol not in selected:
-            selected.append(symbol)
-        if len(selected) >= limit:
-            break
-    return tuple(selected[:limit])
-
-
-def _fallback_to_el(text: str) -> str:
-    lowered = text.lower()
-    hits: list[tuple[int, int, str]] = []
-    occupied: list[tuple[int, int]] = []
-    phrases = sorted(enumerate(_PHRASES), key=lambda item: (-len(item[1][0]), item[0]))
-    for order, (phrase, symbol) in phrases:
-        start = 0
-        while True:
-            index = lowered.find(phrase, start)
-            if index < 0:
-                break
-            end = index + len(phrase)
-            if not any(index < b and end > a for a, b in occupied):
-                hits.append((index, order, symbol))
-                occupied.append((index, end))
-            start = end
-    hits.sort()
-    out: list[str] = []
-    for _, _, symbol in hits:
-        if symbol not in out:
-            out.append(symbol)
-    for number in re.findall(r"\b\d+(?:\.\d+)?\b", text):
-        if number not in out:
-            out.append(number)
-    if not out:
-        return "🟡❓"
-    return "➡️".join(out)
+ABCToEmojiEngine = _abc.ABCToEmojiEngine
+EmojiToABCEngine = _emoji.EmojiToABCEngine
+SelectionStore = _rank.SelectionStore
 
 
 class TranslationEngine:
-    """Deterministic translation boundary. No model/provider dependency."""
+    def __init__(self, store=None) -> None:
+        self.store = store if store is not None else SelectionStore()
+        self.abc_to_emoji = ABCToEmojiEngine()
+        self.emoji_to_abc = EmojiToABCEngine()
+        self.provider_call_count = 0
 
-    def __init__(self, ranker=None) -> None:
-        self.ranker = ranker if ranker is not None else SemanticRanker()
+    def ranked_to_text(self, source: str, *, emit: bool = True):
+        counts = self.store.counts(1, source)
+        return self.emoji_to_abc.translate(
+            source,
+            verifier=self.abc_to_emoji,
+            preference_counts=counts,
+            cross_verify=True,
+            emit=emit,
+        )
 
-    @property
-    def ai_inference_enabled(self) -> bool:
-        return False
+    def ranked_to_el(self, source: str, *, emit: bool = True):
+        counts = self.store.counts(2, source)
+        return self.abc_to_emoji.translate(
+            source,
+            verifier=self.emoji_to_abc,
+            preference_counts=counts,
+            cross_verify=True,
+            emit=emit,
+        )
 
-    def ranked_to_text(self, source: str) -> RankedResult:
-        if not isinstance(source, str) or not source.strip():
-            return self.ranker.rank_text_candidates(source if isinstance(source, str) else "", ["Unable to interpret empty input."])
-        if any(char.isalpha() for char in source):
-            return self.ranker.rank_text_candidates(source, ["Mode 1 expects Emoji Language input."])
-        candidates: list[str] = []
-        exact = _rank._compounds.lookup_compound(source)
-        if exact:
-            candidates.append(exact)
-        candidates.append(_sentence_from_symbols(source))
-        return self.ranker.rank_text_candidates(source, candidates)
-
-    def ranked_to_el(self, source: str) -> RankedResult:
-        if not isinstance(source, str) or not source.strip():
-            return self.ranker.rank_el_candidates(source if isinstance(source, str) else "", ["🟡❓"], _PHRASES)
-        fallback = _fallback_to_el(source)
-        candidates = [fallback] if _rank.valid_el(fallback) else ["🟡❓"]
-        return self.ranker.rank_el_candidates(source, candidates, _PHRASES)
-
-    def ranked(self, mode: int, source: str) -> RankedResult:
+    def ranked(self, mode: int, source: str, *, emit: bool = True):
         if mode == 1:
-            return self.ranked_to_text(source)
+            return self.ranked_to_text(source, emit=emit)
         if mode == 2:
-            return self.ranked_to_el(source)
+            return self.ranked_to_el(source, emit=emit)
         raise ValueError("invalid translation mode")
 
     def process(self, mode: int, source: str) -> str:
         if mode not in (1, 2):
             return "❌🔢"
-        return self.ranked(mode, source).winner
+        return self.ranked(mode, source, emit=False).winner
 
     def record_selection(self, mode: int, source: str, value: str) -> int:
-        return self.ranker.record_selection(mode, source, value)
+        if mode not in (1, 2) or not source or not value:
+            raise ValueError("invalid ranking selection")
+        if mode == 2 and not _lang.valid_el(value):
+            raise ValueError("selected EL candidate is invalid")
+        return self.store.record(mode, source, value)
+
+    def render_el_status(self) -> str:
+        return "✅↔️24+24🤖❌"
 
 
 def _read_mode_source() -> tuple[int, str] | None:
@@ -274,6 +107,7 @@ def _read_mode_source() -> tuple[int, str] | None:
 def main() -> int:
     engine = TranslationEngine()
     action = sys.argv[1] if len(sys.argv) > 1 else ""
+
     if action == "✅":
         try:
             payload = json.loads(sys.stdin.read())
@@ -283,16 +117,17 @@ def main() -> int:
             return 0
         print("✅🏆" + str(count))
         return 0
+
     pair = _read_mode_source()
     if pair is None:
         print("❌🔢")
         return 0
     mode, source = pair
-    try:
-        result = engine.ranked(mode, source)
-    except Exception:
-        print("❌🧯")
+    if mode not in (1, 2):
+        print("❌🔢")
         return 0
+
+    result = engine.ranked(mode, source, emit=True)
     if action == "🔀":
         print(json.dumps(result.as_dict(), ensure_ascii=False, separators=(",", ":")))
     else:
