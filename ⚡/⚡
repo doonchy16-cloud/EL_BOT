@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const ROOT = path.resolve(__dirname, '..');
 const BOT = path.join(ROOT, '🤖');
+const TRANSLATE = path.join(ROOT, '↔️', '↔️');
 const VISION = path.join(ROOT, '📸', '📸');
 const PRELOAD = path.join(__dirname, '🔌');
 const VIEW = path.join(__dirname, '🖥️');
@@ -127,19 +128,30 @@ function runBot(source) {
   return runPython(BOT, source, 30000);
 }
 
-function runVision(imageDataUrl) {
-  if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+function validMode(mode) {
+  return mode === 1 || mode === 2;
+}
+
+function runTranslation(mode, source) {
+  if (!validMode(mode) || typeof source !== 'string') {
+    return Promise.resolve('❌🔣');
+  }
+  return runPython(TRANSLATE, `${mode}\n${source}`, 330000);
+}
+
+function runVision(mode, imageDataUrl) {
+  if (!validMode(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
     return Promise.resolve('❌📸🔣');
   }
-  return runPython(VISION, imageDataUrl, 135000);
+  return runPython(VISION, `${mode}\n${imageDataUrl}`, 330000);
 }
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1040,
-    height: 760,
-    minWidth: 760,
-    minHeight: 560,
+    width: 1100,
+    height: 800,
+    minWidth: 780,
+    minHeight: 580,
     title: '🤖😀',
     backgroundColor: '#080b12',
     autoHideMenuBar: true,
@@ -156,7 +168,8 @@ function createWindow() {
 }
 
 ipcMain.handle('😀➡️🤖', async (_event, source) => runBot(source));
-ipcMain.handle('📸➡️🦙', async (_event, imageDataUrl) => runVision(imageDataUrl));
+ipcMain.handle('↔️', async (_event, mode, source) => runTranslation(mode, source));
+ipcMain.handle('📸➡️🦙', async (_event, mode, imageDataUrl) => runVision(mode, imageDataUrl));
 
 app.whenReady().then(() => {
   createWindow();
