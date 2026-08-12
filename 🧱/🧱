@@ -1,0 +1,133 @@
+"""N14: deterministic EL grammar and composition engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_vocab = _load("_el_phase3_vocab_grammar", _ROOT / "📚" / "📚")
+_core = _load("_el_phase3_core_grammar", _ROOT / "⚙️" / "⚙️")
+_graph = _load("_el_phase3_graph_grammar", _ROOT / "🗺️" / "🗺️")
+_CANONICAL = frozenset(_vocab.CANONICAL_SYMBOLS)
+_RELATIONS = frozenset({"➡️", "⬅️", "↔️", "➕", "🔀", "🚦", "🔗", "🚦➡️", "🚦⬅️", "🚦❌", "🔗➡️"})
+
+
+@dataclass(frozen=True, slots=True)
+class ELCompositionTemplate:
+    template_id: str
+    expression: str
+    semantic_coverage: float
+    canonical: bool
+    concepts: tuple[str, ...]
+
+
+_SENSE_TEMPLATES: dict[str, tuple[tuple[str, str, float], ...]] = {
+    "conversion-tool": (
+        ("conversion-flow", "📥➡️🔄➡️📤", 1.0),
+        ("conversion-tool-compact", "⚙️➕🔄", 0.82),
+    ),
+    "transform-action": (
+        ("transform-flow", "📥➡️🔄➡️📤", 0.92),
+        ("transform-compact", "🔄", 0.72),
+    ),
+    "chatgpt-assistant": (
+        ("conversational-ai", "🤖➕💬", 0.96),
+        ("conversational-reasoning-ai", "🤖➕🧠➕💬", 1.0),
+    ),
+    "language-word": (
+        ("language-word", "🔤", 1.0),
+    ),
+    "microsoft-word-product": (
+        ("document-software", "⚙️➕📄", 0.9),
+    ),
+    "translation-tool": (
+        ("translation-flow", "📥➡️↔️➡️📤", 1.0),
+        ("translation-tool", "⚙️➕↔️", 0.85),
+    ),
+    "encoding-tool": (("encoding-flow", "📥➡️🔤➡️📤", 0.92),),
+    "decoding-tool": (("decoding-flow", "📥➡️🔤➡️📤", 0.92),),
+    "parsing-tool": (("parsing-tool", "⚙️➕🔤", 0.86),),
+    "rendering-tool": (("rendering-tool", "⚙️➕🖥️➡️📤", 0.88),),
+    "generation-tool": (("generation-tool", "⚙️➡️📤", 0.82),),
+    "validation-tool": (("validation-tool", "⚙️➕🧾", 0.92),),
+}
+
+_COMPONENT_SYMBOLS = {
+    "tool": "⚙️",
+    "input": "📥",
+    "output": "📤",
+    "transform-action": "🔄",
+    "ai": "🤖",
+    "conversation": "💬",
+    "assistant": "🧠",
+    "text-unit": "🔤",
+    "language": "🔤",
+    "software": "⚙️",
+    "document": "📄",
+    "document-editing": "🔧",
+    "validation-tool": "🧾",
+}
+
+
+class ELGrammarCompositionEngine:
+    """Construct canonical EL templates from semantic components; never ranks."""
+
+    def __init__(self) -> None:
+        self.graph = _graph.SemanticGraphEngine()
+
+    @staticmethod
+    def is_canonical_expression(expression: str) -> bool:
+        graphemes = _core.split_graphemes(expression)
+        meaningful = [g for g in graphemes if not g.isspace() and g not in {".", ",", ";", ":", "!", "?", "-"}]
+        return bool(meaningful) and all(g in _CANONICAL or g in _RELATIONS or g.isdigit() for g in meaningful)
+
+    def compose(self, decomposition) -> tuple[ELCompositionTemplate, ...]:
+        if not getattr(decomposition, "resolved", False):
+            return ()
+        sense_id = str(getattr(decomposition, "sense_id", ""))
+        concepts = tuple(getattr(decomposition, "concept_keys", ()))
+        explicit = _SENSE_TEMPLATES.get(sense_id, ())
+        templates: list[ELCompositionTemplate] = []
+        for template_id, expression, coverage in explicit:
+            templates.append(ELCompositionTemplate(template_id, expression, coverage, self.is_canonical_expression(expression), concepts))
+
+        if not explicit:
+            symbols: list[str] = []
+            for component in getattr(decomposition, "components", ()):
+                concept = str(getattr(component, "concept", ""))
+                symbol = _COMPONENT_SYMBOLS.get(concept)
+                if symbol is None:
+                    hints = self.graph.canonical_hints(concept, depth=0)
+                    symbol = hints[0] if hints else None
+                if symbol and symbol not in symbols:
+                    symbols.append(symbol)
+            if symbols:
+                expression = "➕".join(symbols)
+                templates.append(ELCompositionTemplate("component-composition", expression, min(1.0, 0.55 + 0.1 * len(symbols)), self.is_canonical_expression(expression), concepts))
+        return tuple(dict.fromkeys(templates))
+
+    def compose_primary(self, decomposition) -> ELCompositionTemplate | None:
+        rows = self.compose(decomposition)
+        if not rows:
+            return None
+        return max(rows, key=lambda item: (item.semantic_coverage, -len(item.expression), item.template_id))
+
+    def render_el_status(self) -> str:
+        return f"✅🧱{len(_SENSE_TEMPLATES)}"
