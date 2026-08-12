@@ -1,0 +1,37 @@
+"""Deterministic local orchestration registry for EL Bot."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class OrchestrationSnapshot:
+    stages: tuple[str, ...]
+
+    def render_el(self) -> str:
+        return "✅✦" + str(len(self.stages)) + " " + "➡️".join(self.stages)
+
+
+class OrchestrationEngine:
+    """Describe the actual local engine path without claiming external Forgey state."""
+
+    def __init__(self, stages: tuple[str, ...] | None = None) -> None:
+        self._stages = stages or (
+            "🖥️", "🧯", "🔐", "🔁", "🎛️", "🧵", "⚙️", "📚", "🧠", "🧾", "💾", "📡"
+        )
+
+    @property
+    def stages(self) -> tuple[str, ...]:
+        return self._stages
+
+    def snapshot(self) -> OrchestrationSnapshot:
+        return OrchestrationSnapshot(self._stages)
+
+    def process(self, text: str) -> str:
+        if text == "✦":
+            return self.snapshot().render_el()
+        return "🟡✦❓"
+
+    def render_el_status(self) -> str:
+        return "✅✦" + str(len(self._stages))
