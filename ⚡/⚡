@@ -196,7 +196,7 @@ async function recordSelection(mode, source, value) {
 
 async function createWindow() {
   const iconPath = ensureAppIconPath();
-  const win = new BrowserWindow({width:1400,height:900,minWidth:780,minHeight:580,title:APP_NAME,icon:iconPath,backgroundColor:'#080b12',autoHideMenuBar:true,show:false,webPreferences:{preload:PRELOAD,contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const win = new BrowserWindow({width:1400,height:900,minWidth:780,minHeight:580,title:APP_NAME,icon:iconPath,backgroundColor:'#080b12',autoHideMenuBar:true,show: false,webPreferences:{preload:PRELOAD,contextIsolation:true,nodeIntegration:false,sandbox:true}});
   if (process.platform === 'win32') {
     try { win.setAppDetails({ appId: APP_ID, appIconPath: iconPath }); } catch (_) {}
     try { win.setThumbnailToolTip(APP_NAME); } catch (_) {}
