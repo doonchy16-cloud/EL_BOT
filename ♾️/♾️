@@ -1,0 +1,175 @@
+"""N16: deterministic finite search-frontier and exhaustion engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_universe = _load("_el_phase3_universe_frontier", _ROOT / "🌐" / "🌐")
+_canon = _load("_el_phase3_canon_frontier", _ROOT / "🧷" / "🧷")
+
+
+@dataclass(frozen=True, slots=True)
+class SearchFrontier:
+    frontier_id: str
+    universe_version: str
+    units: tuple[str, ...]
+    min_length: int
+    max_length: int
+    total_candidates: int
+    cursor: int
+    signature: str
+
+    @property
+    def exhausted(self) -> bool:
+        return self.cursor >= self.total_candidates
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.total_candidates - self.cursor)
+
+
+@dataclass(frozen=True, slots=True)
+class ExhaustionProof:
+    frontier_id: str
+    signature: str
+    total_candidates: int
+    visited_candidates: int
+    exhausted: bool
+
+    def render_el(self) -> str:
+        return ("✅" if self.exhausted else "🟡") + "♾️" + str(self.visited_candidates) + "/" + str(self.total_candidates)
+
+
+def _candidate_count(base: int, min_length: int, max_length: int) -> int:
+    return sum(base ** length for length in range(min_length, max_length + 1))
+
+
+class SearchFrontierExhaustionEngine:
+    """Define exact finite coordinate spaces; never semantically prunes them."""
+
+    def __init__(self, universe=None) -> None:
+        self.universe = universe or _universe.EmojiUniverseEngine()
+        self.canonicalizer = _canon.EmojiCanonicalizationEngine()
+
+    def define(self, *, units=None, min_length: int = 1, max_length: int = 1, frontier_id: str = "") -> SearchFrontier:
+        min_length = int(min_length)
+        max_length = int(max_length)
+        if min_length < 1 or max_length < min_length:
+            raise ValueError("frontier lengths must satisfy 1 <= min_length <= max_length")
+        source_units = self.universe.units if units is None else tuple(units)
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in source_units:
+            result = self.canonicalizer.canonicalize_unit(str(raw))
+            if not result.valid or not result.canonical or result.canonical in seen:
+                continue
+            seen.add(result.canonical)
+            normalized.append(result.canonical)
+        if not normalized:
+            raise ValueError("frontier requires at least one valid emoji unit")
+        payload = {
+            "version": self.universe.snapshot.version,
+            "units": normalized,
+            "min": min_length,
+            "max": max_length,
+        }
+        signature = sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        total = _candidate_count(len(normalized), min_length, max_length)
+        return SearchFrontier(frontier_id or "frontier-" + signature[:12], self.universe.snapshot.version, tuple(normalized), min_length, max_length, total, 0, signature)
+
+    @staticmethod
+    def candidate_at(frontier: SearchFrontier, index: int) -> str:
+        index = int(index)
+        if index < 0 or index >= frontier.total_candidates:
+            raise IndexError("candidate index outside frontier")
+        base = len(frontier.units)
+        offset = index
+        length = frontier.min_length
+        while length <= frontier.max_length:
+            block = base ** length
+            if offset < block:
+                break
+            offset -= block
+            length += 1
+        if length > frontier.max_length:
+            raise IndexError("candidate index outside frontier")
+        digits = [0] * length
+        for position in range(length - 1, -1, -1):
+            digits[position] = offset % base
+            offset //= base
+        return "".join(frontier.units[digit] for digit in digits)
+
+    @classmethod
+    def iter_candidates(cls, frontier: SearchFrontier, *, start: int | None = None, stop: int | None = None):
+        begin = frontier.cursor if start is None else max(0, int(start))
+        end = frontier.total_candidates if stop is None else min(frontier.total_candidates, int(stop))
+        for index in range(begin, max(begin, end)):
+            yield index, cls.candidate_at(frontier, index)
+
+    @staticmethod
+    def advance(frontier: SearchFrontier, visited: int) -> SearchFrontier:
+        cursor = min(frontier.total_candidates, frontier.cursor + max(0, int(visited)))
+        return replace(frontier, cursor=cursor)
+
+    @staticmethod
+    def proof(frontier: SearchFrontier) -> ExhaustionProof:
+        return ExhaustionProof(frontier.frontier_id, frontier.signature, frontier.total_candidates, min(frontier.cursor, frontier.total_candidates), frontier.exhausted)
+
+    @staticmethod
+    def checkpoint(frontier: SearchFrontier) -> dict[str, object]:
+        return {
+            "frontier_id": frontier.frontier_id,
+            "universe_version": frontier.universe_version,
+            "units": list(frontier.units),
+            "min_length": frontier.min_length,
+            "max_length": frontier.max_length,
+            "total_candidates": frontier.total_candidates,
+            "cursor": frontier.cursor,
+            "signature": frontier.signature,
+        }
+
+    @staticmethod
+    def resume(checkpoint: dict[str, object]) -> SearchFrontier:
+        frontier = SearchFrontier(
+            str(checkpoint["frontier_id"]),
+            str(checkpoint["universe_version"]),
+            tuple(str(item) for item in checkpoint["units"]),
+            int(checkpoint["min_length"]),
+            int(checkpoint["max_length"]),
+            int(checkpoint["total_candidates"]),
+            int(checkpoint["cursor"]),
+            str(checkpoint["signature"]),
+        )
+        expected = _candidate_count(len(frontier.units), frontier.min_length, frontier.max_length)
+        if expected != frontier.total_candidates or frontier.cursor < 0 or frontier.cursor > frontier.total_candidates:
+            raise ValueError("invalid frontier checkpoint")
+        return frontier
+
+    def expand(self, frontier: SearchFrontier, *, max_length: int | None = None) -> SearchFrontier:
+        target = frontier.max_length + 1 if max_length is None else int(max_length)
+        if target <= frontier.max_length:
+            raise ValueError("expanded frontier must increase max_length")
+        return self.define(units=frontier.units, min_length=frontier.min_length, max_length=target, frontier_id=frontier.frontier_id + "+")
+
+    def render_el_status(self) -> str:
+        return "✅♾️"
