@@ -22,6 +22,19 @@ def _load(name: str, path: Path):
 
 ROOT = Path(__file__).resolve().parent.parent
 diagnostics = _load("_el_diag", ROOT / "🧪" / "🧪")
+core = _load("_el_core", ROOT / "⚙️" / "⚙️")
+vocab = _load("_el_vocab", ROOT / "📚" / "📚")
+instructor = _load("_el_instructor", ROOT / "🧑‍🏫" / "🧑‍🏫")
+
+compound = "💻🦙🤖🧠👁️7️⃣:🐝"
+resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(compound))
+assert resolved.status is core.ValidationStatus.PASS
+assert resolved.is_explicit_compound
+assert resolved.compound_meaning == "local ollama model qwen2.5-vl:7b"
+assert instructor.InstructorEngine().translate_compound_to_text(compound) == "local ollama model qwen2.5-vl:7b"
+assert instructor.InstructorEngine().process("🧑‍🏫" + compound) == "✅🧑‍🏫🧩"
+
 report = diagnostics.DiagnosticsEngine().run()
 print(report.render_el())
+print("🧩✅")
 raise SystemExit(0 if report.passed else 1)
