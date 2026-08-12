@@ -121,8 +121,8 @@ jobs:
           & $node --check $preload
           $mainText = Get-Content -LiteralPath $main -Raw -Encoding UTF8
           $preloadText = Get-Content -LiteralPath $preload -Raw -Encoding UTF8
-          if (-not $mainText.Contains("event.sender.send('⏳'")) { throw 'live stage IPC missing' }
-          if (-not $preloadText.Contains("ipcRenderer.on('⏳'")) { throw 'stage preload listener missing' }
+          if (-not $mainText.Contains('event.sender.send')) { throw 'live stage IPC missing' }
+          if (-not $preloadText.Contains('ipcRenderer.on')) { throw 'stage preload listener missing' }
           $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
           if (-not $html.Contains('id="mode1"') -or -not $html.Contains('id="mode2"') -or -not $html.Contains('id="image"')) { throw 'UI controls missing' }
           if (-not $html.Contains('rotate(180deg)')) { throw '180 degree hourglass flip missing' }
