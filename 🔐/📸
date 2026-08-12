@@ -1,0 +1,23 @@
+"""Screenshot-only AI inference policy for EL Bot.
+
+Normal translation, ranking, parsing and language conversion are deterministic.
+Model inference is authorized only for screenshot/image observation.
+"""
+
+from __future__ import annotations
+
+
+class AIUsePolicy:
+    """Hard gate for model inference."""
+
+    _ALLOWED_PURPOSE = "📸"
+
+    def allows(self, purpose: str) -> bool:
+        return purpose == self._ALLOWED_PURPOSE
+
+    def require(self, purpose: str) -> None:
+        if not self.allows(purpose):
+            raise PermissionError("AI inference is restricted to screenshot observation")
+
+    def render_el_status(self) -> str:
+        return "✅🔐🤖➡️📸"
