@@ -51,6 +51,10 @@ jobs:
           repo = os.environ['GITHUB_REPOSITORY']
           token = os.environ['GH_TOKEN']
           api = 'https://api.github.com/repos/' + repo
+          llama = chr(0x1F999)
+
+          def e(*values):
+              return ''.join(chr(value) for value in values)
 
           def request(method, url, body=None):
               headers = {
@@ -64,36 +68,76 @@ jobs:
               with urllib.request.urlopen(req, timeout=30) as response:
                   return json.loads(response.read().decode('utf-8'))
 
-          files = {
-              '📚/📚': [
-                  ('500-symbol Emoji Language authority plus explicit Owner compounds', '501-symbol Emoji Language authority plus explicit Owner compounds'),
-                  ('📧📮📪📫📭"', '📧📮📪📫📭🦙"'),
-                  ('len(CANONICAL_SYMBOLS) != 500', 'len(CANONICAL_SYMBOLS) != 501'),
-                  ('len(set(CANONICAL_SYMBOLS)) != 500', 'len(set(CANONICAL_SYMBOLS)) != 501'),
-              ],
-              '📚/🧾': [
-                  ('500-symbol EL authority', '501-symbol EL authority'),
-                  ('open mailbox empty/cleared inbox""".splitlines()', 'open mailbox empty/cleared inbox\nollama""".splitlines()'),
-                  ('len(PRIMARY_MEANINGS) != 500', 'len(PRIMARY_MEANINGS) != 501'),
-              ],
-              '🧑‍🏫/🧑‍🏫': [
-                  ('len(CANONICAL_SYMBOLS) != 500', 'len(CANONICAL_SYMBOLS) != 501'),
-                  ('len(PRIMARY_MEANINGS) != 500', 'len(PRIMARY_MEANINGS) != 501'),
-                  ('✅🧑‍🏫500', '✅🧑‍🏫501'),
-              ],
-              '🧪/🧪': [
-                  ('len(_vocab.CANONICAL_SYMBOLS) == 500', 'len(_vocab.CANONICAL_SYMBOLS) == 501'),
-                  ('len(set(_vocab.CANONICAL_SYMBOLS)) == 500', 'len(set(_vocab.CANONICAL_SYMBOLS)) == 501'),
-                  ('len(_meanings.PRIMARY_MEANINGS) == 500', 'len(_meanings.PRIMARY_MEANINGS) == 501'),
-                  ('and meaning_map["🧬"] == "schema/DNA/inheritance"', 'and meaning_map["🧬"] == "schema/DNA/inheritance"\n            and meaning_map["🦙"] == "ollama"'),
-                  ('instructor.process("🧑‍🏫") == "✅🧑‍🏫500"', 'instructor.process("🧑‍🏫") == "✅🧑‍🏫501"'),
-              ],
-              '📗': [
-                  ('🔒500✅.', '🔒501✅.'),
-                  ('📚🧾500✅.', '📚🧾501✅.'),
-                  ('🧑‍🏫 ➡️ 📚500.', '🧑‍🏫 ➡️ 📚501.'),
-              ],
-          }
+          def patch(kind, text):
+              if kind == 'vocab':
+                  text = text.replace('Canonical 500-symbol', 'Canonical 501-symbol')
+                  lines = text.splitlines()
+                  for index, line in enumerate(lines):
+                      if line.startswith('_CANONICAL_SYMBOL_STREAM = "') and line.endswith('"') and llama not in line:
+                          lines[index] = line[:-1] + llama + '"'
+                  text = '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+                  text = text.replace('len(CANONICAL_SYMBOLS) != 500', 'len(CANONICAL_SYMBOLS) != 501')
+                  text = text.replace('len(set(CANONICAL_SYMBOLS)) != 500', 'len(set(CANONICAL_SYMBOLS)) != 501')
+                  return text
+
+              if kind == 'meanings':
+                  text = text.replace('500-symbol EL authority', '501-symbol EL authority')
+                  marker = '""".splitlines()'
+                  if '\nollama' not in text and marker in text:
+                      text = text.replace(marker, '\nollama' + marker, 1)
+                  text = text.replace('len(PRIMARY_MEANINGS) != 500', 'len(PRIMARY_MEANINGS) != 501')
+                  return text
+
+              if kind == 'instructor':
+                  return text.replace('500', '501')
+
+              if kind == 'diagnostics':
+                  text = text.replace('== 500', '== 501')
+                  text = text.replace('500"', '501"')
+                  if 'meaning_map["' + llama + '"] == "ollama"' not in text:
+                      lines = text.splitlines()
+                      for index, line in enumerate(lines):
+                          if 'schema/DNA/inheritance' in line:
+                              lines.insert(index + 1, '            and meaning_map["' + llama + '"] == "ollama"')
+                              break
+                      text = '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+                  return text
+
+              if kind == 'readme':
+                  text = text.replace('500', '501')
+                  mapping = llama + ' ' + e(0x27A1, 0xFE0F) + ' ' + e(0x1F916, 0x1F3E0) + '.'
+                  if mapping not in text:
+                      text = text.rstrip() + '\n' + mapping + '\n'
+                  return text
+
+              return text
+
+          targets = []
+          for path in pathlib.Path('.').rglob('*'):
+              if not path.is_file() or '.github' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              kind = None
+              if '_CANONICAL_SYMBOL_STREAM' in text:
+                  kind = 'vocab'
+              elif 'PRIMARY_MEANINGS:' in text:
+                  kind = 'meanings'
+              elif 'class InstructorEngine' in text:
+                  kind = 'instructor'
+              elif 'class DiagnosticsEngine' in text:
+                  kind = 'diagnostics'
+              elif path.parent == pathlib.Path('.') and '22/22' in text and '500' in text:
+                  kind = 'readme'
+              if kind is not None:
+                  targets.append((path, kind, text))
+
+          kinds = {kind for _, kind, _ in targets}
+          required = {'vocab', 'meanings', 'instructor', 'diagnostics', 'readme'}
+          if kinds != required:
+              raise RuntimeError('authority target discovery invariant violated')
 
           ref = request('GET', api + '/git/ref/heads/main')
           parent = ref['object']['sha']
@@ -101,29 +145,27 @@ jobs:
           base_tree = commit['tree']['sha']
           tree = []
 
-          for path, replacements in files.items():
-              local = pathlib.Path(path)
-              text = local.read_text(encoding='utf-8')
-              updated = text
-              for old, new in replacements:
-                  updated = updated.replace(old, new)
+          for path, kind, text in targets:
+              updated = patch(kind, text)
               if updated == text:
                   continue
+              path.write_text(updated, encoding='utf-8')
               blob = request('POST', api + '/git/blobs', {'content': updated, 'encoding': 'utf-8'})
-              tree.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
+              tree.append({'path': path.as_posix(), 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
 
           if not tree:
-              print('📚5️⃣✅')
+              print(e(0x1F4DA) + '5' + e(0xFE0F, 0x20E3) + e(0x2705))
               raise SystemExit(0)
 
           new_tree = request('POST', api + '/git/trees', {'base_tree': base_tree, 'tree': tree})
+          message = e(0x1F4DA) + '5' + e(0xFE0F, 0x20E3) + llama + '501' + e(0x1F512)
           new_commit = request('POST', api + '/git/commits', {
-              'message': '📚5️⃣🦙501🔒',
+              'message': message,
               'tree': new_tree['sha'],
               'parents': [parent],
           })
           request('PATCH', api + '/git/refs/heads/main', {'sha': new_commit['sha'], 'force': False})
-          print('📚5️⃣🦙501✅')
+          print(e(0x1F4DA) + '5' + e(0xFE0F, 0x20E3) + llama + '501' + e(0x2705))
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
 
