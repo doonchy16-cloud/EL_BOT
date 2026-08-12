@@ -1,0 +1,69 @@
+"""Engine 11: deterministic EL security and command-boundary authorization.
+
+Developer internals may use ordinary programming language. User-facing output
+from this engine is Emoji Language only.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+
+ValidationStatus = _core.ValidationStatus
+CoreEngine = _core.CoreEngine
+
+_COMMANDS = frozenset({"🧪", "🧹", "💾", "📥", "📡"})
+
+
+@dataclass(frozen=True, slots=True)
+class SecurityDecision:
+    source: str
+    operation: str
+    status: object
+
+    @property
+    def authorized(self) -> bool:
+        return self.status is ValidationStatus.PASS
+
+    def render_el_status(self) -> str:
+        if not self.authorized:
+            return "❌🔐🔤"
+        return "✅🔐" + self.operation
+
+
+class SecurityEngine:
+    """Authorize exact EL control commands and protect the EL surface boundary."""
+
+    def authorize(self, text: str) -> SecurityDecision:
+        if not isinstance(text, str):
+            raise TypeError("text must be a string")
+
+        surface = CoreEngine().parse(text, el_mode=True)
+        if surface.status is ValidationStatus.FAIL:
+            return SecurityDecision(text, "🔤", ValidationStatus.FAIL)
+
+        operation = text if text in _COMMANDS else "💬"
+        return SecurityDecision(text, operation, ValidationStatus.PASS)
+
+    def render_el_status(self) -> str:
+        return "✅🔐"
