@@ -29,20 +29,31 @@ _ROOT = Path(__file__).resolve().parent.parent
 _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
+_config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
 
 SessionEngine = _session.SessionEngine
 PersistenceEngine = _persist.PersistenceEngine
 EventEngine = _event.EventEngine
+ConfigurationEngine = _config.ConfigurationEngine
 
 
 class WorkflowEngine:
     """Own the deterministic input -> session -> persistence -> output flow."""
 
-    def __init__(self, persistence: PersistenceEngine | None = None) -> None:
+    def __init__(
+        self,
+        persistence: PersistenceEngine | None = None,
+        configuration: ConfigurationEngine | None = None,
+    ) -> None:
         self.persistence = persistence if persistence is not None else PersistenceEngine()
+        self.configuration = configuration if configuration is not None else ConfigurationEngine()
         self.session = self.persistence.load()
         self.events = EventEngine()
-        self.events.emit("🔁", "🔵")
+        self._emit("🔁", "🔵")
+
+    def _emit(self, marker: str, status: str, detail: str = "") -> None:
+        if self.configuration.enabled("📡"):
+            self.events.emit(marker, status, detail)
 
     @staticmethod
     def _turn_status(turn) -> str:
@@ -57,41 +68,47 @@ class WorkflowEngine:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
 
+        if text.startswith("🎛️"):
+            return self.configuration.process(text)
+
         if text == "📡":
             return self.events.render_el()
 
         if text == "🧹":
-            self.events.emit("🧹", "🔵")
+            self._emit("🧹", "🔵")
             self.session.clear()
             self.persistence.clear()
-            self.events.emit("🧹", "✅")
+            self._emit("🧹", "✅")
             return "✅🧹"
 
         if text == "💾":
-            self.events.emit("💾", "🔵")
+            self._emit("💾", "🔵")
             count = self.persistence.save(self.session)
-            self.events.emit("💾", "✅", str(count))
+            self._emit("💾", "✅", str(count))
             return f"✅💾{count}"
 
         if text == "📥":
-            self.events.emit("📥", "🔵")
+            self._emit("📥", "🔵")
             self.session = self.persistence.load()
             count = len(self.session.turns)
-            self.events.emit("📥", "✅", str(count))
+            self._emit("📥", "✅", str(count))
             return f"✅📥{count}"
 
-        self.events.emit("📥", "🔵")
+        self._emit("📥", "🔵")
         turn = self.session.ingest(text)
         status = self._turn_status(turn)
-        self.events.emit("🧵", status)
-        count = self.persistence.save(self.session)
-        self.events.emit("💾", "✅", str(count))
-        self.events.emit("📤", status)
+        self._emit("🧵", status)
+        if self.configuration.enabled("💾"):
+            count = self.persistence.save(self.session)
+            self._emit("💾", "✅", str(count))
+        self._emit("📤", status)
         return turn.safe_output() + "\n" + self.session.render_el_status()
 
     def render_el_status(self) -> str:
         return (
             "✅🔁 "
+            + self.configuration.render_el_status()
+            + " "
             + self.session.render_el_status()
             + " "
             + self.persistence.render_el_status()
