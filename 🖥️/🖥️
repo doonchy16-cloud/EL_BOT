@@ -25,20 +25,23 @@ _ROOT = Path(__file__).resolve().parent.parent
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 _diag = _load("_el_diag", _ROOT / "🧪" / "🧪")
 _guard = _load("_el_guard", _ROOT / "🔐" / "🔐")
+_recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
 
 WorkflowEngine = _workflow.WorkflowEngine
 DiagnosticsEngine = _diag.DiagnosticsEngine
 SecurityEngine = _guard.SecurityEngine
+RecoveryEngine = _recovery.RecoveryEngine
 
 
 class UIEngine:
-    """Thin EL-facing boundary; workflow owns state and normal command routing."""
+    """Thin EL-facing boundary protected by security and recovery engines."""
 
     def __init__(self) -> None:
         self.workflow = WorkflowEngine()
         self.guard = SecurityEngine()
+        self.recovery = RecoveryEngine()
 
-    def process(self, text: str) -> str:
+    def _process_guarded(self, text: str) -> str:
         decision = self.guard.authorize(text)
         if not decision.authorized:
             return decision.render_el_status()
@@ -46,5 +49,15 @@ class UIEngine:
             return DiagnosticsEngine().run().render_el()
         return self.workflow.process(text)
 
+    def process(self, text: str) -> str:
+        return self.recovery.protect("🖥️", lambda: self._process_guarded(text))
+
     def render_el_status(self) -> str:
-        return "✅🖥️ " + self.guard.render_el_status() + " " + self.workflow.render_el_status()
+        return (
+            "✅🖥️ "
+            + self.guard.render_el_status()
+            + " "
+            + self.recovery.render_el_status()
+            + " "
+            + self.workflow.render_el_status()
+        )
