@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const ROOT = path.resolve(__dirname, '..');
 const BOT = path.join(ROOT, '🤖');
+const VISION = path.join(ROOT, '📸', '📸');
 const PRELOAD = path.join(__dirname, '🔌');
 const VIEW = path.join(__dirname, '🖥️');
 
@@ -61,10 +62,10 @@ function pythonCandidate() {
   return null;
 }
 
-function runBot(source) {
+function runPython(target, source, timeoutMs) {
   return new Promise((resolve) => {
     if (typeof source !== 'string') {
-      resolve('❌🔤');
+      resolve('❌🔣');
       return;
     }
 
@@ -74,7 +75,7 @@ function runBot(source) {
       return;
     }
 
-    const child = spawn(python.command, [...python.prefix, BOT], {
+    const child = spawn(python.command, [...python.prefix, target], {
       cwd: ROOT,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -94,7 +95,7 @@ function runBot(source) {
     const timer = setTimeout(() => {
       try { child.kill(); } catch (_) {}
       finish('🟡⏱️');
-    }, 30000);
+    }, timeoutMs);
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -122,6 +123,17 @@ function runBot(source) {
   });
 }
 
+function runBot(source) {
+  return runPython(BOT, source, 30000);
+}
+
+function runVision(imageDataUrl) {
+  if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+    return Promise.resolve('❌📸🔣');
+  }
+  return runPython(VISION, imageDataUrl, 135000);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1040,
@@ -144,6 +156,7 @@ function createWindow() {
 }
 
 ipcMain.handle('😀➡️🤖', async (_event, source) => runBot(source));
+ipcMain.handle('📸➡️🦙', async (_event, imageDataUrl) => runVision(imageDataUrl));
 
 app.whenReady().then(() => {
   createWindow();
