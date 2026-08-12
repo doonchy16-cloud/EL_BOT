@@ -46,7 +46,7 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           $script = Join-Path $env:RUNNER_TEMP 'v5patch.py'
           @'
-          import base64, json, os, urllib.parse, urllib.request
+          import json, os, pathlib, urllib.request
 
           repo = os.environ['GITHUB_REPOSITORY']
           token = os.environ['GH_TOKEN']
@@ -102,9 +102,8 @@ jobs:
           tree = []
 
           for path, replacements in files.items():
-              encoded = urllib.parse.quote(path, safe='/')
-              item = request('GET', api + '/contents/' + encoded + '?ref=main')
-              text = base64.b64decode(item['content']).decode('utf-8')
+              local = pathlib.Path(path)
+              text = local.read_text(encoding='utf-8')
               updated = text
               for old, new in replacements:
                   updated = updated.replace(old, new)
