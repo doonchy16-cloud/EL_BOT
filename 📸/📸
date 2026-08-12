@@ -75,7 +75,7 @@ def _vision_prompt(*,compact:bool=False)->str:
     schema=json.dumps(_VISION_SCHEMA,ensure_ascii=False,separators=(",",":"))
     return f"""You are EL Bot's screenshot vision sensor, not a translator and not a decision-maker.
 Inspect only facts visibly supported by the supplied image.
-Return one JSON object that satisfies this exact JSON schema:
+Return exactly one compact JSON object matching this schema:
 {schema}
 Rules:
 - Keep the answer compact: {limits}.
@@ -196,27 +196,38 @@ def _failure_text(state:str)->str:
     return {
         "provider-unreachable":"Screenshot observation failed: the local vision provider is unreachable.",
         "model-unavailable":"Screenshot observation failed: the local vision model is unavailable.",
+        "model-prepare-failed":"Screenshot observation failed while preparing the local vision model.",
         "structured-observation-hold":"Screenshot observation failed: structured visible facts remained invalid after the controlled retry.",
     }.get(state,"Screenshot observation failed before reliable visible facts were produced.")
 def _failure_el(state:str)->str:
-    return {"provider-unreachable":"❌📸➡️🦙📴","model-unavailable":"❌📸➡️🦙❓","structured-observation-hold":"❌📸➡️📋❌"}.get(state,"❌📸➡️❓")
+    return {"provider-unreachable":"❌📸➡️🦙📴","model-unavailable":"❌📸➡️🦙❓","model-prepare-failed":"❌📸➡️🦙⏱️","structured-observation-hold":"❌📸➡️📋❌"}.get(state,"❌📸➡️❓")
 
 
-def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int]:
-    connector=OllamaConnector(generation_timeout=120.0);evidence=connector.probe()
-    if not evidence.reachable:return _sanitize_facts(None),"provider-unreachable",0,"probe",0
-    if not evidence.model_present:return _sanitize_facts(None),"model-unavailable",0,"probe",0
+def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int,bool]:
+    connector=OllamaConnector(generation_timeout=65.0);evidence=connector.probe()
+    if not evidence.reachable:return _sanitize_facts(None),"provider-unreachable",0,"probe",0,False
+    if not evidence.model_present:return _sanitize_facts(None),"model-unavailable",0,"probe",0,False
+    _lang.emit_stage(2,6,"Screenshot Vision — Prepare Vision Model")
+    was_running=False
+    try:
+        was_running=connector.model in connector.running_models()
+        if not was_running:connector.warm_internal("10m")
+    except Exception as exc:
+        _debug_exception(exc);return _sanitize_facts(None),"model-prepare-failed",0,"model-prepare",0,was_running
     answers=[]
     for attempt in (1,2):
-        if attempt==2:_lang.emit_stage(2,5,"Screenshot Vision — Retry Compact Visible Facts")
+        _lang.emit_stage(3,6,"Screenshot Vision — Observe Visible Facts" if attempt==1 else "Screenshot Vision — Retry Compact Visible Facts")
         try:
-            answer=connector.chat_json_internal(_vision_prompt(compact=attempt==2),images=(raw,),schema=_VISION_SCHEMA,num_predict=768 if attempt==1 else 512).strip();answers.append(answer)
+            # Runtime evidence showed schema-constrained format could stall this
+            # installed vision model. Keep JSON mode fast, while the prompt and
+            # deterministic validator enforce the exact schema.
+            answer=connector.chat_json_internal(_vision_prompt(compact=attempt==2),images=(raw,),schema=None,num_predict=512 if attempt==1 else 320).strip();answers.append(answer)
             facts,strategy=_parse_observation(answer)
             if facts is not None:
                 state="structured-vision" if attempt==1 and strategy=="json" else ("structured-vision-retry" if attempt==2 else "deterministic-structure-repair")
-                return facts,state,attempt,strategy,sum(len(v) for v in answers)
+                return facts,state,attempt,strategy,sum(len(v) for v in answers),was_running
         except Exception as exc:_debug_exception(exc)
-    return _sanitize_facts(None),"structured-observation-hold",2,"unparsed",sum(len(v) for v in answers)
+    return _sanitize_facts(None),"structured-observation-hold",2,"unparsed",sum(len(v) for v in answers),was_running
 
 
 def _facts_to_el(facts:dict[str,tuple[str,...]])->tuple[tuple[_lang.Candidate,...],dict[str,float|int|str]]:
@@ -242,23 +253,22 @@ def _facts_to_el(facts:dict[str,tuple[str,...]])->tuple[tuple[_lang.Candidate,..
 def ranked_analyze(mode:int,image_value:str):
     if mode not in (1,2):raise ValueError("invalid vision mode")
     raw=_strip_data_url(image_value);base64.b64decode(raw,validate=True);key=_source_key(raw)
-    _lang.emit_stage(1,5,"Screenshot Vision — Validate Image")
-    _lang.emit_stage(2,5,"Screenshot Vision — Observe Visible Facts")
-    facts,evidence_state,sensor_calls,parse_strategy,raw_chars=_observe(raw)
-    _lang.emit_stage(3,5,"Screenshot Vision — Validate and Repair Observation")
+    _lang.emit_stage(1,6,"Screenshot Vision — Validate Image")
+    facts,evidence_state,sensor_calls,parse_strategy,raw_chars,model_was_running=_observe(raw)
+    _lang.emit_stage(4,6,"Screenshot Vision — Validate and Repair Observation")
     count=_facts_count(facts)
-    _lang.emit_stage(4,5,"Screenshot Vision — Sanitize Structured Facts")
-    base_metrics={"vision_facts":count,"sensor_state":evidence_state,"sensor_calls":sensor_calls,"parse_strategy":parse_strategy,"vision_raw_chars":raw_chars}
+    _lang.emit_stage(5,6,"Screenshot Vision — Sanitize Structured Facts")
+    base_metrics={"vision_facts":count,"sensor_state":evidence_state,"sensor_calls":sensor_calls,"parse_strategy":parse_strategy,"vision_raw_chars":raw_chars,"vision_model_was_running":model_was_running}
     if count==0:
-        _lang.emit_stage(5,5,"Screenshot Vision — Render Failure Evidence")
+        _lang.emit_stage(6,6,"Screenshot Vision — Render Failure Evidence")
         value=_failure_text(evidence_state) if mode==1 else _failure_el(evidence_state)
         candidate=_lang.Candidate(value,0.0,("vision-failure-evidence",evidence_state),0.0,0.0)
         return key,_lang.EngineResult(mode,key,(candidate,),("Structured Vision","Failure Evidence"),{**base_metrics,"coverage":0.0,"roundtrip":0.0,"candidates":1,"quality_status":"fail"})
     if mode==1:
-        _lang.emit_stage(5,5,"Screenshot Vision — Deterministic ABC Rendering");candidates=_text_candidates(facts)
+        _lang.emit_stage(6,6,"Screenshot Vision — Deterministic ABC Rendering");candidates=_text_candidates(facts)
         metrics={**base_metrics,"coverage":1.0,"roundtrip":1.0,"candidates":len(candidates),"quality_status":"pass" if evidence_state!="structured-observation-hold" else "fail"}
         return key,_lang.EngineResult(1,key,candidates,("Structured Vision","Deterministic ABC Rendering"),metrics)
-    _lang.emit_stage(5,5,"Screenshot Vision — Deterministic EL Rendering")
+    _lang.emit_stage(6,6,"Screenshot Vision — Deterministic EL Rendering")
     candidates,extra=_facts_to_el(facts);metrics={**base_metrics,"coverage":candidates[0].coverage,"roundtrip":1.0,"candidates":len(candidates),**extra}
     if metrics["vision_fact_coverage"]<.70 or metrics["vision_unknown_ratio"]>.35:metrics["quality_status"]="hold"
     else:metrics["quality_status"]="pass"
