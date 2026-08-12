@@ -55,6 +55,45 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
+      - name: "🧪🔐"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'el_security_probe.py'
+          @'
+          from importlib.machinery import SourceFileLoader
+          from importlib.util import module_from_spec, spec_from_loader
+          from pathlib import Path
+          import sys
+
+          root = Path('.').resolve()
+          def load(name, path):
+              if name in sys.modules:
+                  return sys.modules[name]
+              loader = SourceFileLoader(name, str(path))
+              spec = spec_from_loader(name, loader)
+              module = module_from_spec(spec)
+              sys.modules[name] = module
+              loader.exec_module(module)
+              return module
+
+          core = load('_el_core', root / '⚙️' / '⚙️')
+          guard = load('_el_guard_probe', root / '🔐' / '🔐')
+          source = '🔥➡️🚀'
+          surface = core.CoreEngine().parse(source, el_mode=True)
+          decision = guard.SecurityEngine().authorize(source)
+          print(surface.status.value)
+          print([(token.text, token.kind.value) for token in surface.tokens])
+          print(decision.status.value, decision.authorized)
+          print(surface.status.__class__ is guard.ValidationStatus)
+          assert not surface.letter_tokens
+          assert surface.status.value == 'pass'
+          assert decision.status.value == 'pass'
+          assert decision.authorized
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
+
       - name: "🧪🤖"
         shell: powershell
         run: |
