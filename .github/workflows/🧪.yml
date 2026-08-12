@@ -14,7 +14,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - name: "📥"
         uses: actions/checkout@v4
@@ -85,6 +85,58 @@ jobs:
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
 
+      - name: "🧪↔️"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'el_bidirectional_acceptance.py'
+          @'
+          import pathlib
+          import subprocess
+          import sys
+          import unicodedata
+
+          bidi = chr(0x2194) + chr(0xFE0F)
+          translator = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == bidi and path.parent.name == bidi)
+
+          def run(mode, source):
+              result = subprocess.run(
+                  [sys.executable, str(translator)],
+                  input=str(mode) + '\n' + source,
+                  text=True,
+                  capture_output=True,
+                  encoding='utf-8',
+                  timeout=420,
+              )
+              assert result.returncode == 0
+              output = result.stdout.strip()
+              print(str(mode) + ': ' + output)
+              assert output
+              assert not output.startswith(chr(0x274C))
+              assert not output.startswith(chr(0x1F7E1))
+              return output
+
+          test1 = '[Critical error: The database connection timed out after 30 seconds. The local server crashed and went offline. Please restart the docker container immediately to restore the service.]'
+          out1 = run(2, test1)
+          assert not any(unicodedata.category(ch).startswith('L') for ch in out1)
+          assert any(mark in out1 for mark in ('❌','🔴'))
+          assert '⏱️' in out1 or '30' in out1
+          assert '🔄' in out1
+
+          test2 = '\U0001F4E6\U0001F501\u2B07\uFE0F. \U0001F433\U0001F3D7\uFE0F\U0001F680. \U0001F310\U0001F50C\u27A1\uFE0F\U0001F512\U0001F4E1. \u274C\U0001F510. \u26A0\uFE0F\U0001F534\u27A1\uFE0F\U0001F527\U0001F6E1\uFE0F\U0001F511.'
+          out2 = run(1, test2)
+          assert any(unicodedata.category(ch).startswith('L') for ch in out2)
+
+          test3 = '[Add a dark mode toggle button to the main dashboard navigation bar. Also, optimize the page loading speed so that the dashboard renders instantly without lag.]'
+          out3 = run(2, test3)
+          assert not any(unicodedata.category(ch).startswith('L') for ch in out3)
+          assert '🖤' in out3
+          assert '📊' in out3
+          assert any(mark in out3 for mark in ('⚡','📈','🐌'))
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
+
       - name: "🧪📸"
         shell: powershell
         run: |
@@ -112,11 +164,13 @@ jobs:
           value = 'data:image/png;base64,' + base64.b64encode(png).decode('ascii')
           camera = chr(0x1F4F8)
           vision = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == camera and path.parent.name == camera)
-          result = subprocess.run([sys.executable, str(vision)], input=value, text=True, capture_output=True, encoding='utf-8', timeout=150)
+          result = subprocess.run([sys.executable, str(vision)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=360)
           output = result.stdout.strip()
           print(output)
           assert result.returncode == 0
           assert output
+          assert not output.startswith(chr(0x274C))
+          assert not output.startswith(chr(0x1F7E1))
           assert not any(unicodedata.category(ch).startswith('L') for ch in output)
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
@@ -149,6 +203,10 @@ jobs:
           & $node --check $preload
           if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
           if ((Get-Item -LiteralPath $view).Length -lt 100) { throw 'view empty' }
+          $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
+          if (-not $html.Contains('1️⃣ 😀➡️🔤')) { throw 'mode1 missing' }
+          if (-not $html.Contains('2️⃣ 🔤➡️😀')) { throw 'mode2 missing' }
+          if (-not $html.Contains('📸')) { throw 'vision missing' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
 
       - name: "🧪"
