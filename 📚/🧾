@@ -1,4 +1,4 @@
-"""Canonical primary meanings in exact ordinal order for the 500-symbol EL authority."""
+"""Canonical primary meanings in exact ordinal order for the 501-symbol EL authority."""
 
 PRIMARY_MEANINGS: tuple[str, ...] = tuple(
     line for line in """priority/go/hot
@@ -500,8 +500,9 @@ email/digital mail
 postbox/send mail
 mailbox empty/no new mail
 mailbox flagged/outgoing or action mail
-open mailbox empty/cleared inbox""".splitlines()
+open mailbox empty/cleared inbox
+ollama""".splitlines()
 )
 
-if len(PRIMARY_MEANINGS) != 500:
+if len(PRIMARY_MEANINGS) != 501:
     raise RuntimeError("EL primary-meaning invariant violated")

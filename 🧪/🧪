@@ -89,9 +89,9 @@ class DiagnosticsEngine:
         unknown = vocab.resolve(core.parse("🙂"))
         meaning_map = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
         vocab_ok = (
-            len(_vocab.CANONICAL_SYMBOLS) == 500
-            and len(set(_vocab.CANONICAL_SYMBOLS)) == 500
-            and len(_meanings.PRIMARY_MEANINGS) == 500
+            len(_vocab.CANONICAL_SYMBOLS) == 501
+            and len(set(_vocab.CANONICAL_SYMBOLS)) == 501
+            and len(_meanings.PRIMARY_MEANINGS) == 501
             and unknown.status is _core.ValidationStatus.HOLD
             and meaning_map["🔁"] == "workflow/loop/retry/sync"
             and meaning_map["🔄"] == "refresh/update"
@@ -102,6 +102,7 @@ class DiagnosticsEngine:
             and meaning_map["✅"] == "pass/verified/complete"
             and meaning_map["🪪"] == "identity/system identity"
             and meaning_map["🧬"] == "schema/DNA/inheritance"
+            and meaning_map["🦙"] == "ollama"
         )
         checks.append(DiagnosticCheck("2️⃣📚", vocab_ok))
 
@@ -166,7 +167,7 @@ class DiagnosticsEngine:
         instructor = _instructor.InstructorEngine()
         record = instructor.lookup("🔄")
         instructor_ok = (
-            instructor.process("🧑‍🏫") == "✅🧑‍🏫500"
+            instructor.process("🧑‍🏫") == "✅🧑‍🏫501"
             and record is not None
             and record.ordinal == 100
             and record.primary_meaning == "refresh/update"

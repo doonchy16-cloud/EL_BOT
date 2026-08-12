@@ -30,7 +30,7 @@ _compounds = _load("_el_compounds", _ROOT / "📚" / "🧩")
 CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
 PRIMARY_MEANINGS = _meanings.PRIMARY_MEANINGS
 
-if len(CANONICAL_SYMBOLS) != 500 or len(PRIMARY_MEANINGS) != 500:
+if len(CANONICAL_SYMBOLS) != 501 or len(PRIMARY_MEANINGS) != 501:
     raise RuntimeError("EL instruction authority invariant violated")
 
 _MEANING_BY_SYMBOL = dict(zip(CANONICAL_SYMBOLS, PRIMARY_MEANINGS, strict=True))
@@ -77,7 +77,7 @@ class InstructorEngine:
 
     def process(self, text: str) -> str:
         if text == "🧑‍🏫":
-            return "✅🧑‍🏫500"
+            return "✅🧑‍🏫501"
         if text.startswith("🧑‍🏫"):
             symbol = text[len("🧑‍🏫"):]
             record = self.lookup(symbol)
@@ -89,4 +89,4 @@ class InstructorEngine:
         return "🟡🧑‍🏫❓"
 
     def render_el_status(self) -> str:
-        return "✅🧑‍🏫500"
+        return "✅🧑‍🏫501"
