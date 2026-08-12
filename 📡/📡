@@ -1,24 +1,20 @@
-"""Engine 10: deterministic EL event/signal telemetry.
-
-Developer internals may use ordinary programming language. Every rendered event
-is Emoji Language safe: no alphabetic letters are emitted to EL-facing output.
-"""
+"""Engine 10: deterministic EL event/signal telemetry using Python standard library only."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
+import unicodedata
 
-import regex
-
-
-_LETTER_RE = regex.compile(r"\p{L}")
 _ALLOWED_STATUS = frozenset({"⚪", "🔵", "🟢", "🟡", "🔴", "🟣", "✅", "❌", "🚧", "⚠️", "🛑", "⛔", "📴"})
+
+
+def _contains_letter(value: str) -> bool:
+    return any(unicodedata.category(char).startswith("L") for char in value)
 
 
 def _require_el_safe(value: str, label: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{label} must be a string")
-    if _LETTER_RE.search(value):
+    if _contains_letter(value):
         raise ValueError(f"{label} must not contain alphabetic letters")
     return value
 
@@ -31,13 +27,10 @@ class Event:
     payload: tuple[str, ...] = ()
 
     def render_el(self) -> str:
-        body = "".join(self.payload)
-        return f"{self.sequence}:{self.marker}{self.status}{body}"
+        return f"{self.sequence}:{self.marker}{self.status}{''.join(self.payload)}"
 
 
 class EventEngine:
-    """Append-only in-memory event stream for deterministic EL workflow telemetry."""
-
     def __init__(self) -> None:
         self._events: list[Event] = []
 
@@ -55,12 +48,7 @@ class EventEngine:
         if status not in _ALLOWED_STATUS:
             raise ValueError("unsupported event status")
         safe_payload = tuple(_require_el_safe(item, "payload") for item in payload)
-        event = Event(
-            sequence=len(self._events) + 1,
-            marker=marker,
-            status=status,
-            payload=safe_payload,
-        )
+        event = Event(len(self._events) + 1, marker, status, safe_payload)
         self._events.append(event)
         return event
 
