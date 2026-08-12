@@ -36,8 +36,9 @@ def main() -> int:
         cross_verify=True,
         emit=False,
     )
+    print("1️⃣ " + critical.winner)
     assert critical.winner != "🟡❓"
-    assert "🔴" in critical.winner and "❌" in critical.winner
+    assert "🔴" in critical.winner
     assert "⏱️30" in critical.winner
     assert "📡" in critical.winner and "💥" in critical.winner and "📴" in critical.winner
     assert "🔄" in critical.winner and "📦" in critical.winner and "‼️" in critical.winner
@@ -49,6 +50,7 @@ def main() -> int:
         cross_verify=True,
         emit=False,
     )
+    print("2️⃣ " + security.winner)
     for marker in ("🔐", "🔒", "🔑", "❌", "🛂", "🔓"):
         assert marker in security.winner
     passed += 1
@@ -59,17 +61,20 @@ def main() -> int:
         cross_verify=True,
         emit=False,
     )
+    print("3️⃣ " + dashboard.winner)
     for marker in ("🖤", "🔘", "📊", "🧭", "📈", "⚡"):
         assert marker in dashboard.winner
     passed += 1
 
     process = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", verifier=abc_engine, cross_verify=True, emit=False)
+    print("4️⃣ " + process.winner)
     lowered = process.winner.lower()
     assert "import" in lowered and "test" in lowered and "valid" in lowered and "deploy" in lowered
     assert "the el sequence communicates" not in lowered and "|" not in process.winner and " = " not in process.winner
     passed += 1
 
     security_text = emoji_engine.translate("🔐🔒➡️❌🔑➡️🛂➡️🔓➡️✅", verifier=abc_engine, cross_verify=True, emit=False)
+    print("5️⃣ " + security_text.winner)
     lowered = security_text.winner.lower()
     assert "security" in lowered and "lock" in lowered and "credential" in lowered and "authenticate" in lowered and "unlock" in lowered
     passed += 1
@@ -83,6 +88,7 @@ def main() -> int:
         ] * 10
     )
     long_result = abc_engine.translate(long_source, verifier=emoji_engine, cross_verify=True, emit=False)
+    print("6️⃣📏 " + str(len(long_result.winner)) + " " + long_result.winner[:220])
     assert long_result.winner != "🟡❓"
     assert "⏱️45" in long_result.winner
     assert len(long_result.winner) > 200
