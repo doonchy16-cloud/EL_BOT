@@ -1,0 +1,119 @@
+"""Engine 12: deterministic EL recovery boundary.
+
+Developer internals may use ordinary programming language. User-facing recovery
+output is always Emoji Language only and never leaks exception text.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+from typing import Callable
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+
+CoreEngine = _core.CoreEngine
+ValidationStatus = _core.ValidationStatus
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryResult:
+    operation: str
+    output: str
+    status: object
+    incident: int
+
+    @property
+    def recovered(self) -> bool:
+        return self.status is ValidationStatus.FAIL
+
+    @property
+    def safe(self) -> bool:
+        return self.status is ValidationStatus.PASS
+
+    def render_el_status(self) -> str:
+        if self.safe:
+            return "✅🧯"
+        return "❌🧯"
+
+    def safe_output(self) -> str:
+        return self.output if self.safe else "❌🧯"
+
+
+class RecoveryEngine:
+    """Contain runtime failures and prevent exception text from reaching EL users."""
+
+    def __init__(self) -> None:
+        self._incidents = 0
+        self._last: RecoveryResult | None = None
+
+    @property
+    def incidents(self) -> int:
+        return self._incidents
+
+    @property
+    def last(self) -> RecoveryResult | None:
+        return self._last
+
+    def protect(self, operation: str, action: Callable[[], str]) -> str:
+        if not isinstance(operation, str):
+            raise TypeError("operation must be a string")
+        if not callable(action):
+            raise TypeError("action must be callable")
+
+        try:
+            output = action()
+            if not isinstance(output, str):
+                raise TypeError("protected action must return a string")
+            surface = CoreEngine().parse(output, el_mode=True)
+            if surface.status is not ValidationStatus.PASS:
+                self._incidents += 1
+                self._last = RecoveryResult(
+                    operation=operation,
+                    output="❌🧯🔤",
+                    status=ValidationStatus.FAIL,
+                    incident=self._incidents,
+                )
+                return self._last.output
+
+            self._last = RecoveryResult(
+                operation=operation,
+                output=output,
+                status=ValidationStatus.PASS,
+                incident=self._incidents,
+            )
+            return output
+        except Exception:
+            self._incidents += 1
+            self._last = RecoveryResult(
+                operation=operation,
+                output="❌🧯",
+                status=ValidationStatus.FAIL,
+                incident=self._incidents,
+            )
+            return self._last.output
+
+    def render_el_status(self) -> str:
+        if self._last is None:
+            return "⚪🧯0"
+        if self._last.safe:
+            return "✅🧯" + str(self._incidents)
+        return "❌🧯" + str(self._incidents)
