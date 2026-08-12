@@ -1,0 +1,65 @@
+"""Engine 9: deterministic EL workflow orchestration.
+
+Developer internals may use ordinary programming language. User-facing output
+must remain Emoji Language only while EL mode is active.
+"""
+
+from __future__ import annotations
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_session = _load("_el_session", _ROOT / "🧵" / "🧵")
+_persist = _load("_el_persist", _ROOT / "💾" / "💾")
+
+SessionEngine = _session.SessionEngine
+PersistenceEngine = _persist.PersistenceEngine
+
+
+class WorkflowEngine:
+    """Own the deterministic input -> session -> persistence -> output flow."""
+
+    def __init__(self, persistence: PersistenceEngine | None = None) -> None:
+        self.persistence = persistence if persistence is not None else PersistenceEngine()
+        self.session = self.persistence.load()
+
+    def process(self, text: str) -> str:
+        if not isinstance(text, str):
+            raise TypeError("text must be a string")
+
+        if text == "🧹":
+            self.session.clear()
+            self.persistence.clear()
+            return "✅🧹"
+
+        if text == "💾":
+            count = self.persistence.save(self.session)
+            return f"✅💾{count}"
+
+        if text == "📥":
+            self.session = self.persistence.load()
+            return f"✅📥{len(self.session.turns)}"
+
+        turn = self.session.ingest(text)
+        self.persistence.save(self.session)
+        return turn.safe_output() + "\n" + self.session.render_el_status()
+
+    def render_el_status(self) -> str:
+        return "✅🔁 " + self.session.render_el_status() + " " + self.persistence.render_el_status()
