@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🤖😀</title>
+<style>
+:root{color-scheme:dark;font-family:Segoe UI,Arial,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 15% 10%,#12203a 0,#080b12 36%,#05070c 100%);color:#f6f8ff;display:flex;align-items:stretch;justify-content:center}
+main{width:min(1100px,100%);padding:28px;display:grid;grid-template-rows:auto 1fr auto;gap:18px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0d1320cc;border:1px solid #26334f;border-radius:20px;padding:18px 20px;box-shadow:0 12px 40px #0008}
+.brand{font-size:30px;letter-spacing:8px}.lights{display:flex;gap:8px}.dot{width:12px;height:12px;border-radius:50%;background:#38435c}.dot.on{background:#61e294;box-shadow:0 0 14px #61e294}
+section{display:grid;grid-template-columns:1fr 1fr;gap:18px;min-height:0}
+.panel{background:#0d1320e8;border:1px solid #26334f;border-radius:20px;padding:16px;display:grid;grid-template-rows:auto 1fr;gap:12px;box-shadow:0 12px 40px #0008;min-height:420px}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+button{border:1px solid #34486d;background:#16233a;color:#fff;border-radius:14px;padding:11px 17px;font-size:22px;cursor:pointer;transition:.16s transform,.16s background,.16s box-shadow}
+button:hover{transform:translateY(-1px);background:#1d3154;box-shadow:0 0 22px #3a6aa044}
+button:active{transform:translateY(1px)}
+textarea,pre{width:100%;height:100%;min-height:330px;margin:0;border:1px solid #283653;background:#070b13;color:#f7f9ff;border-radius:15px;padding:16px;font:22px/1.55 "Segoe UI Emoji","Noto Color Emoji",sans-serif;outline:none;resize:none;overflow:auto;white-space:pre-wrap;word-break:break-word}
+textarea:focus{border-color:#5f80bd;box-shadow:0 0 0 3px #5f80bd22}
+footer{background:#0d1320cc;border:1px solid #26334f;border-radius:18px;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;font-size:20px;box-shadow:0 12px 40px #0008}
+@media(max-width:820px){section{grid-template-columns:1fr}.panel{min-height:320px}textarea,pre{min-height:240px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand">🤖 😀 ⚡ 🖥️</div>
+  <div class="lights"><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+</header>
+<section>
+  <div class="panel">
+    <div class="toolbar">
+      <button id="run">▶️</button>
+      <button id="clear">🧹</button>
+      <button id="diag">🧪</button>
+      <button id="ollama">🦙🔍</button>
+    </div>
+    <textarea id="input" spellcheck="false">🔥➡️🚀</textarea>
+  </div>
+  <div class="panel">
+    <div class="toolbar"><span>📤 🤖</span></div>
+    <pre id="output">⚪</pre>
+  </div>
+</section>
+<footer><span id="state">⚪</span><span>🔒📚501</span></footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const input = $('input');
+const output = $('output');
+const state = $('state');
+const lights = [...document.querySelectorAll('.dot')];
+
+function status(symbol){
+  state.textContent = symbol;
+  lights.forEach((node,index)=>node.classList.toggle('on', index === (symbol === '✅' ? 2 : symbol === '🔵' ? 1 : 0)));
+}
+
+async function run(source = input.value){
+  if (!window['😀'] || !window['😀']['▶️']) {
+    output.textContent = '❌🔌';
+    status('❌');
+    return;
+  }
+  status('🔵');
+  output.textContent = '⏳';
+  try {
+    const result = await window['😀']['▶️'](source);
+    output.textContent = String(result || '⚪');
+    status(String(result).startsWith('❌') ? '❌' : String(result).startsWith('🟡') ? '🟡' : '✅');
+  } catch (_) {
+    output.textContent = '❌🧯';
+    status('❌');
+  }
+}
+
+$('run').addEventListener('click',()=>run());
+$('clear').addEventListener('click',()=>{input.value='';output.textContent='⚪';status('⚪');input.focus();});
+$('diag').addEventListener('click',()=>run('🧪'));
+$('ollama').addEventListener('click',()=>run('🦙🔍'));
+input.addEventListener('keydown',(event)=>{if(event.ctrlKey && event.key==='Enter'){event.preventDefault();run();}});
+input.focus();
+</script>
+</body>
+</html>
