@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real CLI launch smoke test plus Phase 1 architecture gate."""
+"""Real CLI launch smoke test plus architecture and Phase 2 foundation gates."""
 
 from pathlib import Path
 import subprocess
@@ -22,17 +22,20 @@ if source not in result.stdout:
 if any(char.isalpha() for char in result.stdout):
     raise SystemExit(1)
 
-architecture = ROOT / "architecture" / "verify_phase1_architecture.py"
-architecture_result = subprocess.run(
-    [sys.executable, str(architecture)],
-    capture_output=True,
-    text=True,
-    encoding="utf-8",
-)
-print(architecture_result.stdout, end="")
-if architecture_result.stderr:
-    print(architecture_result.stderr, file=sys.stderr, end="")
-if architecture_result.returncode != 0:
-    raise SystemExit(1)
+for verifier in (
+    ROOT / "architecture" / "verify_phase1_architecture.py",
+    ROOT / "architecture" / "verify_phase2_knowledge_foundation.py",
+):
+    gate = subprocess.run(
+        [sys.executable, str(verifier)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    print(gate.stdout, end="")
+    if gate.stderr:
+        print(gate.stderr, file=sys.stderr, end="")
+    if gate.returncode != 0:
+        raise SystemExit(1)
 
 raise SystemExit(0)
