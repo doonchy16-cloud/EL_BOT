@@ -32,6 +32,7 @@ STAGES = (
 )
 _REVERSE_COMPOUNDS = {meaning.lower(): source for source, meaning in _compounds.COMPOUND_MEANINGS.items()}
 _RELATION_MARKERS = {"➡️","⬅️","↔️","➕","🔀","🚦","🚦➡️","🚦⬅️","🚦❌"}
+_HARD_RELATION_KINDS = {"only_after","only_before","only_if","unless","condition","negation","cause","before","after","bidirectional"}
 
 
 class ABCToEmojiEngine:
@@ -48,9 +49,15 @@ class ABCToEmojiEngine:
     @staticmethod
     def _ordered_clause_items(clause) -> list[tuple[int, str, str]]:
         rows: list[tuple[int, str, str]] = []
-        for concept in clause.concepts: rows.append((concept.start, "concept", concept.symbol))
-        for number in clause.numbers: rows.append((number.start, "number", number.el))
-        for relation in clause.relations: rows.append((relation.position, "relation", relation.marker))
+        temporal_bindings = tuple(number for number in clause.numbers if number.unit in _lang.TEMPORAL_UNIT_SYMBOLS)
+        for concept in clause.concepts:
+            if concept.symbol == "⏱️" and any(0 <= binding.start - concept.end <= 48 for binding in temporal_bindings):
+                continue
+            rows.append((concept.start, "concept", concept.symbol))
+        for number in clause.numbers:
+            rows.append((number.start, "number", number.el))
+        for relation in clause.relations:
+            rows.append((relation.position, "relation", relation.marker))
         rows.sort(key=lambda row: (row[0], {"relation": 0, "concept": 1, "number": 2}[row[1]]))
         return rows
 
@@ -60,13 +67,18 @@ class ABCToEmojiEngine:
         tokens: list[str] = []
         seen: set[str] = set()
         for _, kind, value in rows:
-            if kind == "relation" and not relationship_rich: continue
-            if compact and kind == "concept" and value in seen and value not in {"❌","✅","⚠️","🔴","🔒","🔓"}: continue
-            if kind == "concept": seen.add(value)
-            if tokens and tokens[-1] == value and value not in {"❌","✅"}: continue
+            if kind == "relation" and not relationship_rich:
+                continue
+            if compact and kind == "concept" and value in seen and value not in {"❌","✅","⚠️","🔴","🔒","🔓"}:
+                continue
+            if kind == "concept":
+                seen.add(value)
+            if tokens and tokens[-1] == value and value not in {"❌","✅"}:
+                continue
             tokens.append(value)
 
-        if not tokens: return "🟡❓"
+        if not tokens:
+            return "🟡❓"
         content_count = _lang.content_word_count(clause.source)
         density = len(clause.unknown_words) / max(1, content_count)
         if clause.unknown_words and not clause.concepts:
@@ -77,11 +89,15 @@ class ABCToEmojiEngine:
         rendered: list[str] = []
         for value in _lang.dedupe_adjacent(tokens):
             if value in _RELATION_MARKERS:
-                if not rendered: rendered.append(value)
-                elif rendered[-1] in _RELATION_MARKERS: rendered[-1] = value
-                else: rendered.append(value)
+                if not rendered:
+                    rendered.append(value)
+                elif rendered[-1] in _RELATION_MARKERS:
+                    rendered[-1] = value
+                else:
+                    rendered.append(value)
                 continue
-            if rendered and rendered[-1] not in _RELATION_MARKERS: rendered.append("➡️")
+            if rendered and rendered[-1] not in _RELATION_MARKERS:
+                rendered.append("➡️")
             rendered.append(value)
         return "".join(rendered)
 
@@ -96,7 +112,8 @@ class ABCToEmojiEngine:
     @staticmethod
     def _number_integrity(document, value: str) -> float:
         bindings = tuple(binding for clause in document.clauses for binding in clause.numbers)
-        if not bindings: return 1.0
+        if not bindings:
+            return 1.0
         return sum(1 for binding in bindings if binding.el in value) / len(bindings)
 
     @staticmethod
@@ -104,15 +121,24 @@ class ABCToEmojiEngine:
         expected: list[str] = []
         for clause in document.clauses:
             for relation in clause.relations:
-                if relation.kind == "and": continue
+                if relation.kind == "and":
+                    continue
                 expected.extend(_lang.canonical_symbols(relation.marker))
-        if not expected: return 1.0
-        actual = Counter(_lang.canonical_symbols(value)); wanted = Counter(expected)
-        matched = sum(min(actual[s], count) for s, count in wanted.items())
+        if not expected:
+            return 1.0
+        actual = Counter(_lang.canonical_symbols(value))
+        wanted = Counter(expected)
+        matched = sum(min(actual[symbol], count) for symbol, count in wanted.items())
         return matched / max(1, sum(wanted.values()))
 
+    @staticmethod
+    def _has_hard_relations(document) -> bool:
+        return any(relation.kind in _HARD_RELATION_KINDS for clause in document.clauses for relation in clause.relations)
+
     def translate(self, source: str, *, verifier=None, preference_counts: dict[str, int] | None = None, cross_verify: bool = True, emit: bool = True):
-        stages: list[str] = []; metrics: dict[str, float | int | str] = {}; preference_counts = preference_counts or {}
+        stages: list[str] = []
+        metrics: dict[str, float | int | str] = {}
+        preference_counts = preference_counts or {}
         stages.append(self._emit(1, emit))
         if not isinstance(source, str) or not source.strip():
             candidate = _lang.Candidate("🟡❓", 0.0, ("empty-input",), 0.0, 0.0)
@@ -127,7 +153,7 @@ class ABCToEmojiEngine:
         unknown_count = sum(len(c.unknown_words) for c in document.clauses); unknown_density = _lang.unknown_density(document); unresolved = _lang.unresolved_clause_count(document)
         metrics["unknown_count"] = unknown_count; metrics["unknown_density"] = round(unknown_density, 4); metrics["unresolved_clauses"] = unresolved
         stages.append(self._emit(8, emit)); metrics["actions"] = sum(1 for s in expected_signature if _lang.is_action(s)); metrics["statuses"] = sum(1 for s in expected_signature if _lang.is_status(s)); metrics["entities"] = sum(1 for s in expected_signature if s in _lang.ENTITY_PHRASES); metrics["roles"] = sum(len(c.roles) for c in document.clauses)
-        stages.append(self._emit(9, emit)); relations = tuple(r for c in document.clauses for r in c.relations); metrics["relations"] = len(relations)
+        stages.append(self._emit(9, emit)); relations = tuple(r for c in document.clauses for r in c.relations); metrics["relations"] = len(relations); metrics["hard_relations"] = sum(1 for r in relations if r.kind in _HARD_RELATION_KINDS)
         stages.append(self._emit(10, emit)); metrics["negations"] = sum(1 for r in relations if r.kind in {"negation","unless"})
         stages.append(self._emit(11, emit)); metrics["severity"] = sum(1 for s in expected_signature if s in {"🔴","❌","⚠️","🟡","🛑","🚧"})
         stages.append(self._emit(12, emit)); number_bindings = tuple(b for c in document.clauses for b in c.numbers); metrics["numbers"] = len(number_bindings)
@@ -137,9 +163,19 @@ class ABCToEmojiEngine:
         stages.append(self._emit(16, emit)); exact_compound = _REVERSE_COMPOUNDS.get(normalized.lower()); metrics["compound"] = 1 if exact_compound else 0
         stages.append(self._emit(17, emit)); metrics["branches"] = 3 + (1 if exact_compound else 0)
         stages.append(self._emit(18, emit)); raw_values: list[tuple[str,str]] = []
-        if exact_compound: raw_values.append((exact_compound,"authority-compound"))
+        if exact_compound:
+            raw_values.append((exact_compound,"authority-compound"))
         raw_values.extend(((self._document_candidate(document,False,True),"faithful"),(self._document_candidate(document,True,True),"compact"),(self._document_candidate(document,False,False),"relationship-light")))
-        stages.append(self._emit(19, emit)); valid_rows = [(v,r) for v,r in raw_values if _lang.valid_el(v)] or [("🟡❓","hold")]
+
+        stages.append(self._emit(19, emit))
+        valid_rows = [(value, reason) for value, reason in raw_values if _lang.valid_el(value)]
+        if self._has_hard_relations(document):
+            constrained = [(value, reason) for value, reason in valid_rows if self._relation_integrity(document, value) >= 0.99]
+            if constrained:
+                valid_rows = constrained
+        if not valid_rows:
+            valid_rows = [("🟡❓","hold")]
+
         stages.append(self._emit(20, emit)); candidates: list[_lang.Candidate] = []
         for order,(value,reason) in enumerate(valid_rows):
             sig = _lang.concept_signature_from_el(value); score,coverage,order_score = _lang.score_candidate(expected_signature,sig,base=max(0.0,14.0-order))
@@ -147,12 +183,10 @@ class ABCToEmojiEngine:
         stages.append(self._emit(21, emit)); audited=[]
         for candidate in candidates:
             relation_score=self._relation_integrity(document,candidate.value)
-            audited.append(replace(candidate,score=candidate.score+20.0*relation_score,reasons=candidate.reasons+(f"relationship:{relation_score:.3f}",)))
+            audited.append(replace(candidate,score=candidate.score+24.0*relation_score,reasons=candidate.reasons+(f"relationship:{relation_score:.3f}",)))
         stages.append(self._emit(22, emit)); loss_scored=[]
         for candidate in audited:
-            number_score=self._number_integrity(document,candidate.value)
-            unknown_penalty=unknown_density*90.0 + unresolved*18.0
-            unknown_marks=candidate.value.count("❓")
+            number_score=self._number_integrity(document,candidate.value); unknown_penalty=unknown_density*90.0 + unresolved*18.0; unknown_marks=candidate.value.count("❓")
             score=candidate.score+24.0*number_score-unknown_penalty-min(40.0,unknown_marks*7.0)
             if candidate.value=="🟡❓" and expected_signature: score-=120.0
             loss_scored.append(replace(candidate,score=score,reasons=candidate.reasons+(f"number-binding:{number_score:.3f}",f"unknown-density:{unknown_density:.3f}")))
@@ -161,20 +195,26 @@ class ABCToEmojiEngine:
             for candidate in loss_scored:
                 try:
                     reverse=verifier.translate(candidate.value,cross_verify=False,emit=False); reverse_signature=_lang.concept_signature_from_abc(reverse.winner); similarity=_lang.multiset_similarity(expected_signature,reverse_signature)
-                except Exception: similarity=0.0
+                except Exception:
+                    similarity=0.0
                 verified.append(_lang.apply_roundtrip(candidate,similarity))
-        else: verified=[replace(item,roundtrip=1.0) for item in loss_scored]
+        else:
+            verified=[replace(item,roundtrip=1.0) for item in loss_scored]
         stages.append(self._emit(24, emit)); final_rows=[]
         for candidate in verified:
             observed=int(preference_counts.get(candidate.value,0))
-            if observed: candidate=replace(candidate,score=candidate.score+min(40.0,observed*8.0),reasons=candidate.reasons+("observed-user-choice",))
+            if observed:
+                candidate=replace(candidate,score=candidate.score+min(40.0,observed*8.0),reasons=candidate.reasons+("observed-user-choice",))
             final_rows.append(candidate)
         ranked=_lang.sort_candidates(final_rows); metrics["candidates"]=len(ranked); metrics["coverage"]=ranked[0].coverage if ranked else 0.0; metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0
-        winner_unknowns = ranked[0].value.count("❓") if ranked else 1
-        if not ranked or (expected_signature and metrics["coverage"] < .50) or unknown_density >= .45 or unresolved >= max(2,len(document.clauses)//2+1) or winner_unknowns >= max(3,len(document.clauses)//2+1): metrics["quality_status"]="fail"
+        winner_unknowns = ranked[0].value.count("❓") if ranked else 1; winner_relation = self._relation_integrity(document, ranked[0].value) if ranked else 0.0; metrics["relation_integrity"] = round(winner_relation,4)
+        if not ranked or (expected_signature and metrics["coverage"] < .50) or unknown_density >= .45 or unresolved >= max(2,len(document.clauses)//2+1) or winner_unknowns >= max(3,len(document.clauses)//2+1) or (self._has_hard_relations(document) and winner_relation < .99): metrics["quality_status"]="fail"
         elif metrics["coverage"] < .82 or metrics["roundtrip"] < .72 or unknown_density >= .12 or winner_unknowns: metrics["quality_status"]="hold"
         else: metrics["quality_status"]="pass"
         return _lang.EngineResult(2,normalized,ranked,tuple(stages),metrics)
 
-    def process(self, source: str) -> str: return self.translate(source,cross_verify=False,emit=False).winner
-    def render_el_status(self) -> str: return "✅🔤➡️😀24"
+    def process(self, source: str) -> str:
+        return self.translate(source,cross_verify=False,emit=False).winner
+
+    def render_el_status(self) -> str:
+        return "✅🔤➡️😀24"
