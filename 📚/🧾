@@ -1,0 +1,507 @@
+"""Canonical primary meanings in exact ordinal order for the 500-symbol EL authority."""
+
+PRIMARY_MEANINGS: tuple[str, ...] = tuple(
+    line for line in """priority/go/hot
+core/engine/system
+UI/terminal/computer interface
+Forgey/AI agent/bot
+intelligence/reasoning
+events/signals/server/telemetry
+diagnostics/testing/QA
+recovery/emergency handling
+connector/integration
+validation/audit record
+reliability/protection
+persistence/saved data
+launch/deployment/release
+locked/frozen/authority
+pass/verified/complete
+identity/system identity
+input/mouse/pointer
+screenshot/captured evidence
+watcher/observation
+guide/documentation
+fail/wrong/rejected
+inspect/search/investigate
+security/auth/access
+gate/finish/closeout
+instructor/knowledge/training
+investigation/audit/deep watcher
+workflow/loop/retry/sync
+Forgey orchestration
+unknown/not started/inactive
+current/active/in progress
+healthy/pass/target reached
+hold/caution/needs verification
+fail/blocked/critical
+advanced/comfortable/beyond minimum
+configuration/settings
+animation/motion
+notification/alert
+module/plugin/extension
+registry/catalog
+component/building block
+tooling/maintenance/utilities
+web/network/external service
+standard/contract/specification
+checklist/requirements
+attachment/supporting evidence
+pinned/important reference
+cleanup/maintenance
+navigation/routing/direction
+timing/performance/timeout
+metrics/improvement/trend
+schema/DNA/inheritance
+session/context thread
+best/top choice/preferred
+winner/top achievement
+premium/exceptional quality
+owner/highest authority
+target/objective
+number one/first place
+idea/insight
+build/repair toolset
+fix/adjustment
+implementation/construction
+major build/infrastructure
+developer/engineering
+human instructor/teaching
+researcher/experimentation
+judge/review authority
+guard/awareness/watch
+remote system/satellite link
+connectivity/signal strength
+link/dependency
+chain/dependency chain
+binding/tied relationship
+network/dependency graph
+gate status/traffic control
+blocker/work in progress
+warning/risk
+double-critical attention
+important attention
+question/unknown
+unexpected/needs investigation
+emergency/help required
+hard stop
+not authorized/no entry
+offline/disabled
+match/equal/same
+add/increase
+remove/decrease
+edit/modify
+note/draft
+file/document
+multi-document reference set
+project dividers/organization
+open folder/active workspace
+archive/storage cabinet
+delete/trash
+historical/old state
+new/newly added
+reuse/recycle/rebuild
+refresh/update
+upgrade/move up
+downgrade/move down
+import/intake
+export/output
+back/previous
+next/forward
+branch/alternate path
+refresh cycle
+pause
+start/run
+stop
+next phase/skip forward
+previous phase/step back
+waiting/pending
+deadline/time running out
+scheduled time/clock
+date/calendar
+plan/schedule
+calculation/compute
+analytics/dashboard
+decline/regression/downward trend
+level/threshold/slider
+progression/levels/next step
+attract/pull/magnetic dependency
+thought/concept
+voice/spoken communication
+message/conversation
+incoming message
+received/download message
+email/general message
+announcement/rally
+broadcast/public notice
+notifications muted
+error message/angry alert
+audio input/microphone
+audio output/loud
+muted/no audio
+video capture/movie
+image/visual asset
+design/art/styling
+enhancement/magic polish
+polish/special improvement
+excellent/outstanding
+dynamic effect/motion polish
+gradient/color system
+theme/appearance/presentation
+visual design/paint
+layout/geometry/angles
+measurement/size/dimensions
+architecture/framework/institution
+map/system map/geography
+tree/hierarchy
+early stage/seed
+growing/developing
+mature/established
+key/credential
+master key/owner access
+access control/ID check
+incident response
+minor repair/patch
+recovery/healing
+low resources/degraded capacity
+healthy resources/capacity
+fast/power/performance
+slow/latency
+frozen/stable/cold state
+temperature/system health
+device/computer
+mobile/phone
+print/printer
+keyboard/text input
+game/gaming
+interactive control/joystick
+VR/headset/immersive
+audio device/headphones
+cloud/cloud service
+network topology/connected computers
+partnership/agreement
+handshake agreement/deal
+teamwork/two-party collaboration
+users/group
+user/person
+owner/manager/business user
+organization/office
+local/home
+factory/generator/production
+finance/banking
+money/revenue/budget
+cost/cash/dollars
+purchase/cart
+payment/card
+package/build artifact
+deliverable/gift
+delivery/shipping
+migration/transfer baggage
+entry/exit
+departure/start transfer
+arrival/completion
+celebration/milestone
+big success/party
+major change/impact
+strength/robustness
+high-risk/explosive change
+extreme hazard/radioactive risk
+label/tag
+identifier number/hash
+ID/identifier
+numeric input/counter
+text/string input
+symbol input/encoding
+clean/sanitized
+batch/bucket
+collection/basket
+queue/outgoing mailbox
+state machine/horizontal signal
+toggle/selected option
+off/disabled/black state
+deprecated/legacy/brown state
+archived/dormant/grey
+informational/light blue
+user-facing/friendly/pink
+special/premium/purple
+dark mode/black theme
+light mode/white theme
+warning marker/orange
+information marker/blue
+minor warning/orange subitem
+minor information/blue subitem
+key point/diamond
+section/filled block
+empty/placeholder/unfilled block
+achievement/medal
+distinguished service/honor
+second-best/runner-up
+third-best/bronze
+reminder/awareness marker
+admission/access passes
+single ticket/task token
+media production/scene start
+voice performance/live mic
+music plan/composition
+music note/single cue
+music/multiple audio cues
+keyboard instrument/music input
+guitar/string audio
+drum/rhythm/beat
+violin/orchestral string
+trumpet/brass signal
+saxophone/jazz audio
+accordion/expanding control
+perfect score/100 percent
+anger/conflict/frustration
+approve/like/positive
+disapprove/negative
+okay/acceptable/precise
+victory/success
+hope/fingers crossed
+love/strong affinity
+rock/high energy
+call/contact me
+left/point left
+right/point right
+up/point up
+down/point down
+important pointer/look up
+stop/raised hand
+hold/wait
+open hand/five-way option
+separate path/live long
+hello/greeting
+applause/recognition
+celebrate/raise hands
+love/care/appreciation
+open/offer/receive
+request/offer/handoff
+thanks/prayer/please
+write/author/sign
+support/hug/together
+question/volunteer/raise hand
+okay confirmation/human approval
+no/human rejection
+unsure/no clear answer
+mistake/facepalm/obvious issue
+designer/creative role
+technician/repair role
+factory worker/production role
+astronaut/exploration role
+health professional/care role
+grower/agriculture role
+chef/food role
+student/learner
+performer/vocal role
+pilot/flight role
+family/household group
+family/general family
+mechanical arm/assistive power
+mechanical leg/mobility hardware
+work/business/briefcase
+education/graduation
+school/learning facility
+healthcare/hospital
+local store/convenience
+retail/department store
+hotel/lodging
+home with yard/residence
+housing/multi-home property
+venue/stadium/large event
+castle/stronghold/fortified system
+Japanese castle/specialized stronghold
+post office/Europe region mail
+post office/Asia region mail
+yen/JPY money
+euro/EUR money
+pound/GBP money
+coin/small unit value
+market growth/financial trend
+ATM/cash access
+screwdriver/fine adjustment
+nut and bolt/fastener/connection
+saw/cut/remove material
+heavy build tools/mining
+pick/extract/break through
+axe/cut/hard remove
+trap/capture/detection
+trackball/alternate pointer input
+minidisc/legacy removable storage
+optical disc/media storage
+DVD/disc media
+videotape/legacy video storage
+camera/photo capture
+video camera/video capture
+display/television output
+radio/broadcast receiver
+phone call/receiver
+telephone/landline
+pager/short alert device
+fax/legacy document transmission
+notepad/quick notes
+ledger/record book
+notebook/work notes
+decorated notebook/special journal
+closed book/unopened reference
+open book/current reading
+blue book/technical reference
+orange book/operations reference
+news/current update
+news archive/publication
+page/single sheet content
+card index/indexed records
+folder/file group
+bookmark/saved location
+pushpin/pin item
+location pin/exact location
+cut/remove/split
+linked attachments/joined files
+ballpoint pen/practical writing
+fountain pen/formal authoring
+crayon/rough creative draft
+microscope/close inspection
+telescope/long-range observation
+lab process/chemistry/transformation
+culture/sample/experiment plate
+x-ray/internal inspection
+stethoscope/health diagnostic
+medication/treatment
+injection/apply dose
+blood/biological signal
+crutch/temporary support
+manual mobility/accessibility
+powered mobility/accessibility
+unlocked/open access
+signed lock/protected edit
+checked box/selected requirement
+check/confirm
+multiply/cancel/wrong
+negative/rejected box
+soft alert/exclamation
+soft question/uncertainty
+alarm/incident/emergency light
+hot/thermal/heat warning
+okay/accepted
+cool/nice/positive style
+level up/improvement
+free/no cost
+no good/not accepted
+versus/comparison
+play or pause/toggle execution
+record/capture session
+eject/remove media
+fast forward/accelerate
+rewind/go back fast
+repeat once/single retry
+return/undo
+forward return/redo
+two-way/bidirectional
+vertical range/up-down
+northwest/upper-left direction
+northeast/upper-right direction
+southeast/lower-right direction
+southwest/lower-left direction
+curve up/escalate path
+curve down/deescalate path
+increase/expand/collapse up
+decrease/collapse/move down
+critical block/red panel
+caution/orange panel
+hold/yellow panel
+success/green panel
+active/blue panel
+advanced/purple panel
+legacy/brown panel
+disabled/black panel
+empty/white panel
+black button/dark option
+white button/light option
+small dark bullet/detail
+small light bullet/detail
+medium dark bullet/subsection
+medium light bullet/subsection
+Europe-Africa/global region
+Americas/global region
+Asia-Pacific/global region
+daylight/bright active state
+full night/complete night state
+new moon/hidden dark state
+night/late hours
+day/sun/bright mode
+partly clear/mostly healthy
+partly cloudy/mixed condition
+mostly cloudy/degraded visibility
+sunshower/mixed good-and-risk
+rain/wet condition
+storm/severe weather
+lightning/electrical storm
+snow/cold weather
+snowflake/freeze/cold
+snowman/winter build
+snowman/simple winter state
+wind/airflow
+speed/dash/rapid movement
+tornado/extreme instability
+fog/low visibility
+wave/water/fluid load
+droplet/small liquid amount
+splash/multiple drops
+rain protection/umbrella active
+umbrella/weather readiness
+volcano/eruption/extreme event
+snow mountain/high cold target
+mountain/major challenge
+camping/field mode
+beach/relaxed outdoor mode
+desert/dry environment
+island/isolated environment
+park/nature/protected area
+car/personal transport
+SUV/utility transport
+bus/group transport
+trolleybus/electric group transit
+racing car/high-speed mode
+police/enforcement vehicle
+ambulance/medical response
+fire engine/emergency response
+minibus/small group transport
+pickup/utility hauling
+truck/heavy hauling
+tractor/agricultural machine
+motorcycle/fast two-wheeler
+scooter/light motor transport
+bicycle/human-powered transport
+kick scooter/light local mobility
+skateboard/board mobility
+roller skate/rolling mobility
+helicopter/vertical-air mobility
+airplane/air travel
+small airplane/light aviation
+steam train/legacy rail
+train/rail transport
+metro/urban rail
+tram/street rail
+station/transit hub
+ship/large marine transport
+sailboat/wind-powered marine
+motor boat/small powerboat
+speedboat/fast marine
+passenger ship/large passenger marine
+fuel/energy supply
+bus stop/transit pickup point
+highway/road route
+rail track/rail route
+game entity/alien/modded creature
+randomness/dice/chance
+strategy/chess move
+wildcard/joker/exception
+gambling/random outcome
+email/digital mail
+postbox/send mail
+mailbox empty/no new mail
+mailbox flagged/outgoing or action mail
+open mailbox empty/cleared inbox""".splitlines()
+)
+
+if len(PRIMARY_MEANINGS) != 500:
+    raise RuntimeError("EL primary-meaning invariant violated")
