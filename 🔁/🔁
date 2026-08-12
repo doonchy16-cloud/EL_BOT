@@ -30,11 +30,13 @@ _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
 _config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
+_connector = _load("_el_connector", _ROOT / "🔌" / "🔌")
 
 SessionEngine = _session.SessionEngine
 PersistenceEngine = _persist.PersistenceEngine
 EventEngine = _event.EventEngine
 ConfigurationEngine = _config.ConfigurationEngine
+ConnectorEngine = _connector.ConnectorEngine
 
 
 class WorkflowEngine:
@@ -44,9 +46,11 @@ class WorkflowEngine:
         self,
         persistence: PersistenceEngine | None = None,
         configuration: ConfigurationEngine | None = None,
+        connectors: ConnectorEngine | None = None,
     ) -> None:
         self.persistence = persistence if persistence is not None else PersistenceEngine()
         self.configuration = configuration if configuration is not None else ConfigurationEngine()
+        self.connectors = connectors if connectors is not None else ConnectorEngine()
         self.session = self.persistence.load()
         self.events = EventEngine()
         self._emit("🔁", "🔵")
@@ -70,6 +74,9 @@ class WorkflowEngine:
 
         if text.startswith("🎛️"):
             return self.configuration.process(text)
+
+        if text.startswith("🔌"):
+            return self.connectors.process(text)
 
         if text == "📡":
             return self.events.render_el()
@@ -108,6 +115,8 @@ class WorkflowEngine:
         return (
             "✅🔁 "
             + self.configuration.render_el_status()
+            + " "
+            + self.connectors.render_el_status()
             + " "
             + self.session.render_el_status()
             + " "
