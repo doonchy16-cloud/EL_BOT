@@ -1,0 +1,138 @@
+"""N02: complete candidate search over an explicitly declared finite frontier."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_frontier = _load("_el_phase3_frontier_search", _ROOT / "♾️" / "♾️")
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateEvaluation:
+    index: int
+    candidate: str
+    score: float
+    valid: bool
+    reasons: tuple[str, ...] = ()
+    labels: tuple[str, ...] = ()
+    canonical: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SearchResult:
+    frontier_id: str
+    frontier_signature: str
+    evaluations: tuple[CandidateEvaluation, ...]
+    visited_before: int
+    visited_after: int
+    total_candidates: int
+    exhausted: bool
+    ledger_digest: str
+
+    @property
+    def evaluated_count(self) -> int:
+        return len(self.evaluations)
+
+    @property
+    def survivors(self) -> tuple[CandidateEvaluation, ...]:
+        return tuple(item for item in self.evaluations if item.valid)
+
+    def render_el(self) -> str:
+        return ("✅" if self.exhausted else "🟡") + "🔍" + str(self.visited_after) + "/" + str(self.total_candidates)
+
+
+class CompleteCandidateSearchEngine:
+    """Actually evaluate every coordinate visited; never silently prunes."""
+
+    def __init__(self) -> None:
+        self.frontiers = _frontier.SearchFrontierExhaustionEngine()
+
+    @staticmethod
+    def _coerce(index: int, candidate: str, value) -> CandidateEvaluation:
+        if isinstance(value, CandidateEvaluation):
+            if value.index != index or value.candidate != candidate:
+                return CandidateEvaluation(index, candidate, value.score, value.valid, value.reasons + ("coordinate-normalized",), value.labels, value.canonical)
+            return value
+        if isinstance(value, dict):
+            return CandidateEvaluation(
+                index,
+                candidate,
+                float(value.get("score", 0.0)),
+                bool(value.get("valid", False)),
+                tuple(str(item) for item in value.get("reasons", ())),
+                tuple(str(item) for item in value.get("labels", ())),
+                bool(value.get("canonical", False)),
+            )
+        if isinstance(value, tuple):
+            score = float(value[0]) if len(value) > 0 else 0.0
+            valid = bool(value[1]) if len(value) > 1 else False
+            reasons = tuple(str(item) for item in value[2]) if len(value) > 2 else ()
+            return CandidateEvaluation(index, candidate, score, valid, reasons)
+        raise TypeError("evaluator must return CandidateEvaluation, dict, or tuple")
+
+    def search(self, frontier, evaluator, *, limit: int | None = None):
+        start = frontier.cursor
+        if limit is None:
+            stop = frontier.total_candidates
+        else:
+            if int(limit) < 0:
+                raise ValueError("limit must be non-negative")
+            stop = min(frontier.total_candidates, start + int(limit))
+        rows: list[CandidateEvaluation] = []
+        ledger = sha256()
+        for index, candidate in self.frontiers.iter_candidates(frontier, start=start, stop=stop):
+            try:
+                evaluation = self._coerce(index, candidate, evaluator(candidate, index))
+            except Exception as exc:
+                evaluation = CandidateEvaluation(index, candidate, 0.0, False, ("evaluator-error:" + type(exc).__name__,))
+            rows.append(evaluation)
+            ledger.update(json.dumps(
+                {
+                    "i": evaluation.index,
+                    "candidate": evaluation.candidate,
+                    "score": round(evaluation.score, 12),
+                    "valid": evaluation.valid,
+                    "reasons": evaluation.reasons,
+                    "labels": evaluation.labels,
+                    "canonical": evaluation.canonical,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"))
+        expected = stop - start
+        if len(rows) != expected:
+            raise RuntimeError("search skipped a declared frontier coordinate")
+        updated = self.frontiers.advance(frontier, expected)
+        result = SearchResult(frontier.frontier_id, frontier.signature, tuple(rows), start, updated.cursor, frontier.total_candidates, updated.exhausted, ledger.hexdigest())
+        return result, updated
+
+    def search_to_exhaustion(self, frontier, evaluator):
+        result, updated = self.search(frontier, evaluator, limit=None)
+        proof = self.frontiers.proof(updated)
+        if not proof.exhausted or result.visited_after != result.total_candidates:
+            raise RuntimeError("frontier was not fully exhausted")
+        return result, updated, proof
+
+    def render_el_status(self) -> str:
+        return "✅🔍"
