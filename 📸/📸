@@ -12,6 +12,7 @@ from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import sys
+import urllib.error
 
 
 def _load(name: str, path: Path):
@@ -66,6 +67,17 @@ def _valid_el(text: str) -> bool:
     return vocab.resolve(parsed).status is ValidationStatus.PASS
 
 
+def _debug_exception(exc: Exception) -> None:
+    print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+    if isinstance(exc, urllib.error.HTTPError):
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        if body:
+            print(body[:4000], file=sys.stderr)
+
+
 def _mode_prompt(mode: int) -> str:
     if mode == 1:
         return """Analyze the supplied screenshot/image visually and describe the important visible state in concise English.
@@ -102,7 +114,8 @@ def analyze(mode: int, image_value: str) -> str:
     prompt = _mode_prompt(mode)
     try:
         content = connector.chat_internal(prompt, images=(raw,)).strip()
-    except Exception:
+    except Exception as exc:
+        _debug_exception(exc)
         return "🟡📸🦙❓"
 
     if not content:
@@ -121,7 +134,8 @@ Previous invalid answer:
 """
     try:
         corrected = connector.chat_internal(retry, images=(raw,)).strip()
-    except Exception:
+    except Exception as exc:
+        _debug_exception(exc)
         corrected = ""
     if _valid_el(corrected):
         return corrected
