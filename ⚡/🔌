@@ -4,5 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('😀', Object.freeze({
   '▶️': (source) => ipcRenderer.invoke('😀➡️🤖', source),
-  '📸': (imageDataUrl) => ipcRenderer.invoke('📸➡️🦙', imageDataUrl),
+  '↔️': (mode, source) => ipcRenderer.invoke('↔️', mode, source),
+  '📸': (mode, imageDataUrl) => ipcRenderer.invoke('📸➡️🦙', mode, imageDataUrl),
 }));
