@@ -38,12 +38,15 @@ assert instructor.InstructorEngine().translate_compound_to_text(explicit_compoun
 assert len(vocab.CANONICAL_SYMBOLS)==501 and len(set(vocab.CANONICAL_SYMBOLS))==501
 
 electron_main=(ROOT/"⚡"/"⚡").read_text(encoding="utf-8")
-for marker in ("app.setAppUserModelId(APP_ID)","ensureAppIconPath","event.sender.send('⏳'","materializeHtmlView","verifyRenderedView","loadApplicationView","el-bot-${digest}.html","show: false","if (!win.isDestroyed()) win.show()"):assert marker in electron_main
+for marker in ("app.setAppUserModelId(APP_ID)","ensureAppIconPath","event.sender.send('⏳'","materializeHtmlView","verifyRenderedView","loadApplicationView","el-bot-${digest}.html","show: false","if (!win.isDestroyed()) win.show()","stagePayload","warn_after_ms","170000"):
+    assert marker in electron_main,marker
 assert "win.loadFile(VIEW)" not in electron_main and "win.loadFile(VIEW_SOURCE)" not in electron_main
+
 ui_source=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8")
-for marker in ("controlBar","hourglassFlip","rotate(180deg)","sandTop","sandBottom","sandStream","sandGrain","g5","@media(max-width:1100px)","id=\"quality\"","updateStage(payload)","unknown_density","quality_status","relation_integrity","critical_integrity"):
+for marker in ("controlBar","hourglassFlip","rotate(180deg)","sandTop","sandBottom","sandStream","sandGrain","flowDown","flowUp","sandGrainDown","sandGrainUp","g5","u5","stageStarted","processingStarted","warnAfterMs","Σ ","maxSide=png?1800:1600","imageSmoothingQuality='high'","@media(max-width:1100px)","id=\"quality\"","updateStage(payload)","unknown_density","quality_status","relation_integrity","critical_integrity"):
     assert marker in ui_source,marker
 assert "rotate(360deg)" not in ui_source
+assert ".processing{position:absolute;inset:0;display:none" in ui_source and "background:#070b13;padding" in ui_source
 preload=(ROOT/"⚡"/"🔌").read_text(encoding="utf-8");assert "ipcRenderer.on('⏳'" in preload
 
 identity_config=loads((ROOT/"🪪"/"🎛️").read_text(encoding="utf-8"));assert identity_config["name"]=="EL Bot" and identity_config["app_id"]=="com.thespark.elbot" and identity_config["icon_asset"]=="🎨"
@@ -54,14 +57,14 @@ identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.
 normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","😀➡️🔤/😀➡️🔤","🧠/🧬"))
 for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
-for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","chat_json_internal","sensor_calls","One vision-model call only"):
+for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_json_internal","sensor_calls","structured-vision-retry","controlled retry"):
     assert marker in vision_source,marker
-ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8");assert "chat_json_internal" in ollama_source and '"format":"json"' in ollama_source
+ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8")
+for marker in ("chat_json_internal","schema if schema is not None else","num_ctx\":8192","num_predict"):
+    assert marker in ollama_source,marker
 
 abc_engine=abc.ABCToEmojiEngine();emoji_engine=emoji.EmojiToABCEngine();assert len(abc_engine.stage_names)==24 and len(set(abc_engine.stage_names))==24;assert len(emoji_engine.stage_names)==24 and len(set(emoji_engine.stage_names))==24
 
-# Tiny everyday inputs are mandatory first-class vocabulary. Some everyday terms
-# legitimately have more than one canonical symbol; hi is intentionally exact.
 conversation={"hi":"👋","hello":"👋","hey":"👋","thanks":"🙏","thank you":"🙏","yes":"🙆","no":"🙅","okay":"🆗","help":"🆘","wait":"🤚"}
 for text,symbol in conversation.items():
     result=abc_engine.translate(text,verifier=emoji_engine,cross_verify=True,emit=False)
@@ -70,7 +73,6 @@ for text,symbol in conversation.items():
     reverse=emoji_engine.translate(symbol,verifier=abc_engine,cross_verify=True,emit=False)
     assert reverse.winner and "unable to" not in reverse.winner.lower(),(symbol,reverse.winner)
 
-# Relationship preservation, including only-after and condition gates.
 conditional=abc_engine.translate("Deploy only after every required check passes.",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "🚀" in conditional.winner and "🚦➡️" in conditional.winner and "✅" in conditional.winner and conditional.metrics.get("relation_integrity",0)>=.9
 security_condition=abc_engine.translate("Keep the security system locked if authentication fails. Unlock access only after verification succeeds.",verifier=emoji_engine,cross_verify=True,emit=False)
@@ -95,15 +97,21 @@ long_result=abc_engine.translate(long_source,verifier=emoji_engine,cross_verify=
 assert long_result.winner!="🟡❓" and "⏱️45" in long_result.winner and len(long_result.winner)>200
 assert long_result.metrics.get("unknown_density",1.0)<.40
 assert long_result.winner.count("❓")<24
-
 unknown=abc_engine.translate("flibbertigibbet",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "❓" in unknown.winner and unknown.metrics.get("quality_status")=="fail"
 
-# Vision parser/renderer tests do not invoke Ollama.
-parsed=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
-assert parsed is not None and parsed["visible_text"]==("Error",) and parsed["controls"]==("Retry",)
+# Screenshot structure parsing is deterministic and must recover useful complete
+# facts even when a model response is truncated before its final JSON brace.
+parsed,strategy=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
+assert strategy=="json" and parsed is not None and parsed["visible_text"]==("Error",) and parsed["controls"]==("Retry",)
+truncated='{"visible_text":["Error","Retry"],"objects":["application window"],"controls":["Retry button"],"states":["error"],"relationships":['
+recovered,recovery_strategy=vision._parse_observation(truncated)
+assert recovery_strategy=="partial-json-repair" and recovered is not None
+assert recovered["visible_text"]==("Error","Retry") and recovered["objects"]==("application window",) and recovered["states"]==("error",)
+assert "Visible state" not in vision._failure_text("structured-observation-hold")
 candidates,vision_metrics=vision._facts_to_el(parsed)
 assert candidates and _load("_el_lang_self",ROOT/"🧠"/"🧬").valid_el(candidates[0].value) and vision_metrics["vision_fact_coverage"]>0
+assert set(vision._VISION_SCHEMA["required"])==set(vision._FACT_FIELDS) and vision._VISION_SCHEMA["additionalProperties"] is False
 
 with tempfile.TemporaryDirectory() as folder:
     store=_load("_el_rank_self",ROOT/"🧠"/"🔀").SelectionStore(Path(folder)/"🏆");facade=bidi.TranslationEngine(store=store);assert facade.provider_call_count==0
@@ -114,5 +122,5 @@ for index in range(120):abc_engine.translate(f"Restart the local server after {3
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
 report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==24
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️0↔180✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸1️⃣🤖✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
