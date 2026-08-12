@@ -1,0 +1,99 @@
+"""N10: deterministic knowledge-consistency and poisoning guard foundation."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class IntegrityIssue:
+    code: str
+    severity: str
+    claim_id: str
+    detail: str
+
+    def render_el(self) -> str:
+        marker = "❌" if self.severity == "fail" else "🟡"
+        return marker + "🧿"
+
+
+@dataclass(frozen=True, slots=True)
+class IntegrityReport:
+    claim_id: str
+    issues: tuple[IntegrityIssue, ...]
+    status: str
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "pass"
+
+    def render_el(self) -> str:
+        marker = "✅" if self.status == "pass" else "🟡" if self.status == "hold" else "❌"
+        return marker + "🧿" + str(len(self.issues))
+
+
+class KnowledgeIntegrityEngine:
+    """Inspect knowledge claims; never promotes, demotes, or writes knowledge."""
+
+    def assess(self, claim: dict, *, confidence=None, provenance: tuple | list = (), existing_claims: tuple[dict, ...] | list[dict] = ()) -> IntegrityReport:
+        if not isinstance(claim, dict):
+            raise TypeError("claim must be a dict")
+        claim_id = str(claim.get("claim_id", "")).strip()
+        concept = str(claim.get("concept", "")).strip()
+        expression = str(claim.get("expression", "")).strip()
+        maturity = str(claim.get("maturity", "discovered")).strip() or "discovered"
+        issues: list[IntegrityIssue] = []
+
+        def issue(code: str, severity: str, detail: str) -> None:
+            issues.append(IntegrityIssue(code, severity, claim_id, detail))
+
+        if not claim_id:
+            issue("missing-claim-id", "fail", "claim_id is required")
+        if not concept:
+            issue("missing-concept", "fail", "concept is required")
+        if not expression:
+            issue("missing-expression", "fail", "expression is required")
+        if not provenance:
+            issue("missing-provenance", "fail", "knowledge claims require provenance")
+
+        evidence_count = int(getattr(confidence, "evidence_count", 0) or 0) if confidence is not None else 0
+        confidence_value = float(getattr(confidence, "confidence", 0.0) or 0.0) if confidence is not None else 0.0
+        support = float(getattr(confidence, "support", 0.0) or 0.0) if confidence is not None else 0.0
+        opposition = float(getattr(confidence, "opposition", 0.0) or 0.0) if confidence is not None else 0.0
+
+        if evidence_count <= 0:
+            issue("missing-evidence", "hold", "no evidence records supplied")
+        if opposition > support and evidence_count > 0:
+            issue("negative-evidence-dominates", "fail", "negative evidence outweighs positive evidence")
+        if maturity in {"validated", "canonical"} and confidence_value < 0.80:
+            issue("premature-maturity", "fail", "validated/canonical claims require strong confidence")
+
+        for existing in existing_claims:
+            if not isinstance(existing, dict):
+                continue
+            other_id = str(existing.get("claim_id", "")).strip()
+            if other_id and other_id == claim_id:
+                continue
+            other_concept = str(existing.get("concept", "")).strip()
+            other_expression = str(existing.get("expression", "")).strip()
+            other_maturity = str(existing.get("maturity", "")).strip()
+            if concept and other_concept == concept and expression and other_expression and other_expression != expression:
+                severity = "fail" if maturity == "canonical" and other_maturity == "canonical" else "hold"
+                issue("concept-conflict", severity, "same concept has a competing expression")
+            if expression and other_expression == expression and concept and other_concept and other_concept != concept:
+                issue("expression-overload", "hold", "same expression is attached to a different concept")
+
+        if any(item.severity == "fail" for item in issues):
+            status = "fail"
+        elif issues:
+            status = "hold"
+        else:
+            status = "pass"
+        return IntegrityReport(claim_id, tuple(issues), status)
+
+    def process(self, text: str) -> str:
+        if text == "🧿":
+            return "✅🧿"
+        return "🟡🧿❓"
+
+    def render_el_status(self) -> str:
+        return "✅🧿"
