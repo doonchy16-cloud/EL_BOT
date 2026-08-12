@@ -18,12 +18,17 @@ jobs:
       - name: "📥"
         uses: actions/checkout@v4
 
+      - name: "🐍"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: "📦"
         shell: powershell
         run: |
-          py -3 -m pip install --disable-pip-version-check -r '.\📦'
+          python -m pip install --disable-pip-version-check regex
 
       - name: "🧪"
         shell: powershell
         run: |
-          py -3 '.\🧪\✅'
+          python -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x2705)); runpy.run_path(str(p), run_name='__main__')"
