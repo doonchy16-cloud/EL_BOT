@@ -38,7 +38,7 @@ assert instructor.InstructorEngine().translate_compound_to_text(explicit_compoun
 assert len(vocab.CANONICAL_SYMBOLS)==501 and len(set(vocab.CANONICAL_SYMBOLS))==501
 
 electron_main=(ROOT/"⚡"/"⚡").read_text(encoding="utf-8")
-for marker in ("app.setAppUserModelId(APP_ID)","ensureAppIconPath","event.sender.send('⏳'","materializeHtmlView","verifyRenderedView","loadApplicationView","el-bot-${digest}.html","show: false","if (!win.isDestroyed()) win.show()","stagePayload","warn_after_ms","170000"):
+for marker in ("app.setAppUserModelId(APP_ID)","ensureAppIconPath","event.sender.send('⏳'","materializeHtmlView","verifyRenderedView","loadApplicationView","el-bot-${digest}.html","show: false","if (!win.isDestroyed()) win.show()","stagePayload","warn_after_ms","350000"):
     assert marker in electron_main,marker
 assert "win.loadFile(VIEW)" not in electron_main and "win.loadFile(VIEW_SOURCE)" not in electron_main
 
@@ -57,7 +57,7 @@ identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.
 normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","😀➡️🔤/😀➡️🔤","🧠/🧬"))
 for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
-for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_json_internal","sensor_calls","structured-vision-retry","controlled retry"):
+for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_json_internal","sensor_calls","structured-vision-retry","controlled retry","Load Vision Model","valid empty observation"):
     assert marker in vision_source,marker
 ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8")
 for marker in ("chat_json_internal","schema if schema is not None else","num_ctx\":8192","num_predict"):
@@ -100,14 +100,16 @@ assert long_result.winner.count("❓")<24
 unknown=abc_engine.translate("flibbertigibbet",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "❓" in unknown.winner and unknown.metrics.get("quality_status")=="fail"
 
-# Screenshot structure parsing is deterministic and must recover useful complete
-# facts even when a model response is truncated before its final JSON brace.
 parsed,strategy=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
 assert strategy=="json" and parsed is not None and parsed["visible_text"]==("Error",) and parsed["controls"]==("Retry",)
 truncated='{"visible_text":["Error","Retry"],"objects":["application window"],"controls":["Retry button"],"states":["error"],"relationships":['
 recovered,recovery_strategy=vision._parse_observation(truncated)
 assert recovery_strategy=="partial-json-repair" and recovered is not None
 assert recovered["visible_text"]==("Error","Retry") and recovered["objects"]==("application window",) and recovered["states"]==("error",)
+empty,empty_strategy=vision._parse_observation('{"visible_text":[],"objects":[],"controls":[],"states":[],"relationships":[]}')
+assert empty_strategy=="json" and empty is not None and vision._facts_count(empty)==0
+empty_candidates,empty_metrics=vision._facts_to_el(empty)
+assert empty_candidates[0].value=="👁️➡️⚪" and empty_metrics["unknown_count"]==0
 assert "Visible state" not in vision._failure_text("structured-observation-hold")
 candidates,vision_metrics=vision._facts_to_el(parsed)
 assert candidates and _load("_el_lang_self",ROOT/"🧠"/"🧬").valid_el(candidates[0].value) and vision_metrics["vision_fact_coverage"]>0
@@ -122,5 +124,5 @@ for index in range(120):abc_engine.translate(f"Restart the local server after {3
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
 report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==24
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
