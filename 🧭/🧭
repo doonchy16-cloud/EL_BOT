@@ -1,0 +1,137 @@
+"""N13: deterministic context and sense disambiguation engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import re
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_graph = _load("_el_phase3_semantic_graph_context", _ROOT / "🗺️" / "🗺️")
+_WORD = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
+
+
+@dataclass(frozen=True, slots=True)
+class SenseDecision:
+    source: str
+    normalized: str
+    sense_id: str
+    concept: str
+    confidence: float
+    resolved: bool
+    ambiguous: bool
+    alternatives: tuple[str, ...]
+    reason: str
+
+
+_EXPLICIT = {
+    "chatgpt": "chatgpt-assistant",
+    "chat gpt": "chatgpt-assistant",
+    "converter": "conversion-tool",
+    "converters": "conversion-tool",
+    "convert": "transform-action",
+    "converts": "transform-action",
+    "converted": "transform-action",
+    "converting": "transform-action",
+    "conversion": "transform-action",
+    "word": "language-word",
+    "words": "language-word",
+    "translator": "translation-tool",
+    "translators": "translation-tool",
+    "encoder": "encoding-tool",
+    "encoders": "encoding-tool",
+    "decoder": "decoding-tool",
+    "decoders": "decoding-tool",
+    "parser": "parsing-tool",
+    "parsers": "parsing-tool",
+    "renderer": "rendering-tool",
+    "renderers": "rendering-tool",
+    "generator": "generation-tool",
+    "generators": "generation-tool",
+    "validator": "validation-tool",
+    "validators": "validation-tool",
+}
+
+_WORD_PRODUCT_CUES = frozenset({"microsoft", "office", "docx", "document", "editor", "processor"})
+
+
+class ContextSenseDisambiguationEngine:
+    """Choose or preserve word senses without selecting emoji winners."""
+
+    def __init__(self) -> None:
+        self.graph = _graph.SemanticGraphEngine()
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return " ".join(match.group(0).lower() for match in _WORD.finditer(str(text)))
+
+    def resolve(self, term: str, context: str = "") -> SenseDecision:
+        raw = str(term)
+        normalized = self._normalize(raw)
+        context_norm = self._normalize(context)
+        if not normalized:
+            return SenseDecision(raw, normalized, "unresolved", "", 0.0, False, False, (), "empty-term")
+
+        if normalized in {"word", "words"}:
+            context_words = set(context_norm.split())
+            if "microsoft word" in context_norm or context_words.intersection(_WORD_PRODUCT_CUES):
+                alternatives = ("microsoft-word-product", "language-word")
+                return SenseDecision(raw, normalized, "microsoft-word-product", "microsoft-word-product", 0.99, True, True, alternatives, "product-context")
+            return SenseDecision(raw, normalized, "language-word", "language-word", 0.98, True, False, ("language-word",), "default-language-unit")
+
+        sense = _EXPLICIT.get(normalized)
+        if sense:
+            return SenseDecision(raw, normalized, sense, sense, 0.99 if sense == "chatgpt-assistant" else 0.96, True, False, (sense,), "explicit-semantic-authority")
+
+        graph_matches = self.graph.resolve_label(normalized)
+        if len(graph_matches) == 1:
+            sense = graph_matches[0]
+            return SenseDecision(raw, normalized, sense, sense, 0.94, True, False, graph_matches, "semantic-graph-label")
+        if len(graph_matches) > 1:
+            return SenseDecision(raw, normalized, graph_matches[0], graph_matches[0], 0.62, True, True, graph_matches, "semantic-graph-ambiguous")
+
+        # Productive deterministic morphology. This resolves a class of tool nouns
+        # without pretending to understand arbitrary unknown words.
+        if normalized.endswith("er") and len(normalized) > 4:
+            root = normalized[:-2]
+            root_aliases = self.graph.resolve_label(root)
+            if root_aliases:
+                return SenseDecision(raw, normalized, "generic-tool", root_aliases[0], 0.78, True, True, ("generic-tool", root_aliases[0]), "agentive-tool-morphology")
+
+        return SenseDecision(raw, normalized, "unresolved", normalized, 0.0, False, False, (), "no-deterministic-sense")
+
+    def resolve_text(self, source: str) -> tuple[SenseDecision, ...]:
+        text = str(source)
+        decisions: list[SenseDecision] = []
+        lowered = text.lower()
+        if "chatgpt" in lowered or "chat gpt" in lowered:
+            decisions.append(self.resolve("chatgpt", text))
+        # Resolve individual tokens after special phrases. Preserve order and avoid duplicates.
+        seen: set[tuple[str, str]] = {(item.normalized, item.sense_id) for item in decisions}
+        for match in _WORD.finditer(text):
+            decision = self.resolve(match.group(0), text)
+            key = (decision.normalized, decision.sense_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            decisions.append(decision)
+        return tuple(decisions)
+
+    def render_el_status(self) -> str:
+        return "✅🧭"
