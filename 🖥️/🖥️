@@ -1,7 +1,6 @@
 """Engine 8: emoji-only user interface for EL Bot."""
 
 from __future__ import annotations
-
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
@@ -26,38 +25,57 @@ _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 _diag = _load("_el_diag", _ROOT / "🧪" / "🧪")
 _guard = _load("_el_guard", _ROOT / "🔐" / "🔐")
 _recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
+_reliability = _load("_el_reliability", _ROOT / "🛡️" / "🛡️")
+_identity = _load("_el_identity", _ROOT / "🪪" / "🪪")
+_auth = _load("_el_auth", _ROOT / "🛂" / "🛂")
 
 WorkflowEngine = _workflow.WorkflowEngine
 DiagnosticsEngine = _diag.DiagnosticsEngine
 SecurityEngine = _guard.SecurityEngine
 RecoveryEngine = _recovery.RecoveryEngine
+ReliabilityEngine = _reliability.ReliabilityEngine
+IdentityEngine = _identity.IdentityEngine
+AuthenticationEngine = _auth.AuthenticationEngine
 
 
 class UIEngine:
-    """Thin EL-facing boundary protected by security and recovery engines."""
-
     def __init__(self) -> None:
         self.workflow = WorkflowEngine()
         self.guard = SecurityEngine()
         self.recovery = RecoveryEngine()
+        self.reliability = ReliabilityEngine()
+        self.identity = IdentityEngine()
+        self.authentication = AuthenticationEngine()
+
+    def _evidence(self) -> tuple[str, ...]:
+        return (
+            self.guard.render_el_status(),
+            self.recovery.render_el_status(),
+            self.workflow.render_el_status(),
+            self.identity.render_el_status(),
+            self.authentication.render_el_status(),
+        )
 
     def _process_guarded(self, text: str) -> str:
+        identity = self.identity.snapshot()
+        if not self.authentication.verify(identity.kind, identity.protocol):
+            return "❌🛂"
         decision = self.guard.authorize(text)
         if not decision.authorized:
             return decision.render_el_status()
         if text == "🧪":
             return DiagnosticsEngine().run().render_el()
+        if text == "🪪":
+            return self.identity.process(text)
+        if text == "🛂":
+            return self.authentication.process(text)
+        if text == "🛡️":
+            return self.reliability.assess(self._evidence()).render_el()
         return self.workflow.process(text)
 
     def process(self, text: str) -> str:
         return self.recovery.protect("🖥️", lambda: self._process_guarded(text))
 
     def render_el_status(self) -> str:
-        return (
-            "✅🖥️ "
-            + self.guard.render_el_status()
-            + " "
-            + self.recovery.render_el_status()
-            + " "
-            + self.workflow.render_el_status()
-        )
+        reliability = self.reliability.assess(self._evidence()).render_el()
+        return " ".join(("✅🖥️", self.guard.render_el_status(), self.recovery.render_el_status(), self.identity.render_el_status(), self.authentication.render_el_status(), reliability, self.workflow.render_el_status()))
