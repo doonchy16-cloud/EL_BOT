@@ -1,0 +1,86 @@
+"""N07: deterministic semantic experiment engine (runtime marker 🧫)."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_context = _load("_el_phase3_context_experiment", _ROOT / "🧭" / "🧭")
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentCase:
+    context: str
+    expected_sense: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentOutcome:
+    context: str
+    expected_sense: str
+    observed_sense: str
+    passed: bool
+    confidence: float
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentReport:
+    term: str
+    outcomes: tuple[ExperimentOutcome, ...]
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.outcomes) and all(item.passed for item in self.outcomes)
+
+    @property
+    def pass_rate(self) -> float:
+        if not self.outcomes:
+            return 0.0
+        return sum(1 for item in self.outcomes if item.passed) / len(self.outcomes)
+
+    def render_el(self) -> str:
+        return ("✅" if self.passed else "🟡") + "🧫" + str(sum(1 for x in self.outcomes if x.passed)) + "/" + str(len(self.outcomes))
+
+
+class ExperimentEngine:
+    """Run controlled context/sense experiments; never mutates knowledge."""
+
+    def __init__(self) -> None:
+        self.context = _context.ContextSenseDisambiguationEngine()
+
+    def run(self, term: str, cases, *, resolver=None) -> ExperimentReport:
+        resolve = resolver or self.context.resolve
+        outcomes: list[ExperimentOutcome] = []
+        for case in cases:
+            if isinstance(case, ExperimentCase):
+                context = case.context
+                expected = case.expected_sense
+            elif isinstance(case, tuple) and len(case) >= 2:
+                context, expected = str(case[0]), str(case[1])
+            else:
+                raise TypeError("experiment cases must include context and expected sense")
+            decision = resolve(term, context)
+            observed = str(getattr(decision, "sense_id", "unresolved"))
+            confidence = float(getattr(decision, "confidence", 0.0))
+            outcomes.append(ExperimentOutcome(context, expected, observed, observed == expected, confidence))
+        return ExperimentReport(str(term), tuple(outcomes))
+
+    def render_el_status(self) -> str:
+        return "✅🧫"
