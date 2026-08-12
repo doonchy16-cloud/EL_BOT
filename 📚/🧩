@@ -8,7 +8,7 @@ entire sequence and its meaning. Unknown sequences remain HOLD; no guessing.
 from __future__ import annotations
 
 COMPOUND_MEANINGS: dict[str, str] = {
-    "💻🦙🤖🧠👁️7️⃣:🐝": "local ollama model qwen2.5-vl:7b",
+    "🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝": "local ollama model qwen2.5-vl:7b",
 }
 
 
