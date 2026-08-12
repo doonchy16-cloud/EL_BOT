@@ -30,6 +30,7 @@ _intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
 _valid = _load("_el_valid", _ROOT / "🧾" / "🧾")
 _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
+_event = _load("_el_event", _ROOT / "📡" / "📡")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
@@ -89,6 +90,17 @@ class DiagnosticsEngine:
             persist_ok = len(restored.turns) == 1 and restored.latest is not None and restored.latest.source == "🔥➡️🚀"
         checks.append(DiagnosticCheck("8️⃣💾", persist_ok))
 
+        events = _event.EventEngine()
+        events.emit("📥", "🔵")
+        events.emit("📤", "✅")
+        event_text = events.render_el()
+        event_ok = (
+            event_text == "1:📥🔵\n2:📤✅"
+            and events.render_el_status() == "✅📡2"
+            and _core.CoreEngine().parse(event_text).status is _core.ValidationStatus.PASS
+        )
+        checks.append(DiagnosticCheck("🔟📡", event_ok))
+
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "🗃️"
             persistence = _persist.PersistenceEngine(path)
@@ -96,11 +108,16 @@ class DiagnosticsEngine:
             output = workflow.process("🔥➡️🚀")
             saved = workflow.process("💾")
             loaded = workflow.process("📥")
+            event_log = workflow.process("📡")
             workflow_ok = (
-                output == "🔥➡️🚀\n✅🧵1"
+                output == "🔥➡️🚀\n✅🧵"
                 and saved == "✅💾1"
                 and loaded == "✅📥1"
                 and workflow.render_el_status().startswith("✅🔁")
+                and "📥" in event_log
+                and "📤" in event_log
+                and "💾" in event_log
+                and _core.CoreEngine().parse(event_log).status is _core.ValidationStatus.PASS
             )
         checks.append(DiagnosticCheck("9️⃣🔁", workflow_ok))
 
