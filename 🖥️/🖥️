@@ -24,9 +24,11 @@ def _load(name: str, path: Path):
 _ROOT = Path(__file__).resolve().parent.parent
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 _diag = _load("_el_diag", _ROOT / "🧪" / "🧪")
+_guard = _load("_el_guard", _ROOT / "🔐" / "🔐")
 
 WorkflowEngine = _workflow.WorkflowEngine
 DiagnosticsEngine = _diag.DiagnosticsEngine
+SecurityEngine = _guard.SecurityEngine
 
 
 class UIEngine:
@@ -34,11 +36,15 @@ class UIEngine:
 
     def __init__(self) -> None:
         self.workflow = WorkflowEngine()
+        self.guard = SecurityEngine()
 
     def process(self, text: str) -> str:
+        decision = self.guard.authorize(text)
+        if not decision.authorized:
+            return decision.render_el_status()
         if text == "🧪":
             return DiagnosticsEngine().run().render_el()
         return self.workflow.process(text)
 
     def render_el_status(self) -> str:
-        return "✅🖥️ " + self.workflow.render_el_status()
+        return "✅🖥️ " + self.guard.render_el_status() + " " + self.workflow.render_el_status()
