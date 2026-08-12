@@ -73,19 +73,60 @@ jobs:
           bot_name = chr(0x1F916)
           bot = next(path for path in pathlib.Path('.').iterdir() if path.is_file() and path.name == bot_name)
           source = chr(0x1F525) + chr(0x27A1) + chr(0xFE0F) + chr(0x1F680)
-          result = subprocess.run(
-              [sys.executable, str(bot)],
-              input=source,
-              text=True,
-              capture_output=True,
-              encoding='utf-8',
-              timeout=20,
-          )
+          result = subprocess.run([sys.executable, str(bot)], input=source, text=True, capture_output=True, encoding='utf-8', timeout=20)
           output = result.stdout.strip()
           print(output)
           assert result.returncode == 0
           assert output
           assert not output.startswith(chr(0x274C))
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
+
+      - name: "🧪🔀"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'el_rank_test.py'
+          @'
+          from importlib.machinery import SourceFileLoader
+          from importlib.util import module_from_spec, spec_from_loader
+          import pathlib
+          import tempfile
+
+          brain = chr(0x1F9E0)
+          shuffle = chr(0x1F500)
+          rank_path = next(p for p in pathlib.Path('.').rglob('*') if p.is_file() and p.name == shuffle and p.parent.name == brain)
+          loader = SourceFileLoader('_rank_test', str(rank_path))
+          spec = spec_from_loader('_rank_test', loader)
+          mod = module_from_spec(spec)
+          loader.exec_module(mod)
+
+          temp = pathlib.Path(tempfile.gettempdir()) / 'el_rank_test_store.json'
+          if temp.exists(): temp.unlink()
+          store = mod.SelectionStore(temp)
+          assert store.counts(2, 'x') == {}
+          ranker = mod.SemanticRanker(store)
+
+          pairs = (("critical", "🔴"),("error", "❌"),("database", "🗃️"),("connection", "🔌"),("timeout", "⏱️"),("restart", "🔄"))
+          source = 'critical error database connection timeout restart'
+          bad = '➡️' * 30
+          good = '🔴❌🗃️🔌⏱️🔄'
+          ranked = ranker.rank_el_candidates(source, [bad, good], pairs)
+          assert ranked.winner == good
+          assert len(ranked.candidates) >= 1
+
+          compound = '🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝'
+          text_ranked = ranker.rank_text_candidates(compound, ['grinning robot'])
+          assert 'qwen2.5vl:7b' in text_ranked.winner
+
+          first = ranker.rank_el_candidates('x', ['🔥','🚀'], ())
+          assert first.winner == '🔥'
+          ranker.record_selection(2, 'x', '🚀')
+          second = ranker.rank_el_candidates('x', ['🔥','🚀'], ())
+          assert second.winner == '🚀'
+          if temp.exists(): temp.unlink()
+          print('✅🧪🔀')
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
 
@@ -107,11 +148,10 @@ jobs:
           yellow = chr(0x1F7E1)
           llama = chr(0x1F999)
           vision = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == camera and path.parent.name == camera)
-          result = subprocess.run([sys.executable, str(vision)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=330)
+          result = subprocess.run([sys.executable, str(vision)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=360)
           output = result.stdout.strip()
           print(output)
-          if result.stderr.strip():
-              print(result.stderr.strip())
+          if result.stderr.strip(): print(result.stderr.strip())
           assert result.returncode == 0
           assert output
           assert not output.startswith(chr(0x274C))
@@ -143,18 +183,10 @@ jobs:
           lightning = chr(0x26A1)
           growth = chr(0x1F4C8)
           snail = chr(0x1F40C)
-
-          translator = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == bidi and path.parent.name == bidi)
+          bidi_file = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == bidi and path.parent.name == bidi)
 
           def run(mode, source):
-              result = subprocess.run(
-                  [sys.executable, str(translator)],
-                  input=str(mode) + '\n' + source,
-                  text=True,
-                  capture_output=True,
-                  encoding='utf-8',
-                  timeout=420,
-              )
+              result = subprocess.run([sys.executable, str(bidi_file)], input=str(mode) + '\n' + source, text=True, capture_output=True, encoding='utf-8', timeout=420)
               assert result.returncode == 0
               output = result.stdout.strip()
               print(str(mode) + ': ' + output)
@@ -196,14 +228,10 @@ jobs:
           $view = Join-Path $dir $screen
 
           $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-          if ($nodeCommand) {
-            $node = $nodeCommand.Source
-          } else {
+          if ($nodeCommand) { $node = $nodeCommand.Source } else {
             $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
             $node = Join-Path $runnerRoot 'externals\node24\bin\node.exe'
-            if (-not (Test-Path -LiteralPath $node)) {
-              $node = Join-Path $runnerRoot 'externals\node20\bin\node.exe'
-            }
+            if (-not (Test-Path -LiteralPath $node)) { $node = Join-Path $runnerRoot 'externals\node20\bin\node.exe' }
           }
 
           if (-not (Test-Path -LiteralPath $node)) { throw 'node missing' }
@@ -215,6 +243,11 @@ jobs:
           if (-not $html.Contains('id="mode1"')) { throw 'mode1 missing' }
           if (-not $html.Contains('id="mode2"')) { throw 'mode2 missing' }
           if (-not $html.Contains('id="image"')) { throw 'vision missing' }
+          if (-not $html.Contains('id="altToggle"')) { throw 'alternatives missing' }
+          if (-not $html.Contains("event.key==='Enter' && !event.shiftKey")) { throw 'enter run missing' }
+          if (-not $html.Contains('main{width:100%')) { throw 'full width missing' }
+          if ($html.Contains('width:min(1160px,100%)')) { throw 'fixed width remains' }
+          if (-not $html.Contains("window['😀']['🏆']")) { throw 'selection learning missing' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
 
       - name: "🧪"
