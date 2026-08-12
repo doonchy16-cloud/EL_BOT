@@ -1,0 +1,32 @@
+"""Engine 20: local EL Bot system identity."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class IdentitySnapshot:
+    kind: str = "🤖"
+    protocol: int = 1
+
+    def render_el(self) -> str:
+        return "✅🪪" + self.kind + str(self.protocol)
+
+
+class IdentityEngine:
+    """Identify only this local bot protocol; never infer a human identity."""
+
+    def __init__(self) -> None:
+        self._snapshot = IdentitySnapshot()
+
+    def snapshot(self) -> IdentitySnapshot:
+        return self._snapshot
+
+    def process(self, text: str) -> str:
+        if text == "🪪":
+            return self._snapshot.render_el()
+        return "🟡🪪❓"
+
+    def render_el_status(self) -> str:
+        return self._snapshot.render_el()
