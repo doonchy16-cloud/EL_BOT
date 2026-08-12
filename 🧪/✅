@@ -26,13 +26,17 @@ core = _load("_el_core", ROOT / "⚙️" / "⚙️")
 vocab = _load("_el_vocab", ROOT / "📚" / "📚")
 instructor = _load("_el_instructor", ROOT / "🧑‍🏫" / "🧑‍🏫")
 
-compound = "💻🦙🤖🧠👁️7️⃣:🐝"
+compound = "🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝"
+old_compound = "💻🦙🤖🧠👁️7️⃣:🐝"
 resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(compound))
+old_resolved = vocab.VocabularyEngine().resolve(core.CoreEngine().parse(old_compound))
 assert resolved.status is core.ValidationStatus.PASS
 assert resolved.is_explicit_compound
 assert resolved.compound_meaning == "local ollama model qwen2.5-vl:7b"
 assert instructor.InstructorEngine().translate_compound_to_text(compound) == "local ollama model qwen2.5-vl:7b"
 assert instructor.InstructorEngine().process("🧑‍🏫" + compound) == "✅🧑‍🏫🧩"
+assert old_resolved.status is core.ValidationStatus.HOLD
+assert not old_resolved.is_explicit_compound
 
 report = diagnostics.DiagnosticsEngine().run()
 print(report.render_el())
