@@ -1,0 +1,78 @@
+"""Engine 16: canonical EL instruction and internal semantic translation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
+
+CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
+PRIMARY_MEANINGS = _meanings.PRIMARY_MEANINGS
+
+if len(CANONICAL_SYMBOLS) != 500 or len(PRIMARY_MEANINGS) != 500:
+    raise RuntimeError("EL instruction authority invariant violated")
+
+_MEANING_BY_SYMBOL = dict(zip(CANONICAL_SYMBOLS, PRIMARY_MEANINGS, strict=True))
+_ORDINAL_BY_SYMBOL = {symbol: index for index, symbol in enumerate(CANONICAL_SYMBOLS, start=1)}
+
+
+@dataclass(frozen=True, slots=True)
+class InstructionRecord:
+    symbol: str
+    ordinal: int
+    primary_meaning: str
+
+    def render_el(self) -> str:
+        return "🧑‍🏫" + self.symbol + "#" + str(self.ordinal)
+
+
+class InstructorEngine:
+    """Expose canonical semantic records without leaking words into EL-facing output."""
+
+    def lookup(self, symbol: str) -> InstructionRecord | None:
+        meaning = _MEANING_BY_SYMBOL.get(symbol)
+        ordinal = _ORDINAL_BY_SYMBOL.get(symbol)
+        if meaning is None or ordinal is None:
+            return None
+        return InstructionRecord(symbol, ordinal, meaning)
+
+    def translate_to_text(self, symbols: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+        meanings: list[str] = []
+        for symbol in symbols:
+            record = self.lookup(symbol)
+            if record is None:
+                raise KeyError(symbol)
+            meanings.append(record.primary_meaning)
+        return tuple(meanings)
+
+    def process(self, text: str) -> str:
+        if text == "🧑‍🏫":
+            return "✅🧑‍🏫500"
+        if text.startswith("🧑‍🏫"):
+            symbol = text[len("🧑‍🏫"):]
+            record = self.lookup(symbol)
+            return record.render_el() if record is not None else "🟡🧑‍🏫❓"
+        return "🟡🧑‍🏫❓"
+
+    def render_el_status(self) -> str:
+        return "✅🧑‍🏫500"
