@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Bidirectional translation boundary for EL Bot.
+"""Bidirectional ranked translation boundary for EL Bot.
 
 1 = emoji/symbol -> text
 2 = text -> canonical EL
+
+Default CLI output is the winning candidate for compatibility. Passing the
+emoji argument 🔀 returns structured ranked candidates as JSON. Passing ✅
+records an explicit user selection as observed ranking evidence.
 """
 
 from __future__ import annotations
 
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
+import json
 from pathlib import Path
 import re
 import sys
@@ -33,11 +38,11 @@ _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
 _vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
 _meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
 _ollama = _load("_el_ollama", _ROOT / "🦙" / "🦙")
+_rank = _load("_el_rank", _ROOT / "🧠" / "🔀")
 
-CoreEngine = _core.CoreEngine
-ValidationStatus = _core.ValidationStatus
-VocabularyEngine = _vocab.VocabularyEngine
 OllamaConnector = _ollama.OllamaConnector
+SemanticRanker = _rank.SemanticRanker
+RankedResult = _rank.RankedResult
 
 _SYMBOL_TO_MEANING = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
 
@@ -104,7 +109,6 @@ def _candidate_symbols(text: str, limit: int = 120) -> tuple[str, ...]:
     lowered = text.lower()
     words = set(re.findall(r"[a-z0-9]+", lowered))
     selected: list[str] = []
-
     forced: list[tuple[int, int, str]] = []
     for order, (phrase, symbol) in enumerate(_PHRASES):
         index = lowered.find(phrase)
@@ -129,7 +133,6 @@ def _candidate_symbols(text: str, limit: int = 120) -> tuple[str, ...]:
             selected.append(symbol)
         if len(selected) >= limit:
             return tuple(selected[:limit])
-
     for symbol in _CORE:
         if symbol not in selected:
             selected.append(symbol)
@@ -150,139 +153,140 @@ def _fallback_to_el(text: str) -> str:
             hits.append((index, order, symbol))
             start = index + max(1, len(phrase))
     hits.sort()
-
     out: list[str] = []
     for _, _, symbol in hits:
-        if not out or out[-1] != symbol:
+        if symbol not in out:
             out.append(symbol)
     for number in re.findall(r"\b\d+(?:\.\d+)?\b", text):
         if number not in out:
             out.append(number)
-    return "➡️".join(out) if out else "🟡❓"
+    if not out:
+        return "🟡❓"
+    return "➡️".join(out)
+
+
+def _literal_text_candidate(graphemes: tuple[str, ...]) -> str:
+    parts: list[str] = []
+    for symbol in graphemes:
+        if symbol in _SYMBOL_TO_MEANING:
+            parts.append(_SYMBOL_TO_MEANING[symbol])
+        elif symbol.isspace() or symbol in ".,;:!?-()[]{}":
+            parts.append(symbol)
+        elif symbol.isdigit():
+            parts.append(symbol)
+        elif any(ord(ch) > 127 for ch in symbol):
+            parts.append("non-canonical " + _unicode_label(symbol))
+    return " | ".join(part for part in parts if part.strip())
 
 
 class TranslationEngine:
-    def __init__(self, ollama=None) -> None:
-        self.ollama = ollama if ollama is not None else OllamaConnector(generation_timeout=150.0)
-        self.core = CoreEngine()
-        self.vocab = VocabularyEngine()
+    def __init__(self, ollama=None, ranker=None) -> None:
+        self.ollama = ollama if ollama is not None else OllamaConnector(generation_timeout=180.0)
+        self.ranker = ranker if ranker is not None else SemanticRanker()
 
     def _ask(self, prompt: str) -> str:
         return self.ollama.generate_internal(prompt).strip()
 
-    def _valid_el(self, text: str) -> bool:
-        if not text.strip():
-            return False
-        parsed = self.core.parse(text, el_mode=True)
-        if parsed.status is ValidationStatus.FAIL:
-            return False
-        return self.vocab.resolve(parsed).status is ValidationStatus.PASS
-
-    def to_text(self, source: str) -> str:
+    def ranked_to_text(self, source: str) -> RankedResult:
         if not isinstance(source, str) or not source.strip():
-            return "🟡 Empty emoji input."
+            return self.ranker.rank_text_candidates(source if isinstance(source, str) else "", ["Unable to interpret empty input."])
         if any(char.isalpha() for char in source):
-            return "❌ Mode 1 expects emoji/symbol input, not alphabetic text."
+            return self.ranker.rank_text_candidates(source, ["Mode 1 expects emoji or symbol input, not alphabetic text."])
 
         graphemes = _core.split_graphemes(source)
-        glossary = _meaning_lines(graphemes)
-        prompt = f"""Translate this emoji/symbol sequence into precise concise English.
-This is Mode 1: emoji to text.
-Use canonical EL meanings exactly where supplied. For non-canonical Unicode emoji, use its literal Unicode name as evidence only.
-Preserve order, arrows, severity, negation, punctuation, numbers and action direction. Do not invent hidden state.
-Return 1-4 clear sentences, no markdown, under 140 words.
-
-Evidence glossary:
-{glossary}
-
-Sequence:
-{source}
-"""
+        evidence = _meaning_lines(graphemes)
+        candidates: list[str] = []
+        exact = _rank._compounds.lookup_compound(source)
+        if exact:
+            candidates.append(exact)
         try:
-            result = self._ask(prompt)
-            if result:
-                return result
+            raw = self._ask(_rank.candidate_prompt_mode1(source, evidence))
+            candidates.extend(_rank._extract_json_candidates(raw))
         except Exception:
             pass
+        literal = _literal_text_candidate(graphemes)
+        if literal:
+            candidates.append(literal)
+        if not candidates:
+            candidates.append("Unable to interpret input from available authority.")
+        return self.ranker.rank_text_candidates(source, candidates)
 
-        parts: list[str] = []
-        for symbol in graphemes:
-            if symbol in _SYMBOL_TO_MEANING:
-                parts.append(_SYMBOL_TO_MEANING[symbol])
-            elif symbol.isspace() or symbol in ".,;:!?-()[]{}":
-                parts.append(symbol)
-            elif symbol.isdigit():
-                parts.append(symbol)
-            elif any(ord(ch) > 127 for ch in symbol):
-                parts.append(f"non-canonical {_unicode_label(symbol)}")
-        return " | ".join(part for part in parts if part.strip()) or "🟡 Unable to interpret input."
-
-    def to_el(self, source: str) -> str:
+    def ranked_to_el(self, source: str) -> RankedResult:
         if not isinstance(source, str) or not source.strip():
-            return "🟡❓"
+            return self.ranker.rank_el_candidates(source if isinstance(source, str) else "", ["🟡❓"], _PHRASES)
 
-        candidates = _candidate_symbols(source)
-        glossary = "\n".join(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}" for symbol in candidates)
-        prompt = f"""Convert the user's text into canonical Emoji Language (EL).
-This is Mode 2: text to emoji.
-Output ONLY canonical EL symbols from the supplied glossary, plus digits, punctuation and whitespace. Never output alphabetic letters or words.
-Preserve severity, cause/effect, negation, order, numbers, actions, dependencies and requested changes. Do not invent facts.
-Use ➡️ for directed relationships when useful. Use ❌ for failure/negation, 🟡 for uncertainty and 🔴 only for confirmed critical state.
-Prefer concise but information-complete output.
-
-Canonical candidate glossary:
-{glossary}
-
-User text:
-{source}
-"""
-        try:
-            first = self._ask(prompt)
-        except Exception:
-            first = ""
-        if self._valid_el(first):
-            return first
-
-        if first:
-            retry = f"""Correct the previous answer into strict canonical EL only.
-No alphabetic letters and no non-canonical emoji. Use only these canonical symbols plus digits/punctuation:
-{''.join(candidates)}
-Preserve the source meaning exactly and do not invent facts.
-Source:
-{source}
-Previous invalid answer:
-{first}
-"""
-            try:
-                second = self._ask(retry)
-            except Exception:
-                second = ""
-            if self._valid_el(second):
-                return second
-
+        symbols = _candidate_symbols(source)
+        glossary = "\n".join(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}" for symbol in symbols)
+        candidates: list[str] = []
         fallback = _fallback_to_el(source)
-        return fallback if self._valid_el(fallback) else "🟡❓"
+        if _rank.valid_el(fallback):
+            candidates.append(fallback)
+        try:
+            raw = self._ask(_rank.candidate_prompt_mode2(source, glossary))
+            candidates.extend(_rank._extract_json_candidates(raw))
+        except Exception:
+            pass
+        result = self.ranker.rank_el_candidates(source, candidates, _PHRASES)
+        if result.candidates:
+            return result
+        return self.ranker.rank_el_candidates(source, ["🟡❓"], _PHRASES)
+
+    def ranked(self, mode: int, source: str) -> RankedResult:
+        if mode == 1:
+            return self.ranked_to_text(source)
+        if mode == 2:
+            return self.ranked_to_el(source)
+        raise ValueError("invalid translation mode")
 
     def process(self, mode: int, source: str) -> str:
-        if mode == 1:
-            return self.to_text(source)
-        if mode == 2:
-            return self.to_el(source)
-        return "❌🔢"
+        if mode not in (1, 2):
+            return "❌🔢"
+        return self.ranked(mode, source).winner
+
+    def record_selection(self, mode: int, source: str, value: str) -> int:
+        return self.ranker.record_selection(mode, source, value)
 
 
-def main() -> int:
+def _read_mode_source() -> tuple[int, str] | None:
     payload = sys.stdin.read()
     if "\n" not in payload:
-        print("❌🔢")
-        return 0
+        return None
     head, source = payload.split("\n", 1)
     try:
         mode = int(head.strip())
     except ValueError:
+        return None
+    return mode, source.strip()
+
+
+def main() -> int:
+    engine = TranslationEngine()
+    action = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if action == "✅":
+        try:
+            payload = json.loads(sys.stdin.read())
+            count = engine.record_selection(int(payload["mode"]), str(payload["source"]), str(payload["value"]))
+        except Exception:
+            print("❌🏆")
+            return 0
+        print("✅🏆" + str(count))
+        return 0
+
+    pair = _read_mode_source()
+    if pair is None:
         print("❌🔢")
         return 0
-    print(TranslationEngine().process(mode, source.strip()))
+    mode, source = pair
+    if mode not in (1, 2):
+        print("❌🔢")
+        return 0
+
+    result = engine.ranked(mode, source)
+    if action == "🔀":
+        print(json.dumps(result.as_dict(), ensure_ascii=False, separators=(",", ":")))
+    else:
+        print(result.winner)
     return 0
 
 
