@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Ranked screenshot/image interpretation bridge using local Ollama vision.
+"""Screenshot observation boundary for EL Bot.
 
-Mode 1 returns ranked text interpretations.
-Mode 2 returns ranked canonical EL interpretations.
-Default CLI output remains the winning value; 🔀 returns structured candidates.
+The model is allowed to observe screenshots only. It never performs EL
+translation, candidate ranking or winner selection. Its structured observation
+is handed to deterministic EL Bot code for conversion and ranking.
 """
 
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from hashlib import sha256
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -32,24 +33,41 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent.parent
-_vocab = _load("_el_vision_vocab", _ROOT / "📚" / "📚")
-_meanings = _load("_el_vision_meanings", _ROOT / "📚" / "🧾")
 _ollama = _load("_el_vision_ollama", _ROOT / "🦙" / "🦙")
 _rank = _load("_el_vision_rank", _ROOT / "🧠" / "🔀")
+_translate = _load("_el_vision_translate", _ROOT / "↔️" / "↔️")
+_ai_policy = _load("_el_ai_policy", _ROOT / "🔐" / "📸")
 
 OllamaConnector = _ollama.OllamaConnector
 SemanticRanker = _rank.SemanticRanker
+TranslationEngine = _translate.TranslationEngine
+AIUsePolicy = _ai_policy.AIUsePolicy
 
-_SYMBOL_TO_MEANING = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
-_VISION_SYMBOLS = (
-    "📸","👁️","🖥️","💻","📱","⌨️","🖱️","📷","📹","🖼️","🎥","🤖","🧠","🦙","⚙️","🎛️",
-    "🔌","📡","🌐","🖧","📶","✅","❌","🟡","🔴","🔵","🟢","⚪","⚠️","❗","‼️","❓","🚨","🚧",
-    "🛑","⛔","📴","🔒","🔓","🔐","🛡️","🧯","🔍","🔧","🛠️","🧰","🧪","🧾","📋","📄","📑","📂",
-    "📁","🗃️","🗄️","💾","🗑️","🧹","📥","📤","⬅️","➡️","↔️","🔁","🔄","▶️","⏸️","⏹️","⏳","⏱️",
-    "⚡","🐌","📊","📈","📉","🔘","🖤","🤍","👤","👥","🏠","🏢","🏭","📦","🚀","🏁","🔔","💬","📨",
-    "📩","✉️","🔑","🆔","🔢","🔤","🔣","💥","❤️‍🩹","🪫","🔋","🌈","🎨","📐","📏","📍","💯","👍","👎"
-)
-_VISION_GLOSSARY = "\n".join(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}" for symbol in _VISION_SYMBOLS)
+
+@dataclass(frozen=True, slots=True)
+class VisionObservation:
+    facts: tuple[str, ...] = ()
+    visible_text: tuple[str, ...] = ()
+    states: tuple[str, ...] = ()
+    relationships: tuple[str, ...] = ()
+    counts: tuple[str, ...] = ()
+
+    def is_empty(self) -> bool:
+        return not any((self.facts, self.visible_text, self.states, self.relationships, self.counts))
+
+    def render_text(self) -> str:
+        rows: list[str] = []
+        if self.facts:
+            rows.append("Visible facts: " + "; ".join(self.facts) + ".")
+        if self.visible_text:
+            rows.append("Visible text: " + " | ".join(self.visible_text) + ".")
+        if self.states:
+            rows.append("Visible states: " + "; ".join(self.states) + ".")
+        if self.relationships:
+            rows.append("Visible relationships: " + "; ".join(self.relationships) + ".")
+        if self.counts:
+            rows.append("Visible counts: " + "; ".join(self.counts) + ".")
+        return " ".join(rows).strip()
 
 
 def _strip_data_url(value: str) -> str:
@@ -77,65 +95,115 @@ def _source_key(raw: str) -> str:
     return "📸#" + sha256(raw.encode("ascii", errors="ignore")).hexdigest()
 
 
-def _candidate_prompt(mode: int) -> str:
+def _observation_prompt() -> str:
+    return """You are the screenshot observation sensor for EL Bot. You are NOT a translator.
+Inspect only the supplied screenshot/image and report visible evidence as strict JSON only using this schema:
+{"facts":["..."],"visible_text":["..."],"states":["..."],"relationships":["..."],"counts":["..."]}
+
+Rules:
+- Report atomic visible facts, not a final answer or translation.
+- Do not output Emoji Language, candidate translations, rankings, scores or a winner.
+- Do not infer hidden causes, hidden application state or unreadable text.
+- Do not identify people.
+- Preserve readable error/warning/success states, controls, devices, files, direction, counts and visible relationships.
+- visible_text must contain only text actually readable in the image.
+- Keep each list concise; omit uncertain items rather than guessing.
+- Return JSON only."""
+
+
+def _as_strings(value) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        clean = " ".join(item.strip().split())
+        if clean and clean not in out:
+            out.append(clean)
+        if len(out) >= 24:
+            break
+    return tuple(out)
+
+
+def _parse_observation(raw: str) -> VisionObservation:
+    text = raw.strip()
+    if not text:
+        return VisionObservation()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        raise ValueError("vision observation must be a JSON object")
+    return VisionObservation(
+        facts=_as_strings(payload.get("facts")),
+        visible_text=_as_strings(payload.get("visible_text")),
+        states=_as_strings(payload.get("states")),
+        relationships=_as_strings(payload.get("relationships")),
+        counts=_as_strings(payload.get("counts")),
+    )
+
+
+def observe(image_value: str) -> tuple[str, VisionObservation | None, str | None]:
+    raw = _strip_data_url(image_value)
+    base64.b64decode(raw, validate=True)
+    key = _source_key(raw)
+
+    policy = AIUsePolicy()
+    policy.require("📸")
+
+    connector = OllamaConnector(generation_timeout=300.0)
+    evidence = connector.probe()
+    if not evidence.reachable:
+        return key, None, "📡"
+    if not evidence.model_present:
+        return key, None, "🦙"
+
+    try:
+        answer = connector.chat_internal(_observation_prompt(), images=(raw,)).strip()
+        observation = _parse_observation(answer)
+        if observation.is_empty():
+            return key, None, "❓"
+        return key, observation, None
+    except Exception as exc:
+        _debug_exception(exc)
+        return key, None, "❓"
+
+
+def _unavailable_result(mode: int, key: str, reason: str):
+    ranker = SemanticRanker()
     if mode == 1:
-        return """Analyze the supplied screenshot/image and generate the plausible interpretations supported by visible evidence.
-Return strict JSON only: {\"candidates\":[{\"value\":\"...\"}]}.
-Generate up to 8 materially different interpretations only where ambiguity is real. Put the strongest evidence-supported interpretation first.
-Prioritize visible errors, warnings, success states, UI state, controls, files, devices, relationships and actionable evidence.
-Do not identify people. Do not invent hidden causes, state or unreadable text. Return each candidate as 1-5 concise sentences under 140 words."""
-    return f"""Analyze the supplied screenshot/image and generate plausible canonical Emoji Language interpretations of the visible evidence.
-Return strict JSON only: {{\"candidates\":[{{\"value\":\"...\"}}]}}.
-Generate up to 8 materially different candidates only where ambiguity is real. Put the strongest evidence-supported interpretation first.
-Candidate values must contain ONLY canonical EL symbols from the glossary below plus digits, punctuation, arrows and whitespace. Never use alphabetic words.
-Preserve visible error/warning/success state, UI/device/file relationships, direction, counts and actions. Do not invent hidden facts. Avoid meaningless repetition.
-
-Compact visual EL glossary:
-{_VISION_GLOSSARY}"""
-
-
-def _single_prompt(mode: int) -> str:
-    if mode == 1:
-        return """Analyze the supplied screenshot/image visually and describe only the important visible state in concise English. Do not invent hidden facts or unreadable text. Return 1-5 short sentences under 140 words."""
-    return f"""Convert the important visible evidence in the supplied screenshot/image into canonical Emoji Language. Output ONLY canonical EL symbols from this glossary plus digits, punctuation, arrows and whitespace. Avoid repetition. If genuinely unclear output 🟡📸❓.\n{_VISION_GLOSSARY}"""
+        message = {
+            "📡": "Local screenshot vision is unreachable.",
+            "🦙": "Local screenshot vision model is unavailable.",
+            "❓": "The screenshot could not be observed reliably.",
+        }.get(reason, "The screenshot could not be observed reliably.")
+        return ranker.rank_text_candidates(key, [message])
+    marker = {
+        "📡": "🟡📸🦙📡❓",
+        "🦙": "🟡📸🦙❓",
+        "❓": "🟡📸❓",
+    }.get(reason, "🟡📸❓")
+    return ranker.rank_el_candidates(key, [marker], ())
 
 
 def ranked_analyze(mode: int, image_value: str):
     if mode not in (1, 2):
         raise ValueError("invalid vision mode")
-    raw = _strip_data_url(image_value)
-    base64.b64decode(raw, validate=True)
-    key = _source_key(raw)
+    key, observation, reason = observe(image_value)
+    if observation is None:
+        return key, _unavailable_result(mode, key, reason or "❓")
 
-    connector = OllamaConnector(generation_timeout=300.0)
-    evidence = connector.probe()
-    if not evidence.reachable:
-        candidates = ["🟡📸🦙📡❓"] if mode == 2 else ["Local vision provider is unreachable."]
-    elif not evidence.model_present:
-        candidates = ["🟡📸🦙❓"] if mode == 2 else ["Local vision model is unavailable."]
-    else:
-        candidates: list[str] = []
-        try:
-            raw_answer = connector.chat_internal(_candidate_prompt(mode), images=(raw,)).strip()
-            candidates.extend(_rank._extract_json_candidates(raw_answer))
-        except Exception as exc:
-            _debug_exception(exc)
-        if not candidates:
-            try:
-                single = connector.chat_internal(_single_prompt(mode), images=(raw,)).strip()
-                if single:
-                    candidates.append(single)
-            except Exception as exc:
-                _debug_exception(exc)
-
-    ranker = SemanticRanker()
+    observation_text = observation.render_text()
     if mode == 1:
-        result = ranker.rank_text_candidates(key, candidates or ["Unable to interpret visible evidence."])
+        result = SemanticRanker().rank_text_candidates(key, [observation_text])
     else:
-        valid = [value for value in candidates if _rank.valid_el(value)]
-        if not valid:
-            valid = ["🟡📸❓"]
-        result = ranker.rank_el_candidates(key, valid, ())
+        result = TranslationEngine().ranked_to_el(observation_text)
     return key, result
 
 
