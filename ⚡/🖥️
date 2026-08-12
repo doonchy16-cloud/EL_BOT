@@ -202,7 +202,7 @@ function applyRanked(result, source){
   clearAlternatives();
   if (!result || typeof result !== 'object') { applyResult(result,'🟡❓'); return; }
   const winner = String(result.winner || '🟡❓');
-  lastSource = source;
+  lastSource = String(result.source_key || source || '');
   chosenValue = winner;
   rankedCandidates = Array.isArray(result.candidates) ? result.candidates.filter(item=>item && typeof item.value === 'string' && item.value) : [];
   if (!rankedCandidates.some(item=>item.value === winner)) rankedCandidates.unshift({value:winner});
@@ -235,7 +235,7 @@ async function runImage(){
   if (!imageDataUrl) { file.click(); return; }
   if (!window['😀'] || !window['😀']['📸']) { output.textContent='❌📸🔌';status('❌');return; }
   clearAlternatives();status('🔵');output.textContent=mode===1?'📸➡️🔤⏳':'📸➡️😀⏳';
-  try { applyResult(await window['😀']['📸'](mode,imageDataUrl),'🟡📸❓'); }
+  try { applyRanked(await window['😀']['📸'](mode,imageDataUrl),imageDataUrl); }
   catch (_) { output.textContent='❌📸🧯';status('❌'); }
 }
 
