@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+'use strict';
+
+const { app, BrowserWindow, ipcMain } = require('electron');
+const { spawn, spawnSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const ROOT = path.resolve(__dirname, '..');
+const BOT = path.join(ROOT, '🤖');
+const PRELOAD = path.join(__dirname, '🔌');
+const VIEW = path.join(__dirname, '🖥️');
+
+function hasCommand(command, args = []) {
+  try {
+    const result = spawnSync(command, args, {
+      windowsHide: true,
+      stdio: 'ignore',
+      timeout: 4000,
+    });
+    return result.status === 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+function pythonCandidate() {
+  const candidates = [];
+
+  if (process.env.EL_PYTHON) {
+    candidates.push({ command: process.env.EL_PYTHON, prefix: [] });
+  }
+
+  if (process.env.RUNNER_TOOL_CACHE) {
+    candidates.push({
+      command: path.join(process.env.RUNNER_TOOL_CACHE, 'ELPython', '3.12.10', 'python.exe'),
+      prefix: [],
+    });
+  }
+
+  candidates.push(
+    {
+      command: 'C:\\Git\\EL-bot-runner\\actions-runner\\_work\\_tool\\ELPython\\3.12.10\\python.exe',
+      prefix: [],
+    },
+    { command: 'py', prefix: ['-3'] },
+    { command: 'python', prefix: [] },
+    { command: 'python3', prefix: [] },
+  );
+
+  for (const candidate of candidates) {
+    if (candidate.command.includes(path.sep) || /^[A-Za-z]:\\/.test(candidate.command)) {
+      if (!fs.existsSync(candidate.command)) continue;
+      return candidate;
+    }
+    if (hasCommand(candidate.command, [...candidate.prefix, '--version'])) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function runBot(source) {
+  return new Promise((resolve) => {
+    if (typeof source !== 'string') {
+      resolve('❌🔤');
+      return;
+    }
+
+    const python = pythonCandidate();
+    if (!python) {
+      resolve('❌🐍');
+      return;
+    }
+
+    const child = spawn(python.command, [...python.prefix, BOT], {
+      cwd: ROOT,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch (_) {}
+      finish('🟡⏱️');
+    }, 30000);
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+    child.on('error', () => {
+      clearTimeout(timer);
+      finish('❌🐍');
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (settled) return;
+      if (code === 0 && stdout.trim()) {
+        finish(stdout.trim());
+      } else if (stderr.trim()) {
+        finish('❌🧯');
+      } else {
+        finish('❌🤖');
+      }
+    });
+
+    child.stdin.end(source, 'utf8');
+  });
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1040,
+    height: 760,
+    minWidth: 760,
+    minHeight: 560,
+    title: '🤖😀',
+    backgroundColor: '#080b12',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  win.loadFile(VIEW);
+}
+
+ipcMain.handle('😀➡️🤖', async (_event, source) => runBot(source));
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
