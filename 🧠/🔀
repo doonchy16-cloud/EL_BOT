@@ -1,0 +1,300 @@
+"""Ranked semantic candidate engine for EL Bot.
+
+The engine never treats the first model completion as truth. It builds a bounded
+set of plausible candidates, validates them against canonical EL authority,
+scores evidence deterministically, penalizes degenerate output, and incorporates
+only explicit user selections as observed preference evidence.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import unicodedata
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_rank_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_rank_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_el_rank_meanings", _ROOT / "📚" / "🧾")
+_compounds = _load("_el_rank_compounds", _ROOT / "📚" / "🧩")
+
+ValidationStatus = _core.ValidationStatus
+CoreEngine = _core.CoreEngine
+VocabularyEngine = _vocab.VocabularyEngine
+CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
+PRIMARY_MEANINGS = _meanings.PRIMARY_MEANINGS
+MEANING_BY_SYMBOL = dict(zip(CANONICAL_SYMBOLS, PRIMARY_MEANINGS, strict=True))
+
+
+@dataclass(frozen=True, slots=True)
+class RankedCandidate:
+    value: str
+    score: float
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RankedResult:
+    mode: int
+    source: str
+    candidates: tuple[RankedCandidate, ...]
+
+    @property
+    def winner(self) -> str:
+        return self.candidates[0].value if self.candidates else ("🟡❓" if self.mode == 2 else "Unable to interpret input.")
+
+    def as_dict(self) -> dict:
+        return {
+            "mode": self.mode,
+            "winner": self.winner,
+            "candidates": [
+                {"value": item.value, "score": round(item.score, 3), "reasons": list(item.reasons)}
+                for item in self.candidates
+            ],
+        }
+
+
+class SelectionStore:
+    """Observed user-choice counts only; never seeded or simulated."""
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        configured = path or os.environ.get("EL_RANK_DB")
+        self.path = Path(configured) if configured else Path.home() / ".🤖" / "🏆"
+
+    @staticmethod
+    def _key(mode: int, source: str) -> str:
+        return sha256((str(mode) + "\0" + source).encode("utf-8")).hexdigest()
+
+    def _read(self) -> dict:
+        if not self.path.exists():
+            return {"🔢": 1, "📊": {}}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            return {"🔢": 1, "📊": {}}
+        if not isinstance(payload, dict) or payload.get("🔢") != 1 or not isinstance(payload.get("📊"), dict):
+            return {"🔢": 1, "📊": {}}
+        return payload
+
+    def counts(self, mode: int, source: str) -> dict[str, int]:
+        payload = self._read()
+        row = payload["📊"].get(self._key(mode, source), {})
+        if not isinstance(row, dict):
+            return {}
+        return {str(value): int(count) for value, count in row.items() if isinstance(count, int) and count > 0}
+
+    def record(self, mode: int, source: str, value: str) -> int:
+        if mode not in (1, 2) or not source or not value:
+            raise ValueError("invalid ranking selection")
+        payload = self._read()
+        key = self._key(mode, source)
+        row = payload["📊"].setdefault(key, {})
+        row[value] = int(row.get(value, 0)) + 1
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name("🏆🪣")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        os.replace(temporary, self.path)
+        return row[value]
+
+
+def valid_el(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip() or any(ch.isalpha() for ch in text):
+        return False
+    parsed = CoreEngine().parse(text, el_mode=True)
+    if parsed.status is ValidationStatus.FAIL:
+        return False
+    return VocabularyEngine().resolve(parsed).status is ValidationStatus.PASS
+
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _canonical_symbols(text: str) -> tuple[str, ...]:
+    return tuple(g for g in _core.split_graphemes(text) if g in MEANING_BY_SYMBOL)
+
+
+def _degeneracy_penalty(value: str) -> float:
+    symbols = _canonical_symbols(value)
+    if not symbols:
+        return 40.0
+    penalty = 0.0
+    counts: dict[str, int] = {}
+    for symbol in symbols:
+        counts[symbol] = counts.get(symbol, 0) + 1
+    for count in counts.values():
+        if count > 3:
+            penalty += (count - 3) * 4.0
+    arrows = counts.get("➡️", 0)
+    non_arrows = max(1, len(symbols) - arrows)
+    if arrows > non_arrows + 2:
+        penalty += (arrows - non_arrows - 2) * 8.0
+    if len(symbols) > 80:
+        penalty += (len(symbols) - 80) * 1.5
+    if len(set(symbols)) <= 2 and len(symbols) >= 10:
+        penalty += 60.0
+    return penalty
+
+
+def _el_coverage(source: str, value: str, phrase_pairs: tuple[tuple[str, str], ...]) -> tuple[float, list[str]]:
+    lowered = source.lower()
+    expected: list[str] = []
+    for phrase, symbol in phrase_pairs:
+        if phrase in lowered and symbol not in expected:
+            expected.append(symbol)
+    if not expected:
+        return 0.0, []
+    present = set(_canonical_symbols(value))
+    hit = sum(1 for symbol in expected if symbol in present)
+    return 30.0 * hit / len(expected), expected
+
+
+def _text_semantic_coverage(source_symbols: tuple[str, ...], candidate: str) -> float:
+    expected_words: set[str] = set()
+    for symbol in source_symbols:
+        expected_words |= _words(MEANING_BY_SYMBOL.get(symbol, ""))
+    if not expected_words:
+        return 0.0
+    candidate_words = _words(candidate)
+    if not candidate_words:
+        return 0.0
+    return 30.0 * len(expected_words & candidate_words) / len(expected_words)
+
+
+def _extract_json_candidates(raw: str) -> list[str]:
+    text = raw.strip()
+    if not text:
+        return []
+    candidates: list[str] = []
+    parsed = None
+    for possible in (text, re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S)):
+        try:
+            parsed = json.loads(possible)
+            break
+        except Exception:
+            continue
+    if parsed is None:
+        match = re.search(r"\{.*\}|\[.*\]", text, flags=re.S)
+        if match:
+            try:
+                parsed = json.loads(match.group(0))
+            except Exception:
+                parsed = None
+    if isinstance(parsed, dict):
+        parsed = parsed.get("candidates", [])
+    if isinstance(parsed, list):
+        for item in parsed:
+            value = item.get("value") if isinstance(item, dict) else item
+            if isinstance(value, str) and value.strip() and value.strip() not in candidates:
+                candidates.append(value.strip())
+    return candidates[:12]
+
+
+class SemanticRanker:
+    def __init__(self, store: SelectionStore | None = None) -> None:
+        self.store = store if store is not None else SelectionStore()
+
+    def rank_text_candidates(self, source: str, candidates: list[str]) -> RankedResult:
+        source_symbols = _canonical_symbols(source)
+        exact = _compounds.lookup_compound(source)
+        if exact and exact not in candidates:
+            candidates.insert(0, exact)
+        observed = self.store.counts(1, source)
+        rows: list[RankedCandidate] = []
+        for order, value in enumerate(dict.fromkeys(v.strip() for v in candidates if isinstance(v, str) and v.strip())):
+            reasons: list[str] = []
+            score = max(0.0, 18.0 - order)
+            if exact and value == exact:
+                score += 120.0
+                reasons.append("authority-compound")
+            coverage = _text_semantic_coverage(source_symbols, value)
+            score += coverage
+            if coverage:
+                reasons.append("canonical-coverage")
+            count = observed.get(value, 0)
+            if count:
+                score += min(80.0, 18.0 * count)
+                reasons.append("observed-user-choice")
+            if len(value) > 800:
+                score -= 20.0
+            rows.append(RankedCandidate(value, score, tuple(reasons)))
+        rows.sort(key=lambda item: (-item.score, len(item.value), item.value))
+        return RankedResult(1, source, tuple(rows[:8]))
+
+    def rank_el_candidates(self, source: str, candidates: list[str], phrase_pairs: tuple[tuple[str, str], ...]) -> RankedResult:
+        observed = self.store.counts(2, source)
+        rows: list[RankedCandidate] = []
+        for order, value in enumerate(dict.fromkeys(v.strip() for v in candidates if isinstance(v, str) and v.strip())):
+            if not valid_el(value):
+                continue
+            reasons: list[str] = ["canonical-valid"]
+            score = 45.0 + max(0.0, 18.0 - order)
+            coverage, expected = _el_coverage(source, value, phrase_pairs)
+            score += coverage
+            if expected:
+                reasons.append("source-coverage")
+            penalty = _degeneracy_penalty(value)
+            if penalty:
+                score -= penalty
+                reasons.append("degeneracy-penalty")
+            count = observed.get(value, 0)
+            if count:
+                score += min(80.0, 18.0 * count)
+                reasons.append("observed-user-choice")
+            rows.append(RankedCandidate(value, score, tuple(reasons)))
+        rows.sort(key=lambda item: (-item.score, len(_canonical_symbols(item.value)), item.value))
+        return RankedResult(2, source, tuple(rows[:8]))
+
+    def record_selection(self, mode: int, source: str, value: str) -> int:
+        if mode == 2 and not valid_el(value):
+            raise ValueError("selected EL candidate is invalid")
+        return self.store.record(mode, source, value)
+
+
+def candidate_prompt_mode1(source: str, evidence: str) -> str:
+    return f"""Generate distinct plausible semantic interpretations of this Emoji Language sequence.
+Do not pick a winner. Return strict JSON only: {{\"candidates\":[{{\"value\":\"...\"}}]}}.
+Generate up to 8 materially different interpretations that are supported by the evidence.
+Canonical EL meanings override the pictorial/literal Unicode appearance. Never reinterpret a canonical symbol as a facial expression or object when its supplied EL meaning differs.
+Preserve order, arrows, directionality, severity, negation, numbers and compound structure. Do not invent hidden facts.
+
+Canonical evidence:
+{evidence}
+
+Sequence:
+{source}"""
+
+
+def candidate_prompt_mode2(source: str, glossary: str) -> str:
+    return f"""Generate distinct plausible canonical Emoji Language translations for the source text.
+Do not pick a winner. Return strict JSON only: {{\"candidates\":[{{\"value\":\"...\"}}]}}.
+Generate up to 8 concise, materially different candidates using ONLY symbols in the supplied glossary plus digits, punctuation and whitespace.
+Never output alphabetic text inside candidate values. Preserve severity, negation, cause/effect, direction, numbers, requested actions and dependencies.
+Avoid meaningless repetition. Never repeat ➡️ merely to fill space.
+
+Candidate glossary:
+{glossary}
+
+Source:
+{source}"""
