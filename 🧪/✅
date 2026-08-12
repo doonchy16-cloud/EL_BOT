@@ -48,8 +48,20 @@ assert instructor.InstructorEngine().translate_compound_to_text(explicit_compoun
 assert len(vocab.CANONICAL_SYMBOLS) == 501 and len(set(vocab.CANONICAL_SYMBOLS)) == 501
 
 electron_main = (ROOT / "⚡" / "⚡").read_text(encoding="utf-8")
-for marker in ("app.setAppUserModelId(APP_ID)", "ensureAppIconPath", "event.sender.send('⏳'", "win.loadFile(VIEW)"):
+for marker in (
+    "app.setAppUserModelId(APP_ID)",
+    "ensureAppIconPath",
+    "event.sender.send('⏳'",
+    "materializeHtmlView",
+    "verifyRenderedView",
+    "loadApplicationView",
+    "el-bot-${digest}.html",
+    "show: false",
+    "if (!win.isDestroyed()) win.show()",
+):
     assert marker in electron_main
+assert "win.loadFile(VIEW)" not in electron_main
+assert "win.loadFile(VIEW_SOURCE)" not in electron_main
 ui_source = (ROOT / "⚡" / "🖥️").read_text(encoding="utf-8")
 for marker in ("controlBar", "hourglassFlip", "180deg", "@media(max-width:1100px)", "id=\"quality\"", "updateStage(payload)"):
     assert marker in ui_source
@@ -112,6 +124,7 @@ report = diagnostics.DiagnosticsEngine().run()
 assert len(report.checks) == 24
 print(report.render_el())
 print("🎨✅")
+print("🖥️🌐✅")
 print("⏳↪️180✅")
 print("🤖➡️📸🔒✅")
 print("↔️🤖❌✅")
