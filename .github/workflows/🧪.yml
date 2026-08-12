@@ -1,0 +1,25 @@
+name: 🧪
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  🧪:
+    name: 🧪🏃🪟
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - name: 📥
+        uses: actions/checkout@v4
+
+      - name: 📦
+        shell: powershell
+        run: |
+          py -3 -m pip install --disable-pip-version-check -r '.\📦'
+
+      - name: 🧪
+        shell: powershell
+        run: |
+          py -3 '.\🧪\✅'
