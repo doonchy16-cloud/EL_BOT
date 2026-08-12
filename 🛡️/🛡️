@@ -1,0 +1,44 @@
+"""Engine 18: evidence-derived reliability aggregation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class ReliabilitySnapshot:
+    statuses: tuple[str, ...]
+    marker: str
+
+    def render_el(self) -> str:
+        return self.marker + "🛡️" + str(len(self.statuses))
+
+
+class ReliabilityEngine:
+    """Aggregate only supplied component evidence; never invent health."""
+
+    def __init__(self) -> None:
+        self._latest: ReliabilitySnapshot | None = None
+
+    def assess(self, statuses: tuple[str, ...] | list[str]) -> ReliabilitySnapshot:
+        evidence = tuple(statuses)
+        if not evidence:
+            snapshot = ReliabilitySnapshot(evidence, "⚪")
+        elif any(item.startswith("❌") or "🔴" in item for item in evidence):
+            snapshot = ReliabilitySnapshot(evidence, "❌")
+        elif any(item.startswith("🟡") or "🟡" in item for item in evidence):
+            snapshot = ReliabilitySnapshot(evidence, "🟡")
+        else:
+            snapshot = ReliabilitySnapshot(evidence, "✅")
+        self._latest = snapshot
+        return snapshot
+
+    def process(self, text: str) -> str:
+        if text != "🛡️":
+            return "🟡🛡️❓"
+        if self._latest is None:
+            return "⚪🛡️0"
+        return self._latest.render_el()
+
+    def render_el_status(self) -> str:
+        return "⚪🛡️0" if self._latest is None else self._latest.render_el()
