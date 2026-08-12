@@ -21,14 +21,12 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent
-_session = _load("_el_session", _ROOT / "🧵" / "🧵")
+_ui = _load("_el_ui", _ROOT / "🖥️" / "🖥️")
 
 
 def main() -> int:
     text = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else sys.stdin.read()
-    turn = _session.SessionEngine().ingest(text)
-    print(turn.safe_output())
-    print(turn.render_el_status())
+    print(_ui.UIEngine().process(text))
     return 0
 
 
