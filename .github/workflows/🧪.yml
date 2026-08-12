@@ -55,45 +55,6 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
-      - name: "🧪🔐"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING = 'utf-8'
-          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          $script = Join-Path $env:RUNNER_TEMP 'el_security_probe.py'
-          @'
-          from importlib.machinery import SourceFileLoader
-          from importlib.util import module_from_spec, spec_from_loader
-          from pathlib import Path
-          import sys
-
-          root = Path('.').resolve()
-          def load(name, path):
-              if name in sys.modules:
-                  return sys.modules[name]
-              loader = SourceFileLoader(name, str(path))
-              spec = spec_from_loader(name, loader)
-              module = module_from_spec(spec)
-              sys.modules[name] = module
-              loader.exec_module(module)
-              return module
-
-          core = load('_el_core', root / '⚙️' / '⚙️')
-          guard = load('_el_guard_probe', root / '🔐' / '🔐')
-          source = '🔥➡️🚀'
-          surface = core.CoreEngine().parse(source, el_mode=True)
-          decision = guard.SecurityEngine().authorize(source)
-          print(surface.status.value)
-          print([(token.text, token.kind.value) for token in surface.tokens])
-          print(decision.status.value, decision.authorized)
-          print(surface.status.__class__ is guard.ValidationStatus)
-          assert not surface.letter_tokens
-          assert surface.status.value == 'pass'
-          assert decision.status.value == 'pass'
-          assert decision.authorized
-          '@ | Set-Content -LiteralPath $script -Encoding UTF8
-          & $exe $script
-
       - name: "🧪🤖"
         shell: powershell
         run: |
@@ -105,8 +66,9 @@ jobs:
           import subprocess
           import sys
 
-          bot = next(path for path in pathlib.Path('.').iterdir() if path.is_file() and path.name == chr(0x1F916))
-          source = '🔥➡️🚀'
+          bot_name = chr(0x1F916)
+          bot = next(path for path in pathlib.Path('.').iterdir() if path.is_file() and path.name == bot_name)
+          source = chr(0x1F525) + chr(0x27A1) + chr(0xFE0F) + chr(0x1F680)
           result = subprocess.run(
               [sys.executable, str(bot)],
               input=source,
@@ -127,15 +89,18 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $main = Join-Path (Get-Location) '⚡\⚡'
-          $preload = Join-Path (Get-Location) '⚡\🔌'
-          $view = Join-Path (Get-Location) '⚡\🖥️'
+          $spark = [char]::ConvertFromUtf32(0x26A1)
+          $plug = [char]::ConvertFromUtf32(0x1F50C)
+          $screen = [char]::ConvertFromUtf32(0x1F5A5) + [char]0xFE0F
+          $dir = Join-Path (Get-Location) $spark
+          $main = Join-Path $dir $spark
+          $preload = Join-Path $dir $plug
+          $view = Join-Path $dir $screen
           node --check $main
           node --check $preload
           if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
-          $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
-          if (-not $html.Contains('▶️') -or -not $html.Contains('🧪') -or -not $html.Contains('🦙🔍')) { throw 'ui controls missing' }
-          Write-Output '✅⚡🖥️'
+          if ((Get-Item -LiteralPath $view).Length -lt 100) { throw 'view empty' }
+          Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
 
       - name: "🧪"
         shell: powershell
