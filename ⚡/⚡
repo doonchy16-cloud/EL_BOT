@@ -89,9 +89,7 @@ function runPython(target, source, timeoutMs, extraArgs = []) {
 function runBot(source) { return runPython(BOT, source, 30000); }
 function validMode(mode) { return mode === 1 || mode === 2; }
 
-async function runTranslation(mode, source) {
-  if (!validMode(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [] };
-  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀']);
+function parseRanked(raw) {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed.winner === 'string' && Array.isArray(parsed.candidates)) return parsed;
@@ -99,16 +97,23 @@ async function runTranslation(mode, source) {
   return { winner: raw, candidates: raw ? [{ value: raw, score: 0, reasons: [] }] : [] };
 }
 
+async function runTranslation(mode, source) {
+  if (!validMode(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [] };
+  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀']);
+  return parseRanked(raw);
+}
+
 async function recordSelection(mode, source, value) {
   if (!validMode(mode) || typeof source !== 'string' || typeof value !== 'string') return '❌🏆';
   return runPython(TRANSLATE, JSON.stringify({ mode, source, value }), 30000, ['✅']);
 }
 
-function runVision(mode, imageDataUrl) {
+async function runVision(mode, imageDataUrl) {
   if (!validMode(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
-    return Promise.resolve('❌📸🔣');
+    return { winner: '❌📸🔣', candidates: [] };
   }
-  return runPython(VISION, `${mode}\n${imageDataUrl}`, 420000);
+  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 420000, ['🔀']);
+  return parseRanked(raw);
 }
 
 function createWindow() {
