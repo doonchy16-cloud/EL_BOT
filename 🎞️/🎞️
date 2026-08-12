@@ -1,0 +1,23 @@
+"""Engine 17: deterministic emoji-only animation frames."""
+
+from __future__ import annotations
+
+
+class AnimationEngine:
+    def __init__(self) -> None:
+        self._frames = ("⚪", "🔵", "🟢")
+
+    @property
+    def frames(self) -> tuple[str, ...]:
+        return self._frames
+
+    def render(self) -> str:
+        return "🎞️" + "➡️".join(self._frames)
+
+    def process(self, text: str) -> str:
+        if text == "🎞️":
+            return self.render()
+        return "🟡🎞️❓"
+
+    def render_el_status(self) -> str:
+        return "✅🎞️" + str(len(self._frames))
