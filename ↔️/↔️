@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Bidirectional translation bridge for EL Bot.
+"""Bidirectional translation boundary for EL Bot.
 
-Mode 1: emoji -> text.
-Mode 2: text -> canonical EL emoji.
-
-The normal EL command/security path stays strict. Alphabetic input/output is only
-allowed inside this explicit translation boundary.
+1 = emoji/symbol -> text
+2 = text -> canonical EL
 """
 
 from __future__ import annotations
@@ -44,53 +41,44 @@ OllamaConnector = _ollama.OllamaConnector
 
 _SYMBOL_TO_MEANING = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
 
-_CORE_SYMBOLS = (
-    "🔥", "⚙️", "🖥️", "🤖", "🧠", "📡", "🧪", "🧯", "🔌", "🧾", "🛡️", "💾", "🚀", "🔒", "✅",
-    "👁️", "📸", "❌", "🔍", "🔐", "🏁", "📚", "🔁", "⚪", "🔵", "🟢", "🟡", "🔴", "🎛️", "🔔",
-    "🧩", "🗃️", "🧱", "🧰", "🌐", "📜", "📋", "🧹", "🧭", "⏱️", "📈", "🧵", "🎯", "💡", "🛠️",
-    "🔧", "🔨", "🏗️", "🚦", "🚧", "⚠️", "❗", "❓", "🆘", "🛑", "⛔", "📴", "🟰", "➕", "➖",
-    "✏️", "📝", "📄", "📑", "📂", "🗄️", "🗑️", "🆕", "🔄", "⬆️", "⬇️", "📥", "📤", "⬅️", "➡️",
-    "🔀", "⏸️", "▶️", "⏹️", "⏳", "📅", "🗓️", "🧮", "📊", "📉", "🎚️", "💬", "📨", "📩", "✉️",
-    "📣", "🔕", "🎙️", "🔊", "🔇", "🎥", "🖼️", "🎨", "✨", "🌈", "🎭", "📐", "📏", "🏛️", "🗺️",
-    "🔑", "🔓", "❤️‍🩹", "🪫", "🔋", "⚡", "🐌", "💻", "📱", "⌨️", "☁️", "🖧", "🤝", "👥", "👤",
-    "🏢", "🏠", "🏭", "🏦", "💰", "💵", "🛒", "💳", "📦", "🚚", "🚪", "🎉", "💥", "💪", "☢️",
-    "🏷️", "#️⃣", "🆔", "🔢", "🔤", "🔣", "🧼", "🪣", "🔘", "⚫", "🟤", "🩶", "🩵", "🩷", "💜",
-    "🖤", "🤍", "🔶", "🔷", "💯", "👍", "👎", "👌", "✋", "🤚", "🙏", "🤷", "🤦", "💼", "🎓",
-    "🏫", "🏥", "🏡", "🏘️", "🔩", "🪤", "📷", "📹", "📺", "📞", "📰", "📁", "🔖", "📌", "📍",
-    "✂️", "🖇️", "🔬", "🔭", "☑️", "✔️", "✖️", "❎", "🚨", "🆗", "🆙", "🆓", "🆖", "🆚", "⏯️",
-    "⏺️", "⏩", "⏪", "↩️", "↪️", "↔️", "↕️", "🔼", "🔽", "🟥", "🟧", "🟨", "🟩", "🟦", "🟪",
+_CORE = (
+    "🔥","⚙️","🖥️","🤖","🧠","📡","🧪","🧯","🔌","🧾","🛡️","💾","🚀","🔒","✅","📸","👁️",
+    "❌","🔍","🔐","🏁","📚","🔁","⚪","🔵","🟢","🟡","🔴","🎛️","🔔","🧩","🗃️","🧱","🧰",
+    "🌐","📋","🧹","🧭","⏱️","📈","🎯","🔧","🔨","🏗️","🚧","⚠️","❗","‼️","❓","🛑","⛔",
+    "📴","🟰","➕","➖","📝","📄","📂","🗄️","🗑️","🔄","⬆️","⬇️","📥","📤","⬅️","➡️","🔀",
+    "⏸️","▶️","⏹️","⏳","📊","📉","💬","🖼️","🔑","🔓","❤️‍🩹","🪫","🔋","⚡","🐌","💻","📱",
+    "☁️","🖧","👥","👤","🏠","🏢","🏭","🏦","💰","💳","📦","🚚","🎉","💥","💪","🔢","🔤","🔣",
+    "🔘","🖤","🤍","👍","👎","🤷","🤦","💼","🏫","🏥","🏡","🏘️","📷","📹","📺","📞","📰","📁",
+    "📌","📍","🔬","🔭","☑️","✔️","✖️","❎","🚨","🆗","🆙","🆓","🆖","🆚","⏯️","⏺️","⏩","⏪",
+    "↩️","↪️","↔️","↕️","🔼","🔽","🟥","🟧","🟨","🟩","🟦","🟪"
 )
 
 _PHRASES: tuple[tuple[str, str], ...] = (
-    ("dark mode", "🖤"), ("light mode", "🤍"), ("timed out", "⏱️"), ("time out", "⏱️"),
-    ("timeout", "⏱️"), ("critical", "🔴"), ("error", "❌"), ("failure", "❌"), ("failed", "❌"),
-    ("database", "🗃️"), ("schema", "🧬"), ("connection", "🔌"), ("connect", "🔌"), ("network", "🌐"),
-    ("server", "📡"), ("backend", "⚙️"), ("crashed", "💥"), ("crash", "💥"), ("offline", "📴"),
-    ("restart", "🔄"), ("refresh", "🔄"), ("docker", "📦"), ("container", "📦"), ("package", "📦"),
-    ("restore", "❤️‍🩹"), ("recover", "❤️‍🩹"), ("recovery", "🧯"), ("service", "⚙️"),
-    ("immediately", "‼️"), ("urgent", "❗"), ("warning", "⚠️"), ("security", "🔐"), ("locked", "🔒"),
-    ("unlock", "🔓"), ("key", "🔑"), ("toggle", "🔘"), ("button", "🔘"), ("dashboard", "📊"),
-    ("navigation", "🧭"), ("page", "📄"), ("loading", "⏳"), ("load", "📥"), ("speed", "⚡"),
-    ("fast", "⚡"), ("instantly", "⚡"), ("optimize", "📈"), ("performance", "📈"), ("lag", "🐌"),
-    ("slow", "🐌"), ("render", "🖥️"), ("display", "🖥️"), ("interface", "🖥️"), ("screen", "🖥️"),
-    ("file", "📄"), ("folder", "📂"), ("save", "💾"), ("delete", "🗑️"), ("cleanup", "🧹"),
-    ("test", "🧪"), ("diagnostic", "🧪"), ("validate", "🧾"), ("audit", "🧾"), ("deploy", "🚀"),
-    ("release", "🚀"), ("launch", "🚀"), ("start", "▶️"), ("stop", "⏹️"), ("pause", "⏸️"),
-    ("next", "➡️"), ("previous", "⬅️"), ("retry", "🔂"), ("workflow", "🔁"), ("update", "🔄"),
-    ("user", "👤"), ("group", "👥"), ("home", "🏠"), ("local", "🏠"), ("cloud", "☁️"),
-    ("computer", "💻"), ("phone", "📱"), ("image", "🖼️"), ("screenshot", "📸"), ("video", "🎥"),
-    ("message", "💬"), ("email", "📧"), ("notification", "🔔"), ("money", "💰"), ("payment", "💳"),
-    ("success", "✅"), ("complete", "✅"), ("healthy", "🟢"), ("active", "🔵"), ("unknown", "⚪"),
-    ("hold", "🟡"), ("blocked", "🚧"), ("blocker", "🚧"), ("risk", "⚠️"), ("fix", "🔧"),
-    ("repair", "🔧"), ("build", "🔨"), ("tool", "🧰"), ("config", "🎛️"), ("setting", "🎛️"),
+    ("dark mode","🖤"),("light mode","🤍"),("timed out","⏱️"),("time out","⏱️"),("timeout","⏱️"),
+    ("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),("database","🗃️"),("schema","🧬"),
+    ("connection","🔌"),("connect","🔌"),("network","🌐"),("server","📡"),("backend","⚙️"),("crashed","💥"),
+    ("crash","💥"),("offline","📴"),("restart","🔄"),("refresh","🔄"),("docker","📦"),("container","📦"),
+    ("package","📦"),("restore","❤️‍🩹"),("recover","❤️‍🩹"),("recovery","🧯"),("service","⚙️"),
+    ("immediately","‼️"),("urgent","❗"),("warning","⚠️"),("security","🔐"),("locked","🔒"),("unlock","🔓"),
+    ("key","🔑"),("toggle","🔘"),("button","🔘"),("dashboard","📊"),("navigation","🧭"),("page","📄"),
+    ("loading","⏳"),("load","📥"),("speed","⚡"),("fast","⚡"),("instantly","⚡"),("optimize","📈"),
+    ("performance","📈"),("lag","🐌"),("slow","🐌"),("render","🖥️"),("display","🖥️"),("interface","🖥️"),
+    ("screen","🖥️"),("file","📄"),("folder","📂"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
+    ("test","🧪"),("diagnostic","🧪"),("validate","🧾"),("audit","🧾"),("deploy","🚀"),("release","🚀"),
+    ("launch","🚀"),("start","▶️"),("stop","⏹️"),("pause","⏸️"),("next","➡️"),("previous","⬅️"),
+    ("retry","🔂"),("workflow","🔁"),("update","🔄"),("user","👤"),("group","👥"),("home","🏠"),
+    ("local","🏠"),("cloud","☁️"),("computer","💻"),("phone","📱"),("image","🖼️"),("screenshot","📸"),
+    ("video","🎥"),("message","💬"),("email","📧"),("notification","🔔"),("money","💰"),("payment","💳"),
+    ("success","✅"),("complete","✅"),("healthy","🟢"),("active","🔵"),("unknown","⚪"),("hold","🟡"),
+    ("blocked","🚧"),("blocker","🚧"),("risk","⚠️"),("fix","🔧"),("repair","🔧"),("build","🔨"),
+    ("tool","🧰"),("config","🎛️"),("setting","🎛️")
 )
 
 
 def _unicode_label(grapheme: str) -> str:
     names: list[str] = []
     for char in grapheme:
-        code = ord(char)
-        if code in (0xFE0E, 0xFE0F, 0x200D):
+        if ord(char) in (0xFE0E, 0xFE0F, 0x200D):
             continue
         name = unicodedata.name(char, "")
         if name:
@@ -98,16 +86,15 @@ def _unicode_label(grapheme: str) -> str:
     return " + ".join(names) if names else "unknown unicode symbol"
 
 
-def _meaning_lines(symbols: list[str]) -> str:
+def _meaning_lines(graphemes: tuple[str, ...]) -> str:
     lines: list[str] = []
     seen: set[str] = set()
-    for symbol in symbols:
+    for symbol in graphemes:
         if symbol in seen:
             continue
         seen.add(symbol)
-        meaning = _SYMBOL_TO_MEANING.get(symbol)
-        if meaning is not None:
-            lines.append(f"{symbol} = {meaning}")
+        if symbol in _SYMBOL_TO_MEANING:
+            lines.append(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}")
         elif any(ord(ch) > 127 for ch in symbol):
             lines.append(f"{symbol} = non-canonical Unicode: {_unicode_label(symbol)}")
     return "\n".join(lines)
@@ -116,22 +103,34 @@ def _meaning_lines(symbols: list[str]) -> str:
 def _candidate_symbols(text: str, limit: int = 120) -> tuple[str, ...]:
     lowered = text.lower()
     words = set(re.findall(r"[a-z0-9]+", lowered))
-    selected: list[str] = list(_CORE_SYMBOLS)
+    selected: list[str] = []
 
-    for phrase, symbol in _PHRASES:
-        if phrase in lowered and symbol not in selected:
+    forced: list[tuple[int, int, str]] = []
+    for order, (phrase, symbol) in enumerate(_PHRASES):
+        index = lowered.find(phrase)
+        if index >= 0:
+            forced.append((index, order, symbol))
+    forced.sort()
+    for _, _, symbol in forced:
+        if symbol not in selected:
             selected.append(symbol)
 
-    scored: list[tuple[int, str]] = []
-    for symbol, meaning in _SYMBOL_TO_MEANING.items():
+    scored: list[tuple[int, int, str]] = []
+    for ordinal, (symbol, meaning) in enumerate(_SYMBOL_TO_MEANING.items()):
         if symbol in selected:
             continue
         meaning_words = set(re.findall(r"[a-z0-9]+", meaning.lower()))
         score = len(words & meaning_words)
         if score:
-            scored.append((score, symbol))
-    scored.sort(key=lambda item: (-item[0], _vocab.CANONICAL_SYMBOLS.index(item[1])))
-    for _, symbol in scored:
+            scored.append((-score, ordinal, symbol))
+    scored.sort()
+    for _, _, symbol in scored:
+        if symbol not in selected:
+            selected.append(symbol)
+        if len(selected) >= limit:
+            return tuple(selected[:limit])
+
+    for symbol in _CORE:
         if symbol not in selected:
             selected.append(symbol)
         if len(selected) >= limit:
@@ -156,19 +155,15 @@ def _fallback_to_el(text: str) -> str:
     for _, _, symbol in hits:
         if not out or out[-1] != symbol:
             out.append(symbol)
-
     for number in re.findall(r"\b\d+(?:\.\d+)?\b", text):
         if number not in out:
             out.append(number)
-
-    if not out:
-        return "🟡❓"
-    return "➡️".join(out)
+    return "➡️".join(out) if out else "🟡❓"
 
 
 class TranslationEngine:
     def __init__(self, ollama=None) -> None:
-        self.ollama = ollama if ollama is not None else OllamaConnector()
+        self.ollama = ollama if ollama is not None else OllamaConnector(generation_timeout=150.0)
         self.core = CoreEngine()
         self.vocab = VocabularyEngine()
 
@@ -181,8 +176,7 @@ class TranslationEngine:
         parsed = self.core.parse(text, el_mode=True)
         if parsed.status is ValidationStatus.FAIL:
             return False
-        resolved = self.vocab.resolve(parsed)
-        return resolved.status is ValidationStatus.PASS
+        return self.vocab.resolve(parsed).status is ValidationStatus.PASS
 
     def to_text(self, source: str) -> str:
         if not isinstance(source, str) or not source.strip():
@@ -191,13 +185,11 @@ class TranslationEngine:
             return "❌ Mode 1 expects emoji/symbol input, not alphabetic text."
 
         graphemes = _core.split_graphemes(source)
-        glossary = _meaning_lines(list(graphemes))
-        prompt = f"""Translate the emoji/symbol sequence below into precise, concise English.
+        glossary = _meaning_lines(graphemes)
+        prompt = f"""Translate this emoji/symbol sequence into precise concise English.
 This is Mode 1: emoji to text.
-Use the supplied canonical EL meanings exactly when a symbol is canonical.
-For non-canonical Unicode emoji, use only its literal Unicode name as evidence; do not invent hidden system state.
-Preserve sequence, arrows, severity, negation, punctuation, numbers, and action direction.
-Explain unknown/non-canonical symbols conservatively if they materially affect the meaning.
+Use canonical EL meanings exactly where supplied. For non-canonical Unicode emoji, use its literal Unicode name as evidence only.
+Preserve order, arrows, severity, negation, punctuation, numbers and action direction. Do not invent hidden state.
 Return 1-4 clear sentences, no markdown, under 140 words.
 
 Evidence glossary:
@@ -214,16 +206,15 @@ Sequence:
             pass
 
         parts: list[str] = []
-        for grapheme in graphemes:
-            meaning = _SYMBOL_TO_MEANING.get(grapheme)
-            if meaning is not None:
-                parts.append(meaning)
-            elif grapheme.isspace() or grapheme in ".,;:!?-()[]{}":
-                parts.append(grapheme)
-            elif grapheme.isdigit():
-                parts.append(grapheme)
-            elif any(ord(char) > 127 for char in grapheme):
-                parts.append(f"non-canonical {_unicode_label(grapheme)}")
+        for symbol in graphemes:
+            if symbol in _SYMBOL_TO_MEANING:
+                parts.append(_SYMBOL_TO_MEANING[symbol])
+            elif symbol.isspace() or symbol in ".,;:!?-()[]{}":
+                parts.append(symbol)
+            elif symbol.isdigit():
+                parts.append(symbol)
+            elif any(ord(ch) > 127 for ch in symbol):
+                parts.append(f"non-canonical {_unicode_label(symbol)}")
         return " | ".join(part for part in parts if part.strip()) or "🟡 Unable to interpret input."
 
     def to_el(self, source: str) -> str:
@@ -234,11 +225,9 @@ Sequence:
         glossary = "\n".join(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}" for symbol in candidates)
         prompt = f"""Convert the user's text into canonical Emoji Language (EL).
 This is Mode 2: text to emoji.
-Output ONLY canonical EL emoji/symbols from the supplied glossary, plus digits, punctuation, and whitespace.
-Never output alphabetic letters or words.
-Preserve severity, cause/effect, negation, order, numbers, actions, dependencies, and requested changes.
-Use ➡️ for directed relationships when useful. Use ❌ for failure/negation, 🟡 for uncertainty, 🔴 for confirmed critical state.
-Do not invent facts that are not in the source.
+Output ONLY canonical EL symbols from the supplied glossary, plus digits, punctuation and whitespace. Never output alphabetic letters or words.
+Preserve severity, cause/effect, negation, order, numbers, actions, dependencies and requested changes. Do not invent facts.
+Use ➡️ for directed relationships when useful. Use ❌ for failure/negation, 🟡 for uncertainty and 🔴 only for confirmed critical state.
 Prefer concise but information-complete output.
 
 Canonical candidate glossary:
@@ -255,10 +244,11 @@ User text:
             return first
 
         if first:
-            retry = f"""Your previous answer was invalid because Mode 2 permits no alphabetic text and no non-canonical emoji.
-Return a corrected EL-only answer using ONLY these symbols plus digits/punctuation:
+            retry = f"""Correct the previous answer into strict canonical EL only.
+No alphabetic letters and no non-canonical emoji. Use only these canonical symbols plus digits/punctuation:
 {''.join(candidates)}
-Source meaning must remain faithful:
+Preserve the source meaning exactly and do not invent facts.
+Source:
 {source}
 Previous invalid answer:
 {first}
