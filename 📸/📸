@@ -1,22 +1,48 @@
 #!/usr/bin/env python3
-"""Screenshot / image interpretation bridge for EL Bot using local Ollama vision."""
+"""Screenshot/image interpretation bridge for EL Bot using local Ollama vision.
+
+Mode 1 returns concise text.
+Mode 2 returns canonical EL only.
+"""
 
 from __future__ import annotations
 
 import base64
-import json
-import re
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
 import sys
-import urllib.error
-import urllib.request
 
-_MODEL = "qwen2.5vl:7b"
-_URL = "http://127.0.0.1:11434/api/chat"
-_LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 
-_ALLOWED = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭🦙"
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
 
-_PROMPT = """Analyze the supplied screenshot or image visually. Return a concise Emoji Language (EL) description only. Never output alphabetic letters or words. Use only emoji from the allowed authority plus punctuation, whitespace, and numbers. Describe the most important visible state, object, action, error, warning, success, UI, person, device, or relationship. Do not invent hidden facts. If the image is unclear, output 🟡📸❓. Core EL meanings include: 📸 screenshot/image evidence; 👁️ observation; 🖥️ UI; 💻 computer; 📱 phone; ⚙️ system/settings; 🔧 fix; 🔍 inspect; ✅ pass/success; ❌ fail/error; 🟡 hold/caution; 🔴 critical; 🔵 active; ⚪ unknown; 📄 file; 📂 folder; 💬 message; 🔔 notification; 🧪 test; 🧯 recovery; 🔌 connector; 🦙 Ollama; 🤖 AI/bot; 🧠 intelligence; ➡️ next/relationship; ⬅️ back; 🔁 workflow; ⏳ pending; 🚧 blocker; ⚠️ warning; 🔒 locked; 🔓 unlocked. Keep the answer under 80 grapheme symbols. Allowed authority follows:\n""" + _ALLOWED
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
+_ollama = _load("_el_ollama", _ROOT / "🦙" / "🦙")
+
+ValidationStatus = _core.ValidationStatus
+CoreEngine = _core.CoreEngine
+VocabularyEngine = _vocab.VocabularyEngine
+OllamaConnector = _ollama.OllamaConnector
+
+_GLOSSARY = "\n".join(
+    f"{symbol} = {meaning}"
+    for symbol, meaning in zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True)
+)
+_ALLOWED = "".join(_vocab.CANONICAL_SYMBOLS)
 
 
 def _strip_data_url(value: str) -> str:
@@ -29,52 +55,91 @@ def _strip_data_url(value: str) -> str:
     return value
 
 
-def _has_letters(text: str) -> bool:
-    return bool(_LETTER_RE.search(text))
+def _valid_el(text: str) -> bool:
+    if not text.strip():
+        return False
+    core = CoreEngine()
+    vocab = VocabularyEngine()
+    parsed = core.parse(text, el_mode=True)
+    if parsed.status is ValidationStatus.FAIL:
+        return False
+    return vocab.resolve(parsed).status is ValidationStatus.PASS
 
 
-def analyze(image_value: str) -> str:
+def _mode_prompt(mode: int) -> str:
+    if mode == 1:
+        return """Analyze the supplied screenshot/image visually and describe the important visible state in concise English.
+This is Mode 1: visual evidence to text.
+Prioritize visible errors, warnings, success states, UI state, controls, files, devices, people, relationships, and the user's likely actionable evidence.
+Do not invent hidden facts, causes, identities, or unseen state. If text is visibly readable, summarize it rather than fabricating missing words.
+Return 1-5 short sentences, no markdown, under 180 words."""
+    return f"""Analyze the supplied screenshot/image visually and convert the important visible evidence into canonical Emoji Language (EL).
+This is Mode 2: visual evidence to emoji.
+Output ONLY canonical EL symbols from the authority below, plus digits, punctuation, and whitespace. Never output alphabetic letters or words.
+Preserve visible error/warning/success state, UI/device/file relationships, direction, counts, and actions. Do not invent hidden facts.
+If genuinely unclear, output 🟡📸❓. Keep the result concise and information-complete.
+
+Canonical EL glossary:
+{_GLOSSARY}"""
+
+
+def analyze(mode: int, image_value: str) -> str:
+    if mode not in (1, 2):
+        return "❌🔢"
     try:
         raw = _strip_data_url(image_value)
         base64.b64decode(raw, validate=True)
     except Exception:
         return "❌📸🔣"
 
-    body = {
-        "model": _MODEL,
-        "stream": False,
-        "messages": [
-            {
-                "role": "user",
-                "content": _PROMPT,
-                "images": [raw],
-            }
-        ],
-        "options": {"temperature": 0},
-    }
-    request = urllib.request.Request(
-        _URL,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            payload = json.load(response)
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+    connector = OllamaConnector(generation_timeout=300.0)
+    evidence = connector.probe()
+    if not evidence.reachable:
+        return "🟡📸🦙📡❓"
+    if not evidence.model_present:
         return "🟡📸🦙❓"
 
-    content = str(payload.get("message", {}).get("content", "")).strip()
+    prompt = _mode_prompt(mode)
+    try:
+        content = connector.generate_internal(prompt, images=(raw,)).strip()
+    except Exception:
+        return "🟡📸🦙❓"
+
     if not content:
         return "🟡📸❓"
-    if _has_letters(content):
-        return "🟡📸🦙🔤"
-    return content
+    if mode == 1:
+        return content
+    if _valid_el(content):
+        return content
+
+    retry = f"""Correct the previous vision answer into strict canonical EL only.
+No alphabetic letters. No non-canonical emoji. Preserve only facts visible in the image.
+Allowed canonical symbols:
+{_ALLOWED}
+Previous invalid answer:
+{content}
+"""
+    try:
+        corrected = connector.generate_internal(retry, images=(raw,)).strip()
+    except Exception:
+        corrected = ""
+    if _valid_el(corrected):
+        return corrected
+    return "🟡📸🦙🔤"
 
 
 def main() -> int:
-    value = sys.stdin.read().strip()
-    print(analyze(value))
+    payload = sys.stdin.read()
+    if "\n" not in payload:
+        print("❌🔢")
+        return 0
+    head, image_value = payload.split("\n", 1)
+    try:
+        mode = int(head.strip())
+    except ValueError:
+        print("❌🔢")
+        return 0
+    print(analyze(mode, image_value.strip()))
     return 0
 
 
