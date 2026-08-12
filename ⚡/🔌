@@ -1,0 +1,7 @@
+'use strict';
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('😀', Object.freeze({
+  '▶️': (source) => ipcRenderer.invoke('😀➡️🤖', source),
+}));
