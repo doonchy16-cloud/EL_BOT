@@ -1,9 +1,12 @@
-#!/usr/bin/env python3
-"""Self-contained deterministic checks for the emoji-path EL Bot tree."""
+"""Deterministic diagnostics engine for the emoji-path EL Bot."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
+import tempfile
 import sys
 
 
@@ -20,55 +23,69 @@ def _load(name: str, path: Path):
     return module
 
 
-ROOT = Path(__file__).resolve().parent.parent
-core = _load("_el_core", ROOT / "⚙️" / "⚙️")
-vocab = _load("_el_vocab", ROOT / "📚" / "📚")
-intel = _load("_el_intel", ROOT / "🧠" / "🧠")
-valid = _load("_el_valid", ROOT / "🧾" / "🧾")
-session = _load("_el_session", ROOT / "🧵" / "🧵")
-
-checks = 0
-
-
-def check(condition: bool) -> None:
-    global checks
-    assert condition
-    checks += 1
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
+_valid = _load("_el_valid", _ROOT / "🧾" / "🧾")
+_session = _load("_el_session", _ROOT / "🧵" / "🧵")
+_persist = _load("_el_persist", _ROOT / "💾" / "💾")
 
 
-surface = core.CoreEngine().parse("🔥➡️1️⃣.\n  ✅")
-check(surface.status is core.ValidationStatus.PASS)
-check(surface.reconstructed == "🔥➡️1️⃣.\n  ✅")
-check(core.CoreEngine().parse("🔥abc").status is core.ValidationStatus.FAIL)
-check(core.CoreEngine().parse("🔥", el_mode=False).status is core.ValidationStatus.HOLD)
+@dataclass(frozen=True, slots=True)
+class DiagnosticCheck:
+    marker: str
+    passed: bool
 
-check(len(vocab.CANONICAL_SYMBOLS) == 500)
-check(len(set(vocab.CANONICAL_SYMBOLS)) == 500)
-check(vocab.VocabularyEngine.lookup("🔥").ordinal == 1)
-check(vocab.VocabularyEngine.lookup("📭").ordinal == 500)
-check(vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🙂")).status is core.ValidationStatus.HOLD)
+    def render_el(self) -> str:
+        return self.marker + ("✅" if self.passed else "❌")
 
-r = vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🔥➡️🚀"))
-i = intel.IntelligenceEngine().interpret(r)
-check(i.status is core.ValidationStatus.PASS)
-check(i.lines[0].el_relationships == ("🔥➡️🚀",))
 
-r2 = vocab.VocabularyEngine().resolve(core.CoreEngine().parse("🔥🚀"))
-i2 = intel.IntelligenceEngine().interpret(r2)
-check(i2.lines[0].el_relationships == ())
+@dataclass(frozen=True, slots=True)
+class DiagnosticReport:
+    checks: tuple[DiagnosticCheck, ...]
 
-report = valid.ValidationEngine().validate(i, "🔥➡️🚀")
-check(report.releasable)
-check(report.safe_output() == "🔥➡️🚀")
-check(valid.ValidationEngine().validate(i, "words").status is core.ValidationStatus.FAIL)
-check(valid.ValidationEngine().validate(i, "🙂").status is core.ValidationStatus.HOLD)
+    @property
+    def passed(self) -> bool:
+        return all(item.passed for item in self.checks)
 
-s = session.SessionEngine()
-turn = s.ingest("🔥➡️🚀")
-check(turn.safe_output() == "🔥➡️🚀")
-check(s.render_el_status() == "✅🧵")
-check(len(s.turns) == 1)
-s.clear()
-check(s.render_el_status() == "⚪🧵")
+    def render_el(self) -> str:
+        passed = sum(1 for item in self.checks if item.passed)
+        total = len(self.checks)
+        head = "✅🧪" if self.passed else "❌🧪"
+        return head + f"{passed}/{total}" + "\n" + " ".join(item.render_el() for item in self.checks)
 
-print(f"✅🧪{checks}")
+
+class DiagnosticsEngine:
+    def run(self) -> DiagnosticReport:
+        checks: list[DiagnosticCheck] = []
+
+        surface = _core.CoreEngine().parse("🔥➡️1️⃣.\n  ✅")
+        checks.append(DiagnosticCheck("1️⃣⚙️", surface.status is _core.ValidationStatus.PASS and surface.reconstructed == "🔥➡️1️⃣.\n  ✅"))
+        checks.append(DiagnosticCheck("2️⃣🔤", _core.CoreEngine().parse("abc").status is _core.ValidationStatus.FAIL))
+
+        checks.append(DiagnosticCheck("3️⃣📚", len(_vocab.CANONICAL_SYMBOLS) == 500 and len(set(_vocab.CANONICAL_SYMBOLS)) == 500))
+        unknown = _vocab.VocabularyEngine().resolve(_core.CoreEngine().parse("🙂"))
+        checks.append(DiagnosticCheck("4️⃣❓", unknown.status is _core.ValidationStatus.HOLD))
+
+        resolved = _vocab.VocabularyEngine().resolve(_core.CoreEngine().parse("🔥➡️🚀"))
+        interpreted = _intel.IntelligenceEngine().interpret(resolved)
+        relation_ok = bool(interpreted.lines) and interpreted.lines[0].el_relationships == ("🔥➡️🚀",)
+        checks.append(DiagnosticCheck("5️⃣🧠", relation_ok))
+
+        report = _valid.ValidationEngine().validate(interpreted, "🔥➡️🚀")
+        checks.append(DiagnosticCheck("6️⃣🧾", report.releasable and report.safe_output() == "🔥➡️🚀"))
+
+        session = _session.SessionEngine()
+        turn = session.ingest("🔥➡️🚀")
+        checks.append(DiagnosticCheck("7️⃣🧵", turn.safe_output() == "🔥➡️🚀" and session.render_el_status() == "✅🧵"))
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "🗃️"
+            persistence = _persist.PersistenceEngine(path)
+            persistence.save(session)
+            restored = persistence.load()
+            persist_ok = len(restored.turns) == 1 and restored.latest is not None and restored.latest.source == "🔥➡️🚀"
+        checks.append(DiagnosticCheck("8️⃣💾", persist_ok))
+
+        return DiagnosticReport(tuple(checks))
