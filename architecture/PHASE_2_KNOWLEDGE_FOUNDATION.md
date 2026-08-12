@@ -1,10 +1,10 @@
 # EL Bot — Phase 2 Knowledge Foundation
 
-**Status:** 🟡 IMPLEMENTATION IN PROGRESS
+**Status:** ✅ PASS — IMPLEMENTED AND CI-GATED
 
 **Authority date:** 2026-08-12
 
-Phase 2 implements only the safe substrate required for the forever-expanding Emoji Language. It does **not** wire AI fallback, automatic learning, candidate search, graduation, generalization, or vocabulary mutation.
+Phase 2 implemented the safe substrate required for the forever-expanding Emoji Language. It intentionally does **not** wire AI fallback, automatic learning, candidate search, graduation, generalization, or vocabulary mutation.
 
 ## Source-present Phase-2 engines
 
@@ -17,7 +17,7 @@ Phase 2 implements only the safe substrate required for the forever-expanding Em
 | N17 | 📜 | Provenance Ledger Engine | append-only origin and validation lineage |
 | N19 | 🗃️ | Knowledge Versioning & Rollback Engine | snapshot lineage, hashing, persistence, rollback |
 
-These six bring source-present target engines from **24 to 30**, leaving 14 target engines planned-only.
+These six bring source-present target engines from **24 to 30**, leaving **14 target engines planned-only**.
 
 ## Locked boundaries
 
@@ -37,7 +37,7 @@ The built-in 🌐 inventory is a **broad assigned-symbol investigable superset**
 
 For an exact Unicode RGI inventory, 🌐 provides `from_emoji_test(source)`, which accepts the official Unicode `emoji-test.txt` format and includes only `component` + `fully-qualified` rows. When loaded this way, the snapshot is marked `rgi_complete=True` and retains the Unicode version declared by the file.
 
-Phase 2 therefore supports the complete-data contract without falsely claiming that the built-in fallback inventory is already the official RGI dataset.
+This supports the complete-data contract without falsely claiming the built-in fallback inventory is already the official RGI dataset.
 
 ## Knowledge write prerequisites
 
@@ -46,17 +46,21 @@ Future knowledge mutation must have, at minimum:
 1. 📜 provenance;
 2. 📊 evidence;
 3. 🧿 integrity assessment;
-4. 🎓 graduation decision (Phase 4, not implemented yet);
+4. 🎓 graduation decision (not implemented yet);
 5. 🗃️ versioned commit.
 
-Until 🎓 exists and the later learning pipeline is explicitly authorized, Phase 2 engines are foundation/readiness components only.
+Until 🎓 exists and the later learning pipeline is explicitly authorized, these Phase-2 engines remain foundation/readiness components only.
 
-## Phase-2 PASS gate
+## PASS evidence contract
+
+Phase 2 is gated by `architecture/verify_phase2_knowledge_foundation.py`, enforced by `🧪/🚀`, plus the normal Diagnostics Engine expanded to **30 checks**.
+
+The gate verifies:
 
 - six source files exist and import using Python 3.12;
 - 🧷 handles VS presentation/keycap/ZWJ cases deterministically;
 - 🌐 built-in inventory is larger than 📚501 and covers all 501 canonical symbols;
-- 🌐 official `emoji-test.txt` parser distinguishes RGI rows from unqualified rows;
+- 🌐 `emoji-test.txt` parser distinguishes RGI rows from unqualified rows;
 - 📜 rejects duplicate IDs and provider provenance without provider/model identity;
 - 📊 records positive and negative evidence with deterministic confidence;
 - 🗃️ hashes snapshots, persists atomically, restores lineage, and rollback creates a new version rather than rewriting history;
@@ -64,4 +68,8 @@ Until 🎓 exists and the later learning pipeline is explicitly authorized, Phas
 - 📚501 remains unchanged;
 - all Phase-2 sources remain provider-free;
 - Phase-1 architecture gate remains green;
-- existing full regression CI remains green.
+- full regression CI remains green.
+
+## Next boundary
+
+**Phase 3 — 🧠🔍 Semantic Search & Full Translation Intelligence** is the next planned phase and is **not authorized by this document**.
