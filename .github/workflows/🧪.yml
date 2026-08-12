@@ -36,5 +36,6 @@ jobs:
       - name: "🧪"
         shell: powershell
         run: |
+          $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x2705)); runpy.run_path(str(p), run_name='__main__')"
