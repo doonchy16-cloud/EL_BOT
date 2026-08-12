@@ -34,6 +34,7 @@ _event = _load("_el_event", _ROOT / "📡" / "📡")
 _security = _load("_el_security", _ROOT / "🔐" / "🔐")
 _recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
 _config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
+_connector = _load("_el_connector", _ROOT / "🔌" / "🔌")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
@@ -108,6 +109,8 @@ class DiagnosticsEngine:
         security_ok = (
             security.authorize("🔥➡️🚀").authorized
             and security.authorize("🧹").authorized
+            and security.authorize("🔌").authorized
+            and security.authorize("🔌📋").authorized
             and not security.authorize("abc").authorized
             and security.authorize("abc").render_el_status() == "❌🔐🔤"
             and security.render_el_status() == "✅🔐"
@@ -155,6 +158,25 @@ class DiagnosticsEngine:
             )
         checks.append(DiagnosticCheck("1️⃣3️⃣🎛️", config_ok))
 
+        connectors = _connector.ConnectorEngine()
+        connector_empty = connectors.render_el() == "⚪🔌0"
+        connector_unknown = connectors.invoke("🌐", "🔥") == "🟡🔌❓"
+        connectors.register("🌐", lambda payload: "✅🔌" + payload)
+        connector_output = connectors.invoke("🌐", "🔥")
+        connectors.register("☁️", lambda payload: "hidden words")
+        connector_letters = connectors.invoke("☁️", "🔥")
+        connector_ok = (
+            connector_empty
+            and connector_unknown
+            and connector_output == "✅🔌🔥"
+            and connector_letters == "❌🔌🔤"
+            and connectors.count == 2
+            and connectors.render_el_status() == "✅🔌2"
+            and _core.CoreEngine().parse(connector_output).status is _core.ValidationStatus.PASS
+            and _core.CoreEngine().parse(connector_letters).status is _core.ValidationStatus.PASS
+        )
+        checks.append(DiagnosticCheck("1️⃣4️⃣🔌", connector_ok))
+
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "🗃️"
             persistence = _persist.PersistenceEngine(path)
@@ -163,10 +185,12 @@ class DiagnosticsEngine:
             saved = workflow.process("💾")
             loaded = workflow.process("📥")
             event_log = workflow.process("📡")
+            connector_status = workflow.process("🔌")
             workflow_ok = (
                 output == "🔥➡️🚀\n✅🧵"
                 and saved == "✅💾1"
                 and loaded == "✅📥1"
+                and connector_status == "⚪🔌0"
                 and workflow.render_el_status().startswith("✅🔁")
                 and "📥" in event_log
                 and "📤" in event_log
