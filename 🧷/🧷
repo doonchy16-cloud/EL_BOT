@@ -1,0 +1,114 @@
+"""N15: deterministic Unicode emoji canonicalization foundation."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+import unicodedata
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core_canonicalization", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab_canonicalization", _ROOT / "📚" / "📚")
+split_graphemes = _core.split_graphemes
+CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
+
+_VS15 = "\ufe0e"
+_VS16 = "\ufe0f"
+_KEYCAP = "\u20e3"
+
+
+def _contains_letter(value: str) -> bool:
+    return any(unicodedata.category(char).startswith("L") for char in value)
+
+
+def _dedupe_variation(value: str) -> str:
+    out: list[str] = []
+    previous = ""
+    for char in value:
+        if char in {_VS15, _VS16} and previous == char:
+            continue
+        out.append(char)
+        previous = char
+    return "".join(out)
+
+
+def _keycap_form(value: str) -> str:
+    if not value.endswith(_KEYCAP) or not value:
+        return value
+    base = value[0]
+    if base not in "0123456789#*":
+        return value
+    return base + _VS16 + _KEYCAP
+
+
+_CANONICAL_BY_PRESENTATIONLESS: dict[str, str] = {}
+for _symbol in CANONICAL_SYMBOLS:
+    _key = _symbol.replace(_VS16, "").replace(_VS15, "")
+    _CANONICAL_BY_PRESENTATIONLESS.setdefault(_key, _symbol)
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalEmojiUnit:
+    source: str
+    canonical: str
+    codepoints: tuple[int, ...]
+    changed: bool
+    valid: bool
+    reason: str
+
+    def render_el(self) -> str:
+        if not self.valid:
+            return "❌🧷"
+        return ("🔄" if self.changed else "✅") + "🧷" + self.canonical
+
+
+class EmojiCanonicalizationEngine:
+    """Normalize one emoji grapheme without assigning semantic meaning."""
+
+    def canonicalize_unit(self, source: str) -> CanonicalEmojiUnit:
+        if not isinstance(source, str) or not source:
+            return CanonicalEmojiUnit(str(source or ""), "", (), False, False, "empty")
+        normalized = unicodedata.normalize("NFC", source)
+        normalized = normalized.replace(_VS15, "")
+        normalized = _dedupe_variation(normalized)
+        normalized = _keycap_form(normalized)
+        presentationless = normalized.replace(_VS16, "")
+        normalized = _CANONICAL_BY_PRESENTATIONLESS.get(presentationless, normalized)
+        clusters = split_graphemes(normalized)
+        if len(clusters) != 1:
+            return CanonicalEmojiUnit(source, normalized, tuple(map(ord, normalized)), normalized != source, False, "not-one-grapheme")
+        if _contains_letter(normalized):
+            return CanonicalEmojiUnit(source, normalized, tuple(map(ord, normalized)), normalized != source, False, "letters-forbidden")
+        if any(unicodedata.category(char) in {"Cc", "Cs"} for char in normalized):
+            return CanonicalEmojiUnit(source, normalized, tuple(map(ord, normalized)), normalized != source, False, "control-or-surrogate")
+        return CanonicalEmojiUnit(source, normalized, tuple(map(ord, normalized)), normalized != source, True, "ok")
+
+    def canonicalize_text(self, source: str) -> tuple[CanonicalEmojiUnit, ...]:
+        if not isinstance(source, str):
+            raise TypeError("source must be a string")
+        return tuple(self.canonicalize_unit(cluster) for cluster in split_graphemes(unicodedata.normalize("NFC", source)))
+
+    def process(self, text: str) -> str:
+        if text == "🧷":
+            return "✅🧷"
+        result = self.canonicalize_unit(text)
+        return result.render_el()
+
+    def render_el_status(self) -> str:
+        return "✅🧷"
