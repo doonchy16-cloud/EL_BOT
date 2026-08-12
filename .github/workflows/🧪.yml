@@ -60,7 +60,29 @@ jobs:
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import pathlib,subprocess,sys; p=next(x for x in pathlib.Path('.').iterdir() if x.is_file() and x.name==chr(0x1F916)); s='🔥➡️🚀'; r=subprocess.run([sys.executable,str(p)],input=s,text=True,capture_output=True,encoding='utf-8'); print(r.stdout.strip()); assert r.returncode==0; assert r.stdout.strip(); assert not r.stdout.lstrip().startswith(chr(0x274C))"
+          $script = Join-Path $env:RUNNER_TEMP 'el_bot_stdin_test.py'
+          @'
+          import pathlib
+          import subprocess
+          import sys
+
+          bot = next(path for path in pathlib.Path('.').iterdir() if path.is_file() and path.name == chr(0x1F916))
+          source = '🔥➡️🚀'
+          result = subprocess.run(
+              [sys.executable, str(bot)],
+              input=source,
+              text=True,
+              capture_output=True,
+              encoding='utf-8',
+              timeout=20,
+          )
+          output = result.stdout.strip()
+          print(output)
+          assert result.returncode == 0
+          assert output
+          assert not output.startswith(chr(0x274C))
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
 
       - name: "🧪⚡"
         shell: powershell
