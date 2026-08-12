@@ -24,13 +24,10 @@ lang=_load("_el_quality_lang",ROOT/"🧠"/"🧬")
 def main()->int:
     a=abc.ABCToEmojiEngine();e=emoji.EmojiToABCEngine();passed=0
 
-    # Permanent tiny-input regression: the previous hi -> 🟡❓ bug must never return.
     hi=a.translate("hi",verifier=e,cross_verify=True,emit=False)
-    assert hi.winner=="👋" and hi.metrics.get("quality_status")!="fail",hi.as_dict()
-    print("👋✅")
+    assert hi.winner=="👋" and hi.metrics.get("quality_status")!="fail",hi.as_dict();print("👋✅")
 
-    r=a.translate("Load the file, test it, validate the result, and deploy only after every required check passes.",verifier=e,cross_verify=True,emit=False)
-    print("1️⃣ "+r.winner)
+    r=a.translate("Load the file, test it, validate the result, and deploy only after every required check passes.",verifier=e,cross_verify=True,emit=False);print("1️⃣ "+r.winner)
     for marker in ("📥","📄","🧪","🧾","🚀","🚦➡️","✅"):assert marker in r.winner,(marker,r.as_dict())
     assert r.metrics.get("relation_integrity",0)>=.9;passed+=1
 
@@ -77,17 +74,30 @@ def main()->int:
     assert facade.process(1,"📡❌➡️⏱️30➡️🔄⚙️‼️➡️🧪➡️🧾➡️✅➡️🟢")
     assert facade.provider_call_count==before==0;print("🔟 🤖❌↔️✅");passed+=1
 
-    parsed=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
-    assert parsed is not None and parsed["visible_text"]==("Error",)
+    parsed,strategy=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
+    assert strategy=="json" and parsed is not None and parsed["visible_text"]==("Error",)
     candidates,m=vision._facts_to_el(parsed);assert candidates and lang.valid_el(candidates[0].value) and m["vision_fact_coverage"]>0
-    vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8");assert "chat_json_internal" in vision_source and "One vision-model call only" in vision_source
-    print("1️⃣1️⃣ 📸📋1️⃣🤖✅");passed+=1
+    print("1️⃣1️⃣ 📸📋✅");passed+=1
 
-    ui=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8")
-    for marker in ("@media(max-width:1100px)","controlBar","sandTop","sandBottom","sandStream","sandGrain","g5","rotate(180deg)","updateStage(payload)"):assert marker in ui,marker
-    assert "rotate(360deg)" not in ui;print("1️⃣2️⃣ 🖥️⏳🏖️0↔180✅");passed+=1
+    truncated='{"visible_text":["Error","Retry"],"objects":["application window"],"controls":["Retry button"],"states":["error"],"relationships":['
+    recovered,recovery_strategy=vision._parse_observation(truncated)
+    assert recovery_strategy=="partial-json-repair" and recovered is not None
+    assert recovered["visible_text"]==("Error","Retry") and recovered["controls"]==("Retry button",)
+    print("1️⃣2️⃣ 📸✂️📋🧯✅");passed+=1
 
-    print(f"✅🧪🔤{passed}/12")
+    vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8");ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8")
+    for marker in ("_VISION_SCHEMA","_extract_partial_arrays","structured-vision-retry","Retry Compact Visible Facts","controlled retry","sensor_calls"):assert marker in vision_source,marker
+    assert "Do not translate into Emoji Language" in vision_source and "chat_json_internal" in vision_source
+    assert "schema if schema is not None else" in ollama_source and "num_ctx\":8192" in ollama_source
+    print("1️⃣3️⃣ 📸📜🧬🔁✅");passed+=1
+
+    ui=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8");electron=(ROOT/"⚡"/"⚡").read_text(encoding="utf-8")
+    for marker in ("@media(max-width:1100px)","controlBar","sandTop","sandBottom","sandStream","sandGrain","flowDown","flowUp","sandGrainDown","sandGrainUp","g5","u5","rotate(180deg)","stageStarted","processingStarted","warnAfterMs","Σ ","maxSide=png?1800:1600","updateStage(payload)"):assert marker in ui,marker
+    assert "rotate(360deg)" not in ui and "background:#070b13;padding" in ui
+    for marker in ("stagePayload","warn_after_ms","170000"):assert marker in electron,marker
+    print("1️⃣4️⃣ 🖥️⏳🏖️⏱️0↔180✅");passed+=1
+
+    print(f"✅🧪🔤{passed}/14")
     return 0
 
 if __name__=="__main__":raise SystemExit(main())
