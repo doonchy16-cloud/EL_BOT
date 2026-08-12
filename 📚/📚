@@ -1,13 +1,11 @@
 """Canonical 500-symbol Emoji Language authority."""
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import sys
-import regex
 
 
 def _load(name: str, path: Path):
@@ -31,7 +29,7 @@ TokenKind = _core.TokenKind
 ValidationStatus = _core.ValidationStatus
 
 _CANONICAL_SYMBOL_STREAM = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭"
-CANONICAL_SYMBOLS: tuple[str, ...] = tuple(regex.findall(r"\X", _CANONICAL_SYMBOL_STREAM))
+CANONICAL_SYMBOLS: tuple[str, ...] = _core.split_graphemes(_CANONICAL_SYMBOL_STREAM)
 
 if len(CANONICAL_SYMBOLS) != 500 or len(set(CANONICAL_SYMBOLS)) != 500:
     raise RuntimeError("EL authority invariant violated")
@@ -70,34 +68,25 @@ class VocabularyEngine:
     def resolve(self, parsed: ParseResult) -> VocabularyResult:
         if not isinstance(parsed, ParseResult):
             raise TypeError("parsed must be a ParseResult")
-
         resolved: list[SymbolAuthority] = []
         unknown_emoji: list[Token] = []
-
         for token in parsed.tokens:
             ordinal = _CANONICAL_ORDINAL.get(token.text)
             if ordinal is not None:
-                resolved.append(SymbolAuthority(symbol=token.text, ordinal=ordinal))
+                resolved.append(SymbolAuthority(token.text, ordinal))
             elif token.kind is TokenKind.EMOJI:
                 unknown_emoji.append(token)
-
         if parsed.status is ValidationStatus.FAIL:
             status = ValidationStatus.FAIL
         elif parsed.status is ValidationStatus.HOLD or unknown_emoji:
             status = ValidationStatus.HOLD
         else:
             status = ValidationStatus.PASS
-
-        return VocabularyResult(
-            source=parsed,
-            resolved=tuple(resolved),
-            unknown_emoji=tuple(unknown_emoji),
-            status=status,
-        )
+        return VocabularyResult(parsed, tuple(resolved), tuple(unknown_emoji), status)
 
     @staticmethod
     def lookup(symbol: str) -> SymbolAuthority | None:
         ordinal = _CANONICAL_ORDINAL.get(symbol)
         if ordinal is None:
             return None
-        return SymbolAuthority(symbol=symbol, ordinal=ordinal)
+        return SymbolAuthority(symbol, ordinal)
