@@ -45,9 +45,17 @@ class SessionTurn:
     validation: object
 
     def render_el_status(self) -> str:
+        if self.surface.letter_tokens:
+            return "❌🔤"
+        if self.vocabulary.status is ValidationStatus.HOLD:
+            return self.vocabulary.render_el_status()
         return self.validation.render_el_status()
 
     def safe_output(self) -> str:
+        if self.surface.letter_tokens:
+            return "❌🔤"
+        if self.vocabulary.status is ValidationStatus.HOLD:
+            return self.vocabulary.render_el_status()
         return self.validation.safe_output()
 
 
@@ -93,9 +101,11 @@ class SessionEngine:
     def render_el_status(self) -> str:
         if not self._turns:
             return "⚪🧵"
-        status = self._turns[-1].validation.status
-        if status is ValidationStatus.FAIL:
+        latest = self._turns[-1]
+        if latest.surface.letter_tokens:
+            return "❌🧵🔤"
+        if latest.validation.status is ValidationStatus.FAIL:
             return "❌🧵"
-        if status is ValidationStatus.HOLD:
+        if latest.validation.status is ValidationStatus.HOLD:
             return "🟡🧵❓"
         return "✅🧵"
