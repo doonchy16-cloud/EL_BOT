@@ -1,0 +1,168 @@
+"""N01: deterministic investigable Emoji Universe foundation."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+import unicodedata
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_vocab = _load("_el_vocab_universe", _ROOT / "📚" / "📚")
+_canon = _load("_el_canonicalization_universe", _ROOT / "🧷" / "🧷")
+CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
+EmojiCanonicalizationEngine = _canon.EmojiCanonicalizationEngine
+
+# Broad assigned-symbol candidate ranges. This is deliberately a superset and is
+# NOT advertised as the Unicode RGI set. Exact RGI inventory can be loaded from
+# the official Unicode emoji-test.txt format through from_emoji_test().
+_BROAD_RANGES = (
+    (0x2300, 0x23FF),
+    (0x2500, 0x27BF),
+    (0x2B00, 0x2BFF),
+    (0x1F000, 0x1FAFF),
+)
+
+
+def _assigned_symbol(char: str) -> bool:
+    try:
+        unicodedata.name(char)
+    except ValueError:
+        return False
+    category = unicodedata.category(char)
+    return category.startswith("S") or category in {"Sk", "So"}
+
+
+def _decode_codepoints(field: str) -> str:
+    return "".join(chr(int(part, 16)) for part in field.split())
+
+
+@dataclass(frozen=True, slots=True)
+class EmojiUniverseSnapshot:
+    version: str
+    source_kind: str
+    units: tuple[str, ...]
+    canonical_coverage: int
+    rgi_complete: bool
+    fully_qualified_count: int
+    component_count: int
+
+    @property
+    def count(self) -> int:
+        return len(self.units)
+
+    def render_el(self) -> str:
+        return "✅🌐" + str(self.count) + ("🔒" if self.rgi_complete else "🟡")
+
+
+class EmojiUniverseEngine:
+    """Own the finite candidate-unit inventory; never assigns semantic meaning."""
+
+    def __init__(self, units: tuple[str, ...] | list[str] | None = None, *, version: str = "builtin-v1", source_kind: str = "broad-assigned-symbol-superset", rgi_complete: bool = False, fully_qualified_count: int = 0, component_count: int = 0) -> None:
+        canonicalizer = EmojiCanonicalizationEngine()
+        if units is None:
+            generated: list[str] = list(CANONICAL_SYMBOLS)
+            for start, end in _BROAD_RANGES:
+                for codepoint in range(start, end + 1):
+                    char = chr(codepoint)
+                    if _assigned_symbol(char):
+                        generated.append(char)
+            units = generated
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for unit in units:
+            result = canonicalizer.canonicalize_unit(unit)
+            if not result.valid or not result.canonical or result.canonical in seen:
+                continue
+            seen.add(result.canonical)
+            normalized.append(result.canonical)
+        canonical_coverage = sum(1 for symbol in CANONICAL_SYMBOLS if symbol in seen)
+        self._snapshot = EmojiUniverseSnapshot(
+            version=str(version),
+            source_kind=str(source_kind),
+            units=tuple(normalized),
+            canonical_coverage=canonical_coverage,
+            rgi_complete=bool(rgi_complete),
+            fully_qualified_count=int(fully_qualified_count),
+            component_count=int(component_count),
+        )
+        self._set = frozenset(self._snapshot.units)
+
+    @classmethod
+    def from_emoji_test(cls, source: str) -> "EmojiUniverseEngine":
+        """Parse the official Unicode emoji-test.txt format.
+
+        RGI corresponds to component + fully-qualified rows in that file. The
+        parser intentionally ignores minimally-qualified and unqualified rows.
+        """
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("emoji-test source must be non-empty")
+        version = "unknown"
+        units: list[str] = []
+        fully = 0
+        components = 0
+        for raw in source.splitlines():
+            line = raw.strip()
+            if line.startswith("# Version:"):
+                version = line.split(":", 1)[1].strip()
+                continue
+            if not line or line.startswith("#") or ";" not in line:
+                continue
+            left, rest = line.split(";", 1)
+            status = rest.split("#", 1)[0].strip()
+            if status not in {"fully-qualified", "component"}:
+                continue
+            try:
+                unit = _decode_codepoints(left.strip())
+            except (ValueError, OverflowError):
+                continue
+            units.append(unit)
+            if status == "fully-qualified":
+                fully += 1
+            else:
+                components += 1
+        if not units:
+            raise ValueError("emoji-test contained no RGI rows")
+        return cls(
+            units,
+            version=version,
+            source_kind="unicode-emoji-test",
+            rgi_complete=True,
+            fully_qualified_count=fully,
+            component_count=components,
+        )
+
+    @property
+    def snapshot(self) -> EmojiUniverseSnapshot:
+        return self._snapshot
+
+    @property
+    def units(self) -> tuple[str, ...]:
+        return self._snapshot.units
+
+    def contains(self, unit: str) -> bool:
+        result = EmojiCanonicalizationEngine().canonicalize_unit(unit)
+        return result.valid and result.canonical in self._set
+
+    def process(self, text: str) -> str:
+        if text == "🌐":
+            return self._snapshot.render_el()
+        return ("✅" if self.contains(text) else "🟡") + "🌐"
+
+    def render_el_status(self) -> str:
+        return self._snapshot.render_el()
