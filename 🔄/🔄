@@ -1,0 +1,39 @@
+"""Engine 22: explicit-only local protocol updater."""
+
+from __future__ import annotations
+
+
+class UpdaterEngine:
+    """Track explicit protocol updates without inventing remote releases."""
+
+    def __init__(self, current: int = 1) -> None:
+        self.current = current
+        self.pending: int | None = None
+
+    def propose(self, version: int) -> bool:
+        if not isinstance(version, int) or version <= self.current:
+            return False
+        self.pending = version
+        return True
+
+    def apply(self) -> bool:
+        if self.pending is None:
+            return False
+        self.current = self.pending
+        self.pending = None
+        return True
+
+    def process(self, text: str) -> str:
+        if text == "🔄":
+            if self.pending is None:
+                return "✅🔄" + str(self.current)
+            return "🟡🔄" + str(self.current) + "➡️" + str(self.pending)
+        if text.startswith("🔄") and text[len("🔄"):].isdigit():
+            version = int(text[len("🔄"):])
+            return "✅🔄" + str(version) if self.propose(version) else "🟡🔄❓"
+        if text == "🔄✅":
+            return "✅🔄" + str(self.current) if self.apply() else "🟡🔄❓"
+        return "🟡🔄❓"
+
+    def render_el_status(self) -> str:
+        return self.process("🔄")
