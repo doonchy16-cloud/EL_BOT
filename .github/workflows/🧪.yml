@@ -87,50 +87,7 @@ jobs:
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          $script = Join-Path $env:RUNNER_TEMP 'el_rank_test.py'
-          @'
-          from importlib.machinery import SourceFileLoader
-          from importlib.util import module_from_spec, spec_from_loader
-          import pathlib
-          import sys
-          import tempfile
-
-          brain = chr(0x1F9E0)
-          shuffle = chr(0x1F500)
-          rank_path = next(p for p in pathlib.Path('.').rglob('*') if p.is_file() and p.name == shuffle and p.parent.name == brain)
-          loader = SourceFileLoader('_rank_test', str(rank_path))
-          spec = spec_from_loader('_rank_test', loader)
-          mod = module_from_spec(spec)
-          sys.modules['_rank_test'] = mod
-          loader.exec_module(mod)
-
-          temp = pathlib.Path(tempfile.gettempdir()) / 'el_rank_test_store.json'
-          if temp.exists(): temp.unlink()
-          store = mod.SelectionStore(temp)
-          assert store.counts(2, 'x') == {}
-          ranker = mod.SemanticRanker(store)
-
-          pairs = (("critical", "🔴"),("error", "❌"),("database", "🗃️"),("connection", "🔌"),("timeout", "⏱️"),("restart", "🔄"))
-          source = 'critical error database connection timeout restart'
-          bad = '➡️' * 30
-          good = '🔴❌🗃️🔌⏱️🔄'
-          ranked = ranker.rank_el_candidates(source, [bad, good], pairs)
-          assert ranked.winner == good
-          assert len(ranked.candidates) >= 1
-
-          compound = '🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝'
-          text_ranked = ranker.rank_text_candidates(compound, ['grinning robot'])
-          assert 'qwen2.5vl:7b' in text_ranked.winner
-
-          first = ranker.rank_el_candidates('x', ['🔥','🚀'], ())
-          assert first.winner == '🔥'
-          ranker.record_selection(2, 'x', '🚀')
-          second = ranker.rank_el_candidates('x', ['🔥','🚀'], ())
-          assert second.winner == '🚀'
-          if temp.exists(): temp.unlink()
-          print('✅🧪🔀')
-          '@ | Set-Content -LiteralPath $script -Encoding UTF8
-          & $exe $script
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F500); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
       - name: "🧪📸"
         shell: powershell
