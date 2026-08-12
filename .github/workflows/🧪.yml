@@ -206,7 +206,8 @@ jobs:
           if (-not $html.Contains("event.key==='Enter' && !event.shiftKey")) { throw 'enter run missing' }
           if (-not $html.Contains('main{width:100%')) { throw 'full width missing' }
           if ($html.Contains('width:min(1160px,100%)')) { throw 'fixed width remains' }
-          if (-not $html.Contains("window['😀']['🏆']")) { throw 'selection learning missing' }
+          if (-not $html.Contains('async function chooseAlternative(value)')) { throw 'selection function missing' }
+          if (-not $html.Contains('lastSource,value')) { throw 'selection persistence missing' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
 
       - name: "🧪"
