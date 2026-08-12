@@ -24,19 +24,14 @@ app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 function hasCommand(command, args = []) {
-  try {
-    return spawnSync(command, args, { windowsHide: true, stdio: 'ignore', timeout: 4000 }).status === 0;
-  } catch (_) {
-    return false;
-  }
+  try { return spawnSync(command, args, { windowsHide: true, stdio: 'ignore', timeout: 4000 }).status === 0; }
+  catch (_) { return false; }
 }
 
 function pythonCandidate() {
   const candidates = [];
   if (process.env.EL_PYTHON) candidates.push({ command: process.env.EL_PYTHON, prefix: [] });
-  if (process.env.RUNNER_TOOL_CACHE) {
-    candidates.push({ command: path.join(process.env.RUNNER_TOOL_CACHE, 'ELPython', '3.12.10', 'python.exe'), prefix: [] });
-  }
+  if (process.env.RUNNER_TOOL_CACHE) candidates.push({ command: path.join(process.env.RUNNER_TOOL_CACHE, 'ELPython', '3.12.10', 'python.exe'), prefix: [] });
   candidates.push(
     { command: 'C:\\Git\\EL-bot-runner\\actions-runner\\_work\\_tool\\ELPython\\3.12.10\\python.exe', prefix: [] },
     { command: 'py', prefix: ['-3'] },
@@ -53,9 +48,7 @@ function pythonCandidate() {
   return null;
 }
 
-function rankDbPath() {
-  return path.join(app.getPath('userData'), '🏆');
-}
+function rankDbPath() { return path.join(app.getPath('userData'), '🏆'); }
 
 function ensureAppIconPath() {
   const encoded = fs.readFileSync(APP_ICON_SOURCE, 'utf8').trim();
@@ -74,9 +67,7 @@ function ensureAppIconPath() {
 function validateViewSource(source) {
   if (typeof source !== 'string' || source.length < 1000) throw new Error('EL Bot UI source is empty');
   if (!/^\s*<!doctype html>/i.test(source)) throw new Error('EL Bot UI source is not HTML');
-  for (const id of REQUIRED_VIEW_IDS) {
-    if (!source.includes(`id="${id}"`)) throw new Error(`EL Bot UI source missing ${id}`);
-  }
+  for (const id of REQUIRED_VIEW_IDS) if (!source.includes(`id="${id}"`)) throw new Error(`EL Bot UI source missing ${id}`);
   if (!source.includes('<script>') || !source.includes('</html>')) throw new Error('EL Bot UI source is incomplete');
 }
 
@@ -87,7 +78,6 @@ function materializeHtmlView() {
   const folder = path.join(app.getPath('userData'), 'runtime');
   fs.mkdirSync(folder, { recursive: true });
   const target = path.join(folder, `el-bot-${digest}.html`);
-
   let validExisting = false;
   try { validExisting = fs.readFileSync(target, 'utf8') === source; } catch (_) {}
   if (!validExisting) {
@@ -96,12 +86,9 @@ function materializeHtmlView() {
     try { fs.rmSync(target, { force: true }); } catch (_) {}
     fs.renameSync(temp, target);
   }
-
   for (const name of fs.readdirSync(folder)) {
     if (name === path.basename(target)) continue;
-    if (/^el-bot-[0-9a-f]{16}\.html$/i.test(name)) {
-      try { fs.rmSync(path.join(folder, name), { force: true }); } catch (_) {}
-    }
+    if (/^el-bot-[0-9a-f]{16}\.html$/i.test(name)) try { fs.rmSync(path.join(folder, name), { force: true }); } catch (_) {}
   }
   return target;
 }
@@ -118,8 +105,7 @@ async function verifyRenderedView(win) {
 }
 
 function startupFailureHtml(error) {
-  const message = String(error && error.message ? error.message : error || 'unknown startup failure')
-    .replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const message = String(error && error.message ? error.message : error || 'unknown startup failure').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   return `<!doctype html><html><head><meta charset="utf-8"><title>${APP_NAME}</title><style>html,body{height:100%;margin:0;background:#080b12;color:#f6f8ff;font-family:Segoe UI,Arial,sans-serif}body{display:grid;place-items:center}.card{max-width:760px;margin:28px;padding:28px;border:1px solid #7b3040;border-radius:20px;background:#170c12;box-shadow:0 18px 60px #0009}h1{margin:0 0 12px;font-size:30px}p{font-size:18px;line-height:1.5;color:#ffc7cf}code{display:block;margin-top:18px;padding:14px;border-radius:12px;background:#080b12;color:#fff;white-space:pre-wrap}</style></head><body><div class="card"><h1>❌ EL Bot UI failed to load</h1><p>The application blocked an invalid or incomplete interface instead of displaying raw source code.</p><code>${message}</code></div></body></html>`;
 }
 
@@ -132,9 +118,15 @@ async function loadApplicationView(win) {
 }
 
 function emitStage(event, payload) {
-  try {
-    if (event && event.sender && !event.sender.isDestroyed()) event.sender.send('⏳', payload);
-  } catch (_) {}
+  try { if (event && event.sender && !event.sender.isDestroyed()) event.sender.send('⏳', payload); }
+  catch (_) {}
+}
+function stagePayload(payload, kind) {
+  const value = payload && typeof payload === 'object' ? { ...payload } : {};
+  const label = String(value.label || '');
+  if (kind === 'vision') value.warn_after_ms = /Observe|Retry/i.test(label) ? 20000 : 8000;
+  else if (kind === 'translation') value.warn_after_ms = 5000;
+  return value;
 }
 
 function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
@@ -148,8 +140,7 @@ function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_RANK_DB: rankDbPath() },
     });
-    let stdout = '', stderr = '', stderrBuffer = '';
-    let settled = false;
+    let stdout = '', stderr = '', stderrBuffer = '', settled = false;
     const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
     const timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish('🟡⏱️'); }, timeoutMs);
     const consumeLine = (line) => {
@@ -157,8 +148,7 @@ function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
         try { const payload = JSON.parse(line.slice('EL_STAGE\t'.length)); if (onStage) onStage(payload); } catch (_) {}
       } else if (line.trim()) stderr += line + '\n';
     };
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
+    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => {
       stderrBuffer += chunk;
@@ -182,24 +172,20 @@ function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
 }
 
 function parseRanked(raw) {
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.winner === 'string' && Array.isArray(parsed.candidates)) return parsed;
-  } catch (_) {}
+  try { const parsed = JSON.parse(raw); if (parsed && typeof parsed.winner === 'string' && Array.isArray(parsed.candidates)) return parsed; }
+  catch (_) {}
   return { winner: raw, candidates: raw ? [{ value: raw, score: 0, reasons: [], coverage: 0, roundtrip: 0 }] : [], metrics: {} };
 }
 
 async function runTranslation(event, mode, source) {
   if (![1, 2].includes(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [], metrics: {} };
-  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀'], (payload) => emitStage(event, payload));
+  const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀'], (payload) => emitStage(event, stagePayload(payload, 'translation')));
   return parseRanked(raw);
 }
 
 async function runVision(event, mode, imageDataUrl) {
-  if (![1, 2].includes(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
-    return { winner: '❌📸🔣', candidates: [], metrics: {} };
-  }
-  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 420000, ['🔀'], (payload) => emitStage(event, payload));
+  if (![1, 2].includes(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) return { winner: '❌📸🔣', candidates: [], metrics: {} };
+  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 170000, ['🔀'], (payload) => emitStage(event, stagePayload(payload, 'vision')));
   return parseRanked(raw);
 }
 
@@ -210,29 +196,13 @@ async function recordSelection(mode, source, value) {
 
 async function createWindow() {
   const iconPath = ensureAppIconPath();
-  const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 780,
-    minHeight: 580,
-    title: APP_NAME,
-    icon: iconPath,
-    backgroundColor: '#080b12',
-    autoHideMenuBar: true,
-    show: false,
-    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, sandbox: true },
-  });
+  const win = new BrowserWindow({width:1400,height:900,minWidth:780,minHeight:580,title:APP_NAME,icon:iconPath,backgroundColor:'#080b12',autoHideMenuBar:true,show:false,webPreferences:{preload:PRELOAD,contextIsolation:true,nodeIntegration:false,sandbox:true}});
   if (process.platform === 'win32') {
     try { win.setAppDetails({ appId: APP_ID, appIconPath: iconPath }); } catch (_) {}
     try { win.setThumbnailToolTip(APP_NAME); } catch (_) {}
   }
-
-  try {
-    await loadApplicationView(win);
-  } catch (error) {
-    const fallback = 'data:text/html;charset=utf-8,' + encodeURIComponent(startupFailureHtml(error));
-    try { await win.loadURL(fallback); } catch (_) {}
-  }
+  try { await loadApplicationView(win); }
+  catch (error) { const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(startupFailureHtml(error));try{await win.loadURL(fallback);}catch(_){} }
   if (!win.isDestroyed()) win.show();
   return win;
 }
@@ -242,8 +212,5 @@ ipcMain.handle('↔️', async (event, mode, source) => runTranslation(event, mo
 ipcMain.handle('🏆', async (_event, mode, source, value) => recordSelection(mode, source, value));
 ipcMain.handle('📸➡️🦙', async (event, mode, imageDataUrl) => runVision(event, mode, imageDataUrl));
 
-app.whenReady().then(async () => {
-  await createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
-}).catch(() => { app.quit(); });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.whenReady().then(async()=>{await createWindow();app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)void createWindow();});}).catch(()=>{app.quit();});
+app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
