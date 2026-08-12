@@ -46,7 +46,30 @@ assert instructor.InstructorEngine().process("🧑‍🏫" + explicit_compound) 
 assert old_resolved.status is core.ValidationStatus.HOLD
 assert not old_resolved.is_explicit_compound
 
+rich_ui = (ROOT / "⚡" / "🖥️").read_text(encoding="utf-8")
+for marker in (
+    "function renderRich",
+    "function semanticTone",
+    "function ansiRuns",
+    "function appendInline",
+    "tone-ok",
+    "tone-bad",
+    "tone-warn",
+    "tone-lock",
+    "tone-info",
+    "tone-ai",
+    "tone-cyan",
+    "tone-win",
+    "richCode",
+    "richBold",
+    "richItalic",
+    "richUnderline",
+):
+    assert marker in rich_ui
+assert ".innerHTML" not in rich_ui
+
 report = diagnostics.DiagnosticsEngine().run()
 print(report.render_el())
+print("🎨✅")
 print("🧩✅")
 raise SystemExit(0 if report.passed else 1)
