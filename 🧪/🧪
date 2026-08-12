@@ -32,6 +32,7 @@ _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
 _security = _load("_el_security", _ROOT / "🔐" / "🔐")
+_recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
@@ -111,6 +112,25 @@ class DiagnosticsEngine:
             and security.render_el_status() == "✅🔐"
         )
         checks.append(DiagnosticCheck("1️⃣1️⃣🔐", security_ok))
+
+        recovery = _recovery.RecoveryEngine()
+
+        def explode():
+            raise RuntimeError("hidden developer exception")
+
+        recovery_success = recovery.protect("🖥️", lambda: "🔥➡️🚀")
+        recovery_failure = recovery.protect("🖥️", explode)
+        recovery_letters = recovery.protect("🖥️", lambda: "hidden words")
+        recovery_ok = (
+            recovery_success == "🔥➡️🚀"
+            and recovery_failure == "❌🧯"
+            and recovery_letters == "❌🧯🔤"
+            and recovery.incidents == 2
+            and _core.CoreEngine().parse(recovery_failure).status is _core.ValidationStatus.PASS
+            and _core.CoreEngine().parse(recovery_letters).status is _core.ValidationStatus.PASS
+            and recovery.render_el_status() == "❌🧯2"
+        )
+        checks.append(DiagnosticCheck("1️⃣2️⃣🧯", recovery_ok))
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "🗃️"
