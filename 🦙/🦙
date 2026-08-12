@@ -1,8 +1,8 @@
 """Local Ollama provider boundary for EL Bot.
 
 User-facing methods render only EL-safe status. Raw model text is available only
-through the explicitly internal generate method and must pass downstream
-validation before it can ever reach an EL surface.
+through explicitly internal methods and must pass downstream validation before
+it can ever reach an EL surface.
 """
 
 from __future__ import annotations
@@ -39,22 +39,30 @@ class OllamaConnector:
         self,
         model: str = DEFAULT_MODEL,
         base_url: str = DEFAULT_BASE_URL,
-        timeout: float = 10.0,
+        probe_timeout: float = 5.0,
+        generation_timeout: float = 300.0,
         urlopen: Callable[..., object] = urllib.request.urlopen,
     ) -> None:
         if not isinstance(model, str) or not model.strip():
             raise ValueError("model must be a non-empty string")
         if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
             raise ValueError("base_url must be http(s)")
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if probe_timeout <= 0 or generation_timeout <= 0:
+            raise ValueError("timeouts must be positive")
         self.model = model.strip()
         self.base_url = base_url.rstrip("/")
-        self.timeout = float(timeout)
+        self.probe_timeout = float(probe_timeout)
+        self.generation_timeout = float(generation_timeout)
         self._urlopen = urlopen
         self._last_evidence: OllamaEvidence | None = None
 
-    def _request_json(self, path: str, payload: dict | None = None) -> dict:
+    def _request_json(
+        self,
+        path: str,
+        payload: dict | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict:
         data = None
         headers = {"Accept": "application/json"}
         method = "GET"
@@ -68,7 +76,8 @@ class OllamaConnector:
             headers=headers,
             method=method,
         )
-        response = self._urlopen(request, timeout=self.timeout)
+        effective_timeout = self.probe_timeout if timeout is None else timeout
+        response = self._urlopen(request, timeout=effective_timeout)
         manager = response if hasattr(response, "__enter__") else None
         if manager is not None:
             with manager as opened:
@@ -81,7 +90,7 @@ class OllamaConnector:
         return decoded
 
     def models(self) -> tuple[str, ...]:
-        payload = self._request_json("/api/tags")
+        payload = self._request_json("/api/tags", timeout=self.probe_timeout)
         models = payload.get("models", [])
         if not isinstance(models, list):
             raise ValueError("Ollama models payload must be a list")
@@ -93,6 +102,17 @@ class OllamaConnector:
             if isinstance(name, str) and name:
                 names.append(name)
         return tuple(names)
+
+    def running_models(self) -> tuple[str, ...]:
+        payload = self._request_json("/api/ps", timeout=self.probe_timeout)
+        models = payload.get("models", [])
+        if not isinstance(models, list):
+            raise ValueError("Ollama running-model payload must be a list")
+        return tuple(
+            item["name"]
+            for item in models
+            if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
+        )
 
     def probe(self) -> OllamaEvidence:
         try:
@@ -106,6 +126,22 @@ class OllamaConnector:
         self._last_evidence = evidence
         return evidence
 
+    def warm_internal(self, keep_alive: str = "5m") -> bool:
+        if not isinstance(keep_alive, str) or not keep_alive:
+            raise ValueError("keep_alive must be a non-empty string")
+        payload = {
+            "model": self.model,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": keep_alive,
+        }
+        self._request_json(
+            "/api/generate",
+            payload,
+            timeout=self.generation_timeout,
+        )
+        return self.model in self.running_models()
+
     def generate_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
         """Return raw model text for internal reasoning only, never direct EL output."""
         if not isinstance(prompt, str) or not prompt.strip():
@@ -117,11 +153,16 @@ class OllamaConnector:
             "model": self.model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": "5m",
             "options": {"temperature": 0},
         }
         if image_list:
             payload["images"] = list(image_list)
-        decoded = self._request_json("/api/generate", payload)
+        decoded = self._request_json(
+            "/api/generate",
+            payload,
+            timeout=self.generation_timeout,
+        )
         response = decoded.get("response")
         if not isinstance(response, str) or not response.strip():
             raise ValueError("Ollama response text is missing")
