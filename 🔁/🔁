@@ -1,11 +1,6 @@
-"""Engine 9: deterministic EL workflow orchestration.
-
-Developer internals may use ordinary programming language. User-facing output
-must remain Emoji Language only while EL mode is active.
-"""
+"""Engine 9: deterministic EL workflow orchestration."""
 
 from __future__ import annotations
-
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
@@ -31,26 +26,34 @@ _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
 _config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
 _connector = _load("_el_connector", _ROOT / "🔌" / "🔌")
+_orchestration = _load("_el_orchestration", _ROOT / "✦" / "✦")
+_instructor = _load("_el_instructor", _ROOT / "🧑‍🏫" / "🧑‍🏫")
+_animation = _load("_el_animation", _ROOT / "🎞️" / "🎞️")
+_notification = _load("_el_notification", _ROOT / "🔔" / "🔔")
+_updater = _load("_el_updater", _ROOT / "🔄" / "🔄")
 
 SessionEngine = _session.SessionEngine
 PersistenceEngine = _persist.PersistenceEngine
 EventEngine = _event.EventEngine
 ConfigurationEngine = _config.ConfigurationEngine
 ConnectorEngine = _connector.ConnectorEngine
+OrchestrationEngine = _orchestration.OrchestrationEngine
+InstructorEngine = _instructor.InstructorEngine
+AnimationEngine = _animation.AnimationEngine
+NotificationEngine = _notification.NotificationEngine
+UpdaterEngine = _updater.UpdaterEngine
 
 
 class WorkflowEngine:
-    """Own the deterministic input -> session -> persistence -> output flow."""
-
-    def __init__(
-        self,
-        persistence: PersistenceEngine | None = None,
-        configuration: ConfigurationEngine | None = None,
-        connectors: ConnectorEngine | None = None,
-    ) -> None:
+    def __init__(self, persistence=None, configuration=None, connectors=None) -> None:
         self.persistence = persistence if persistence is not None else PersistenceEngine()
         self.configuration = configuration if configuration is not None else ConfigurationEngine()
         self.connectors = connectors if connectors is not None else ConnectorEngine()
+        self.orchestration = OrchestrationEngine()
+        self.instructor = InstructorEngine()
+        self.animation = AnimationEngine()
+        self.notifications = NotificationEngine()
+        self.updater = UpdaterEngine()
         self.session = self.persistence.load()
         self.events = EventEngine()
         self._emit("🔁", "🔵")
@@ -71,36 +74,40 @@ class WorkflowEngine:
     def process(self, text: str) -> str:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
-
         if text.startswith("🎛️"):
             return self.configuration.process(text)
-
         if text.startswith("🔌"):
             return self.connectors.process(text)
-
+        if text == "✦":
+            return self.orchestration.process(text)
+        if text.startswith("🧑‍🏫"):
+            return self.instructor.process(text)
+        if text == "🎞️":
+            return self.animation.process(text)
+        if text.startswith("🔔"):
+            return self.notifications.process(text)
+        if text.startswith("🔄"):
+            return self.updater.process(text)
         if text == "📡":
             return self.events.render_el()
-
         if text == "🧹":
             self._emit("🧹", "🔵")
             self.session.clear()
             self.persistence.clear()
+            self.notifications.drain()
             self._emit("🧹", "✅")
             return "✅🧹"
-
         if text == "💾":
             self._emit("💾", "🔵")
             count = self.persistence.save(self.session)
             self._emit("💾", "✅", str(count))
             return f"✅💾{count}"
-
         if text == "📥":
             self._emit("📥", "🔵")
             self.session = self.persistence.load()
             count = len(self.session.turns)
             self._emit("📥", "✅", str(count))
             return f"✅📥{count}"
-
         self._emit("📥", "🔵")
         turn = self.session.ingest(text)
         status = self._turn_status(turn)
@@ -108,19 +115,10 @@ class WorkflowEngine:
         if self.configuration.enabled("💾"):
             count = self.persistence.save(self.session)
             self._emit("💾", "✅", str(count))
+        if status != "✅":
+            self.notifications.emit(status, "🧵")
         self._emit("📤", status)
         return turn.safe_output() + "\n" + self.session.render_el_status()
 
     def render_el_status(self) -> str:
-        return (
-            "✅🔁 "
-            + self.configuration.render_el_status()
-            + " "
-            + self.connectors.render_el_status()
-            + " "
-            + self.session.render_el_status()
-            + " "
-            + self.persistence.render_el_status()
-            + " "
-            + self.events.render_el_status()
-        )
+        return " ".join(("✅🔁", self.configuration.render_el_status(), self.connectors.render_el_status(), self.orchestration.render_el_status(), self.instructor.render_el_status(), self.animation.render_el_status(), self.notifications.render_el_status(), self.updater.render_el_status(), self.session.render_el_status(), self.persistence.render_el_status(), self.events.render_el_status()))
