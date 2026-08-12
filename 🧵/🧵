@@ -1,0 +1,101 @@
+"""In-memory EL session/context engine."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
+_valid = _load("_el_valid", _ROOT / "🧾" / "🧾")
+
+CoreEngine = _core.CoreEngine
+ValidationStatus = _core.ValidationStatus
+VocabularyEngine = _vocab.VocabularyEngine
+IntelligenceEngine = _intel.IntelligenceEngine
+ValidationEngine = _valid.ValidationEngine
+
+
+@dataclass(frozen=True, slots=True)
+class SessionTurn:
+    index: int
+    source: str
+    surface: object
+    vocabulary: object
+    interpretation: object
+    validation: object
+
+    def render_el_status(self) -> str:
+        return self.validation.render_el_status()
+
+    def safe_output(self) -> str:
+        return self.validation.safe_output()
+
+
+class SessionEngine:
+    def __init__(self) -> None:
+        self._turns: list[SessionTurn] = []
+
+    @property
+    def turns(self) -> tuple[SessionTurn, ...]:
+        return tuple(self._turns)
+
+    @property
+    def latest(self) -> SessionTurn | None:
+        return self._turns[-1] if self._turns else None
+
+    def ingest(self, text: str) -> SessionTurn:
+        surface = CoreEngine().parse(text, el_mode=True)
+        vocabulary = VocabularyEngine().resolve(surface)
+        interpretation = IntelligenceEngine().interpret(vocabulary)
+
+        if surface.status is ValidationStatus.FAIL:
+            proposed = "❌🔤"
+        elif vocabulary.status is ValidationStatus.HOLD:
+            proposed = vocabulary.render_el_status()
+        else:
+            proposed = interpretation.render_el()
+
+        validation = ValidationEngine().validate(interpretation, proposed)
+        turn = SessionTurn(
+            index=len(self._turns) + 1,
+            source=text,
+            surface=surface,
+            vocabulary=vocabulary,
+            interpretation=interpretation,
+            validation=validation,
+        )
+        self._turns.append(turn)
+        return turn
+
+    def clear(self) -> None:
+        self._turns.clear()
+
+    def render_el_status(self) -> str:
+        if not self._turns:
+            return "⚪🧵"
+        status = self._turns[-1].validation.status
+        if status is ValidationStatus.FAIL:
+            return "❌🧵"
+        if status is ValidationStatus.HOLD:
+            return "🟡🧵❓"
+        return "✅🧵"
