@@ -28,6 +28,7 @@ identity=_load("_el_identity_self",ROOT/"🪪"/"🪪")
 abc=_load("_el_abc_self",ROOT/"🔤➡️😀"/"🔤➡️😀")
 emoji=_load("_el_emoji_self",ROOT/"😀➡️🔤"/"😀➡️🔤")
 bidi=_load("_el_bidi_self",ROOT/"↔️"/"↔️")
+vision=_load("_el_vision_self",ROOT/"📸"/"📸")
 
 compound="🏠💻🤖🧠👁️2️⃣.5️⃣-7️⃣🐝";explicit_compound="🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝";expected="local ollama model qwen2.5vl:7b"
 resolved=vocab.VocabularyEngine().resolve(core.CoreEngine().parse(compound));explicit_resolved=vocab.VocabularyEngine().resolve(core.CoreEngine().parse(explicit_compound))
@@ -40,7 +41,9 @@ electron_main=(ROOT/"⚡"/"⚡").read_text(encoding="utf-8")
 for marker in ("app.setAppUserModelId(APP_ID)","ensureAppIconPath","event.sender.send('⏳'","materializeHtmlView","verifyRenderedView","loadApplicationView","el-bot-${digest}.html","show: false","if (!win.isDestroyed()) win.show()"):assert marker in electron_main
 assert "win.loadFile(VIEW)" not in electron_main and "win.loadFile(VIEW_SOURCE)" not in electron_main
 ui_source=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8")
-for marker in ("controlBar","hourglassFlip","180deg","sandTop","sandBottom","sandStream","sandGrain","@media(max-width:1100px)","id=\"quality\"","updateStage(payload)","unknown_density","quality_status"):assert marker in ui_source
+for marker in ("controlBar","hourglassFlip","rotate(180deg)","sandTop","sandBottom","sandStream","sandGrain","g5","@media(max-width:1100px)","id=\"quality\"","updateStage(payload)","unknown_density","quality_status","relation_integrity","critical_integrity"):
+    assert marker in ui_source,marker
+assert "rotate(360deg)" not in ui_source
 preload=(ROOT/"⚡"/"🔌").read_text(encoding="utf-8");assert "ipcRenderer.on('⏳'" in preload
 
 identity_config=loads((ROOT/"🪪"/"🎛️").read_text(encoding="utf-8"));assert identity_config["name"]=="EL Bot" and identity_config["app_id"]=="com.thespark.elbot" and identity_config["icon_asset"]=="🎨"
@@ -49,41 +52,56 @@ animation_engine=animation.AnimationEngine();assert animation_engine.processing_
 identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.app_name=="EL Bot" and identity_snapshot.app_user_model_id=="com.thespark.elbot"
 
 normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","😀➡️🔤/😀➡️🔤","🧠/🧬"))
-for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","generate_internal"):assert forbidden not in normal_sources
+for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
-for marker in ("OllamaConnector","vision sensor, not a translator","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","structured-vision-retry"):assert marker in vision_source
+for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","chat_json_internal","sensor_calls","One vision-model call only"):
+    assert marker in vision_source,marker
+ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8");assert "chat_json_internal" in ollama_source and '"format":"json"' in ollama_source
 
 abc_engine=abc.ABCToEmojiEngine();emoji_engine=emoji.EmojiToABCEngine();assert len(abc_engine.stage_names)==24 and len(set(abc_engine.stage_names))==24;assert len(emoji_engine.stage_names)==24 and len(set(emoji_engine.stage_names))==24
 
-# Everyday conversational vocabulary must be first-class, not unknown fallback.
+# Tiny everyday inputs are mandatory first-class vocabulary.
 conversation={"hi":"👋","hello":"👋","hey":"👋","thanks":"🙏","thank you":"🙏","yes":"🙆","no":"🙅","okay":"🆗","help":"🆘","wait":"🤚"}
 for text,symbol in conversation.items():
     result=abc_engine.translate(text,verifier=emoji_engine,cross_verify=True,emit=False)
-    assert symbol in result.winner and result.winner!="🟡❓",(text,result.winner,result.metrics)
+    assert result.winner==symbol,(text,result.winner,result.metrics)
     reverse=emoji_engine.translate(symbol,verifier=abc_engine,cross_verify=True,emit=False)
     assert reverse.winner and "unable to" not in reverse.winner.lower(),(symbol,reverse.winner)
 
+# Relationship preservation, including only-after and condition gates.
 conditional=abc_engine.translate("Deploy only after every required check passes.",verifier=emoji_engine,cross_verify=True,emit=False)
-assert "🚀" in conditional.winner and "🚦" in conditional.winner and "✅" in conditional.winner and conditional.winner!="🟡❓"
+assert "🚀" in conditional.winner and "🚦➡️" in conditional.winner and "✅" in conditional.winner and conditional.metrics.get("relation_integrity",0)>=.9
+security_condition=abc_engine.translate("Keep the security system locked if authentication fails. Unlock access only after verification succeeds.",verifier=emoji_engine,cross_verify=True,emit=False)
+assert "🔐" in security_condition.winner and "🔒" in security_condition.winner and "🚦" in security_condition.winner and "🔓" in security_condition.winner and "🚦➡️" in security_condition.winner
+security_back=emoji_engine.translate("🔐🔒🚦🛂❌. 🔓🚦➡️✔️✅",verifier=abc_engine,cross_verify=True,emit=False).winner.lower()
+assert "security" in security_back and "lock" in security_back and ("if" in security_back or "when" in security_back) and "unlock" in security_back and "after" in security_back
 
 critical_source="A critical database connection timed out after 30 seconds. The local server crashed and went offline. Restart the container immediately to restore the service."
 critical=abc_engine.translate(critical_source,verifier=emoji_engine,cross_verify=True,emit=False)
-assert critical.winner!="🟡❓" and "⏱️30" in critical.winner and "🔄" in critical.winner and "📴" in critical.winner
+assert critical.winner!="🟡❓" and "⏱️30" in critical.winner and "⏱️➡️⏱️30" not in critical.winner and "🔄" in critical.winner and "📴" in critical.winner
+assert critical.metrics.get("number_integrity",0)==1.0 and critical.metrics.get("critical_integrity",0)>=.9
 process=emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀",verifier=abc_engine,cross_verify=True,emit=False);process_lower=process.winner.lower()
-assert "import" in process_lower and "test" in process_lower and "valid" in process_lower and "deploy" in process_lower
+assert "load" in process_lower and "test" in process_lower and "valid" in process_lower and "deploy" in process_lower
 assert "the el sequence communicates" not in process_lower and "|" not in process.winner
 
 retention=emoji_engine.translate("📡❌➡️⏱️30➡️🔄⚙️‼️➡️🧪➡️🧾➡️✅➡️🟢",verifier=abc_engine,cross_verify=True,emit=False);retention_lower=retention.winner.lower()
-for required in ("30","restart","diagnostic","valid","healthy"):assert required in retention_lower,(required,retention.winner,retention.metrics)
-assert retention.metrics.get("critical_retention",0)>=.55
+for required in ("server","30","restart","immediately","diagnostic","valid","healthy"):assert required in retention_lower,(required,retention.winner,retention.metrics)
+assert retention.metrics.get("critical_retention",0)>=.75
 
-long_source=" ".join(["The local server failed after 45 seconds and went offline. Restart the service immediately and verify success.","Keep the security system locked if authentication fails. Preserve the session and saved data.","Load the package, test the file, validate the result, deploy after success, and notify the user when complete."]*12)
+long_source=" ".join(["The local server failed after 45 seconds and went offline. Restart the service immediately and verify success.","Keep the security system locked if authentication fails. Preserve the session and saved data.","Load the package, test the file, validate the result, deploy only after success, and notify the user when complete.","Use screenshot vision only for visible image facts and keep normal translation deterministic."]*12)
 long_result=abc_engine.translate(long_source,verifier=emoji_engine,cross_verify=True,emit=False)
 assert long_result.winner!="🟡❓" and "⏱️45" in long_result.winner and len(long_result.winner)>200
-assert long_result.metrics.get("unknown_density",1.0)<.45
+assert long_result.metrics.get("unknown_density",1.0)<.40
+assert long_result.winner.count("❓")<24
 
 unknown=abc_engine.translate("flibbertigibbet",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "❓" in unknown.winner and unknown.metrics.get("quality_status")=="fail"
+
+# Vision parser/renderer tests do not invoke Ollama.
+parsed=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
+assert parsed is not None and parsed["visible_text"]==("Error",) and parsed["controls"]==("Retry",)
+candidates,vision_metrics=vision._facts_to_el(parsed)
+assert candidates and _load("_el_lang_self",ROOT/"🧠"/"🧬").valid_el(candidates[0].value) and vision_metrics["vision_fact_coverage"]>0
 
 with tempfile.TemporaryDirectory() as folder:
     store=_load("_el_rank_self",ROOT/"🧠"/"🔀").SelectionStore(Path(folder)/"🏆");facade=bidi.TranslationEngine(store=store);assert facade.provider_call_count==0
@@ -91,8 +109,8 @@ with tempfile.TemporaryDirectory() as folder:
 
 start=perf_counter()
 for index in range(120):abc_engine.translate(f"Restart the local server after {30+index} seconds and verify success.",cross_verify=False,emit=False)
-elapsed=max(0.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
+elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
 report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==24
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️↪️180✅");print("👋🔤✅");print("🚦🔤✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️0↔180✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸1️⃣🤖✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
