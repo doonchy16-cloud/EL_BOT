@@ -1,0 +1,103 @@
+"""Canonical 500-symbol Emoji Language authority."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+import regex
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+ParseResult = _core.ParseResult
+Token = _core.Token
+TokenKind = _core.TokenKind
+ValidationStatus = _core.ValidationStatus
+
+_CANONICAL_SYMBOL_STREAM = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭"
+CANONICAL_SYMBOLS: tuple[str, ...] = tuple(regex.findall(r"\X", _CANONICAL_SYMBOL_STREAM))
+
+if len(CANONICAL_SYMBOLS) != 500 or len(set(CANONICAL_SYMBOLS)) != 500:
+    raise RuntimeError("EL authority invariant violated")
+
+_CANONICAL_ORDINAL = {symbol: index for index, symbol in enumerate(CANONICAL_SYMBOLS, start=1)}
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolAuthority:
+    symbol: str
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class VocabularyResult:
+    source: ParseResult
+    resolved: tuple[SymbolAuthority, ...]
+    unknown_emoji: tuple[Token, ...]
+    status: ValidationStatus
+
+    @property
+    def is_fully_canonical(self) -> bool:
+        return self.status is ValidationStatus.PASS
+
+    def render_el_status(self) -> str:
+        if self.status is ValidationStatus.FAIL:
+            return "❌🔤"
+        if self.status is ValidationStatus.HOLD:
+            if self.unknown_emoji:
+                return "🟡❓" + "".join(token.text for token in self.unknown_emoji)
+            return "🟡❓"
+        return "✅📚"
+
+
+class VocabularyEngine:
+    def resolve(self, parsed: ParseResult) -> VocabularyResult:
+        if not isinstance(parsed, ParseResult):
+            raise TypeError("parsed must be a ParseResult")
+
+        resolved: list[SymbolAuthority] = []
+        unknown_emoji: list[Token] = []
+
+        for token in parsed.tokens:
+            ordinal = _CANONICAL_ORDINAL.get(token.text)
+            if ordinal is not None:
+                resolved.append(SymbolAuthority(symbol=token.text, ordinal=ordinal))
+            elif token.kind is TokenKind.EMOJI:
+                unknown_emoji.append(token)
+
+        if parsed.status is ValidationStatus.FAIL:
+            status = ValidationStatus.FAIL
+        elif parsed.status is ValidationStatus.HOLD or unknown_emoji:
+            status = ValidationStatus.HOLD
+        else:
+            status = ValidationStatus.PASS
+
+        return VocabularyResult(
+            source=parsed,
+            resolved=tuple(resolved),
+            unknown_emoji=tuple(unknown_emoji),
+            status=status,
+        )
+
+    @staticmethod
+    def lookup(symbol: str) -> SymbolAuthority | None:
+        ordinal = _CANONICAL_ORDINAL.get(symbol)
+        if ordinal is None:
+            return None
+        return SymbolAuthority(symbol=symbol, ordinal=ordinal)
