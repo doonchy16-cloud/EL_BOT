@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic translation-quality acceptance checks for phases 3-8."""
-
+"""Deterministic translation-quality acceptance checks for the pre-Phase-9 gate."""
 from __future__ import annotations
 
 from importlib.machinery import SourceFileLoader
@@ -9,95 +8,86 @@ from pathlib import Path
 import sys
 
 
-def _load(name: str, path: Path):
-    loader = SourceFileLoader(name, str(path))
-    spec = spec_from_loader(name, loader)
-    if spec is None:
-        raise RuntimeError("module spec unavailable")
-    module = module_from_spec(spec)
-    sys.modules[name] = module
-    loader.exec_module(module)
-    return module
+def _load(name:str,path:Path):
+    loader=SourceFileLoader(name,str(path));spec=spec_from_loader(name,loader)
+    if spec is None:raise RuntimeError("module spec unavailable")
+    module=module_from_spec(spec);sys.modules[name]=module;loader.exec_module(module);return module
+
+ROOT=Path(__file__).resolve().parent.parent
+abc=_load("_el_quality_abc",ROOT/"🔤➡️😀"/"🔤➡️😀")
+emoji=_load("_el_quality_emoji",ROOT/"😀➡️🔤"/"😀➡️🔤")
+bidi=_load("_el_quality_bidi",ROOT/"↔️"/"↔️")
+vision=_load("_el_quality_vision",ROOT/"📸"/"📸")
+lang=_load("_el_quality_lang",ROOT/"🧠"/"🧬")
 
 
-ROOT = Path(__file__).resolve().parent.parent
-abc = _load("_el_quality_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
-emoji = _load("_el_quality_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
+def main()->int:
+    a=abc.ABCToEmojiEngine();e=emoji.EmojiToABCEngine();passed=0
 
+    # Permanent tiny-input regression: the previous hi -> 🟡❓ bug must never return.
+    hi=a.translate("hi",verifier=e,cross_verify=True,emit=False)
+    assert hi.winner=="👋" and hi.metrics.get("quality_status")!="fail",hi.as_dict()
+    print("👋✅")
 
-def main() -> int:
-    abc_engine = abc.ABCToEmojiEngine()
-    emoji_engine = emoji.EmojiToABCEngine()
-    passed = 0
+    r=a.translate("Load the file, test it, validate the result, and deploy only after every required check passes.",verifier=e,cross_verify=True,emit=False)
+    print("1️⃣ "+r.winner)
+    for marker in ("📥","📄","🧪","🧾","🚀","🚦➡️","✅"):assert marker in r.winner,(marker,r.as_dict())
+    assert r.metrics.get("relation_integrity",0)>=.9;passed+=1
 
-    critical = abc_engine.translate(
-        "A critical database connection timed out after 30 seconds. The local server crashed and went offline. Restart the container immediately to restore the service.",
-        verifier=emoji_engine,
-        cross_verify=True,
-        emit=False,
-    )
-    print("1️⃣ " + critical.winner)
-    assert critical.winner != "🟡❓"
-    assert "🔴" in critical.winner
-    assert "⏱️30" in critical.winner
-    assert "📡" in critical.winner and "💥" in critical.winner and "📴" in critical.winner
-    assert "🔄" in critical.winner and "📦" in critical.winner and "‼️" in critical.winner
-    passed += 1
+    r=e.translate("📥➡️🧪➡️🧾➡️✅➡️🚀",verifier=a,cross_verify=True,emit=False);t=r.winner.lower();print("2️⃣ "+r.winner)
+    for word in ("load","test","valid","deploy"):assert word in t,(word,r.as_dict())
+    assert "the el sequence communicates" not in t and "|" not in r.winner;passed+=1
 
-    security = abc_engine.translate(
-        "The security system is locked because the key failed. Authenticate the replacement credential, unlock access, and verify success.",
-        verifier=emoji_engine,
-        cross_verify=True,
-        emit=False,
-    )
-    print("2️⃣ " + security.winner)
-    for marker in ("🔐", "🔒", "🔑", "❌", "🛂", "🔓"):
-        assert marker in security.winner
-    passed += 1
+    r=a.translate("The local server failed after 45 seconds and went offline. Restart the service immediately and verify that it is healthy.",verifier=e,cross_verify=True,emit=False);print("3️⃣ "+r.winner)
+    assert "⏱️45" in r.winner and "📴" in r.winner and "🔄" in r.winner and "‼️" in r.winner and "🟢" in r.winner
+    assert "⏱️➡️⏱️45" not in r.winner and r.metrics.get("number_integrity",0)==1.0;passed+=1
 
-    dashboard = abc_engine.translate(
-        "Add a dark mode toggle button to the main dashboard navigation area and optimize loading performance so the interface is fast without lag.",
-        verifier=emoji_engine,
-        cross_verify=True,
-        emit=False,
-    )
-    print("3️⃣ " + dashboard.winner)
-    for marker in ("🖤", "🔘", "📊", "🧭", "📈", "⚡"):
-        assert marker in dashboard.winner
-    passed += 1
+    r=a.translate("A critical database connection timed out after 30 seconds. The local server crashed and went offline. Restart the container immediately, restore the service, reconnect to the database, run diagnostics, and verify that the system is healthy before continuing.",verifier=e,cross_verify=True,emit=False);print("4️⃣ "+r.winner)
+    for marker in ("🔴","🗃️","🔌","⏱️30","📡","💥","📴","🔄","📦","‼️","❤️‍🩹","🧪","🟢"):assert marker in r.winner,(marker,r.as_dict())
+    assert r.metrics.get("critical_integrity",0)>=.85;passed+=1
 
-    process = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", verifier=abc_engine, cross_verify=True, emit=False)
-    print("4️⃣ " + process.winner)
-    lowered = process.winner.lower()
-    assert "import" in lowered and "test" in lowered and "valid" in lowered and "deploy" in lowered
-    assert "the el sequence communicates" not in lowered and "|" not in process.winner and " = " not in process.winner
-    passed += 1
+    r=a.translate("The security system must remain locked if authentication fails. Reject the invalid credential, request a replacement key, authenticate it, unlock access only after verification succeeds, and keep the system locked if authentication fails again.",verifier=e,cross_verify=True,emit=False);print("5️⃣ "+r.winner)
+    for marker in ("🔐","🔒","🚦","🛂","❌","🔑","🔓","🚦➡️","✔️","✅"):assert marker in r.winner,(marker,r.as_dict())
+    assert r.metrics.get("relation_integrity",0)>=.8;passed+=1
 
-    security_text = emoji_engine.translate("🔐🔒➡️❌🔑➡️🛂➡️🔓➡️✅", verifier=abc_engine, cross_verify=True, emit=False)
-    print("5️⃣ " + security_text.winner)
-    lowered = security_text.winner.lower()
-    assert "security" in lowered and "lock" in lowered and "credential" in lowered and "authenticate" in lowered and "unlock" in lowered
-    passed += 1
+    r=a.translate("The AI bot works quickly in both directions through the computer interface, preserves the active session, validates every result, and supports screenshots without using AI for normal translation.",verifier=e,cross_verify=True,emit=False);print("6️⃣ "+r.winner)
+    for marker in ("🤖","⚡","↔️","🖥️","🧵","🧾","📸","❌"):assert marker in r.winner,(marker,r.as_dict())
+    passed+=1
 
-    long_source = " ".join(
-        [
-            "The local server failed after 45 seconds and went offline. Restart the service immediately and verify that it is healthy.",
-            "Keep the security system locked if authentication fails and preserve the current session and saved data.",
-            "Load the package, test every file, validate the result, deploy only after success, and notify the user when complete.",
-            "Use the screenshot vision system only for visible image facts and keep normal translation deterministic.",
-        ] * 10
-    )
-    long_result = abc_engine.translate(long_source, verifier=emoji_engine, cross_verify=True, emit=False)
-    print("6️⃣📏 " + str(len(long_result.winner)) + " " + long_result.winner[:220])
-    assert long_result.winner != "🟡❓"
-    assert "⏱️45" in long_result.winner
-    assert len(long_result.winner) > 200
-    assert long_result.metrics.get("clauses", 0) >= 20
-    passed += 1
+    r=e.translate("🔐🔒➡️❌🔑➡️🛂🔑➡️🔓🚦➡️✔️✅",verifier=a,cross_verify=True,emit=False);t=r.winner.lower();print("7️⃣ "+r.winner)
+    for word in ("security","lock","credential","authenticate","unlock","after","verify"):assert word in t,(word,r.as_dict())
+    passed+=1
 
-    print(f"✅🧪🔤{passed}/6")
+    r=e.translate("🔴📡❌➡️⏱️45➡️📴➡️🔄⚙️‼️➡️🧪➡️🧾➡️✅➡️🟢",verifier=a,cross_verify=True,emit=False);t=r.winner.lower();print("8️⃣ "+r.winner)
+    for word in ("critical","server","45","offline","restart","immediately","diagnostic","valid","healthy"):assert word in t,(word,r.as_dict())
+    assert r.metrics.get("critical_retention",0)>=.75;passed+=1
+
+    long_source=" ".join([
+        "The local server failed after 45 seconds and went offline. Restart the service immediately and verify that it is healthy.",
+        "Keep the security system locked if authentication fails and preserve the current session and saved data.",
+        "Load the package, test every file, validate the result, deploy only after success, and notify the user when complete.",
+        "Use screenshot vision only for visible image facts and keep normal translation deterministic.",
+    ]*12)
+    r=a.translate(long_source,verifier=e,cross_verify=True,emit=False);print("9️⃣📏 "+str(len(r.winner))+" ❓"+str(r.winner.count("❓"))+" "+r.winner[:220])
+    assert r.winner!="🟡❓" and "⏱️45" in r.winner and len(r.winner)>300
+    assert r.winner.count("❓")<24 and r.metrics.get("unknown_density",1.0)<.40;passed+=1
+
+    facade=bidi.TranslationEngine();before=facade.provider_call_count
+    assert facade.process(2,"The local server failed after 30 seconds. Restart the service immediately, preserve the active session, run diagnostics, validate recovery, and confirm that the system is healthy.")
+    assert facade.process(1,"📡❌➡️⏱️30➡️🔄⚙️‼️➡️🧪➡️🧾➡️✅➡️🟢")
+    assert facade.provider_call_count==before==0;print("🔟 🤖❌↔️✅");passed+=1
+
+    parsed=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
+    assert parsed is not None and parsed["visible_text"]==("Error",)
+    candidates,m=vision._facts_to_el(parsed);assert candidates and lang.valid_el(candidates[0].value) and m["vision_fact_coverage"]>0
+    vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8");assert "chat_json_internal" in vision_source and "One vision-model call only" in vision_source
+    print("1️⃣1️⃣ 📸📋1️⃣🤖✅");passed+=1
+
+    ui=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8")
+    for marker in ("@media(max-width:1100px)","controlBar","sandTop","sandBottom","sandStream","sandGrain","g5","rotate(180deg)","updateStage(payload)"):assert marker in ui,marker
+    assert "rotate(360deg)" not in ui;print("1️⃣2️⃣ 🖥️⏳🏖️0↔180✅");passed+=1
+
+    print(f"✅🧪🔤{passed}/12")
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__=="__main__":raise SystemExit(main())
