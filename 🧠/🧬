@@ -37,51 +37,77 @@ WORD_RE = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 NUMBER_UNIT_RE = re.compile(r"\b(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>milliseconds?|seconds?|minutes?|hours?|days?|weeks?|percent|%|kb|mb|gb|tb)?\b", re.I)
 STOPWORDS = frozenset(
-    "a an and are as at be been being but by can could did do does for from had has have if in into is it its may might must of on only or our should so than that the their them then there these they this those through to upon was were when where which while who will with without would you your after before because unless following prior due caused every each again anything everything any all".split()
+    "a an and are as at be been being but by can could did do does for from had has have in into is it its may might must of on or our should so than that the their them then there these they this those through to upon was were where which while who will with would you your every each again anything everything any all actual main newest normal appropriate current available important required provided really visibly rather merely specific several various".split()
 )
 TEMPORAL_UNIT_SYMBOLS = frozenset("millisecond milliseconds second seconds minute minutes hour hours day days week weeks".split())
 
-# Deterministic conversational + technical synonym layer. Canonical authority still lives in 📚/🧾.
+# Deterministic natural-language synonym layer over the canonical 501-symbol authority.
+# Multiple aliases may intentionally occupy the same span when a phrase carries two
+# independently important concepts (for example database + connection).
 ALIASES: tuple[tuple[str, str], ...] = (
     ("hi there","👋"),("hey there","👋"),("hello there","👋"),("greetings","👋"),("hello","👋"),("hey","👋"),("hi","👋"),
-    ("thank you","🙏"),("thanks","🙏"),("thank you very much","🙏"),("please","🙏"),
+    ("thank you very much","🙏"),("thank you","🙏"),("thanks","🙏"),("please","🙏"),
     ("yes","🙆"),("yep","🙆"),("yeah","🙆"),("approved","👍"),("approve","👍"),
     ("no","🙅"),("nope","🙅"),("rejected","❌"),("reject","❌"),
     ("all right","🆗"),("alright","🆗"),("okay","🆗"),("ok","🆗"),
-    ("help me","🆘"),("help","🆘"),("wait","🤚"),("hold on","🤚"),("why","❓"),("what","❓"),
-    ("critical error","🔴"),("critical error","❌"),("critical failure","🔴"),("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),("fails","❌"),
-    ("artificial intelligence","🤖"),("ai bot","🤖"),("ai agent","🤖"),("ai","🤖"),("bot","🤖"),
+    ("help me","🆘"),("help","🆘"),("hold on","🤚"),("wait","🤚"),("why","❓"),("what","❓"),
+
+    ("critical error","🔴"),("critical error","❌"),("critical failure","🔴"),("critical failure","❌"),
+    ("critical","🔴"),("error","❌"),("failure","❌"),("failed","❌"),("fails","❌"),("failure state","❌"),
+    ("artificial intelligence","🤖"),("ai bot","🤖"),("ai agent","🤖"),("vision model","🤖"),("local vision model","🤖"),("ai","🤖"),("bot","🤖"),("model","🤖"),
+    ("normal translation","↔️"),("translation system","↔️"),("translation","↔️"),("both directions","↔️"),("bidirectional","↔️"),("two way","↔️"),
+
     ("user interface","🖥️"),("computer interface","🖥️"),("interface","🖥️"),("dashboard","📊"),
-    ("database connection","🗃️"),("database","🗃️"),("data store","🗃️"),("saved data","💾"),("connection","🔌"),("connect","🔌"),("reconnect","🔌"),
-    ("local server","📡"),("server","📡"),("service","⚙️"),("system","⚙️"),("application","⚙️"),("app","⚙️"),
-    ("timed out","⏱️"),("times out","⏱️"),("timeout","⏱️"),("crashed","💥"),("crashes","💥"),("crash","💥"),("offline","📴"),
-    ("restart","🔄"),("restarted","🔄"),("refresh","🔄"),("update","🔄"),("retry","🔂"),("container","📦"),("docker","📦"),("package","📦"),
+    ("database connection","🗃️"),("database connection","🔌"),("database","🗃️"),("data store","🗃️"),("saved data","💾"),("connection","🔌"),("connect","🔌"),("reconnect","🔌"),
+    ("local server","🏠"),("local server","📡"),("server","📡"),("service","⚙️"),("system","⚙️"),("application","⚙️"),("app","⚙️"),
+    ("timed out","⏱️"),("times out","⏱️"),("timeout","⏱️"),("exceeds","⏱️"),("delay","⏱️"),("delayed","⏱️"),
+    ("crashed","💥"),("crashes","💥"),("crash","💥"),("offline","📴"),
+    ("restart","🔄"),("restarted","🔄"),("refresh","🔄"),("update","🔄"),("retry","🔂"),("container","📦"),("docker","📦"),("package","📦"),("build artifact","📦"),
     ("restore","❤️‍🩹"),("restored","❤️‍🩹"),("recover","❤️‍🩹"),("recovered","❤️‍🩹"),("recovery","🧯"),("repair","🔧"),("fix","🔧"),
     ("immediately","‼️"),("urgent","❗"),("warning","⚠️"),("blocked","🚧"),("stop","⏹️"),("pause","⏸️"),("start","▶️"),
-    ("security system","🔐"),("security boundary","🔐"),("security","🔐"),("authentication","🛂"),("authenticate","🛂"),("authenticated","🛂"),("identity","🪪"),
-    ("replacement credential","🔑"),("credentials","🔑"),("credential","🔑"),("key","🔑"),("locked","🔒"),("remain locked","🔒"),("keep locked","🔒"),("lock","🔒"),("unlock","🔓"),("unauthorized","⛔"),
-    ("configuration","🎛️"),("settings","🎛️"),("setting","🎛️"),("workflow","🔁"),("session context","🧵"),("active session","🧵"),("session","🧵"),("context","🧵"),
-    ("canonical vocabulary","📚"),("vocabulary","📚"),("canonical","🔒"),("notification","🔔"),("notify","🔔"),("message","💬"),
-    ("required check","📋"),("required checks","📋"),("requirements","📋"),("required","📋"),("file","📄"),("folder","📂"),("import","📥"),("load","📥"),("receive","📥"),("export","📤"),("send","📤"),("preserve","💾"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
-    ("run diagnostics","🧪"),("test","🧪"),("testing","🧪"),("diagnostics","🧪"),("diagnostic","🧪"),("validate","🧾"),("validation","🧾"),("verify","✔️"),("verification","✔️"),("verified","✅"),
-    ("deploy","🚀"),("deployment","🚀"),("release","🚀"),("launch","🚀"),("passes","✅"),("pass","✅"),("complete","✅"),("completed","✅"),("success","✅"),("succeeds","✅"),("successful","✅"),("healthy","🟢"),
-    ("screenshot","📸"),("screenshots","📸"),("image","🖼️"),("vision","👁️"),("visible","👁️"),("ollama","🦙"),
-    ("dark mode","🖤"),("light mode","🤍"),("toggle","🔘"),("button","🔘"),("navigation","🧭"),("performance","📈"),("optimize","📈"),("speed","⚡"),("quickly","⚡"),("fast","⚡"),("slow","🐌"),("lag","🐌"),
+
+    ("security system","🔐"),("security boundary","🔐"),("protected data","🔐"),("security","🔐"),
+    ("authentication","🛂"),("authenticate","🛂"),("authenticated","🛂"),("identity","🪪"),
+    ("replacement credential","🔑"),("credentials","🔑"),("credential","🔑"),("key","🔑"),("locked","🔒"),("remain locked","🔒"),("keep locked","🔒"),("lock","🔒"),("unlock","🔓"),("unauthorized","⛔"),("access","🔐"),
+
+    ("configuration","🎛️"),("settings","🎛️"),("setting","🎛️"),("workflow state","🔁"),("workflow","🔁"),
+    ("session context","🧵"),("active session","🧵"),("current session","🧵"),("session","🧵"),("context","🧵"),
+    ("canonical vocabulary","📚"),("canonical knowledge","📚"),("vocabulary","📚"),("canonical","🔒"),
+    ("notification","🔔"),("notify","🔔"),("message","💬"),
+    ("required checks","📋"),("required check","📋"),("requirements","📋"),("checklist","📋"),
+    ("supporting evidence","📎"),("visible facts","📎"),("visible fact","📎"),("evidence","📎"),("facts","📎"),("fact","📎"),
+    ("relationship","🔗"),("relationships","🔗"),("dependency","🔗"),("binding","🔗"),
+
+    ("file","📄"),("folder","📂"),("import","📥"),("load","📥"),("receive","📥"),("export","📤"),("send","📤"),("preserve","💾"),("save","💾"),("delete","🗑️"),("cleanup","🧹"),
+    ("run diagnostics","🧪"),("diagnostics","🧪"),("diagnostic","🧪"),("test","🧪"),("testing","🧪"),
+    ("validate","🧾"),("validation","🧾"),("verify","✔️"),("verification","✔️"),("verified","✅"),
+    ("deploy","🚀"),("deployment","🚀"),("release","🚀"),("launch","🚀"),
+    ("passes","✅"),("pass","✅"),("complete","✅"),("completed","✅"),("success","✅"),("succeeds","✅"),("successful","✅"),("healthy","🟢"),
+
+    ("screenshot","📸"),("screenshots","📸"),("image","🖼️"),("visible image","🖼️"),("vision","👁️"),("visible","👁️"),("observe","👁️"),("observation","👁️"),("identify","🔍"),("inspect","🔍"),
+    ("readable text","🔤"),("visible text","🔤"),("text","🔤"),("control","🔘"),("controls","🔘"),("button","🔘"),("toggle","🔘"),
+    ("ollama","🦙"),
+    ("processing","🔵"),("in progress","🔵"),("engine stage","🪜"),("stage","🪜"),("stages","🪜"),
+
+    ("dark mode","🖤"),("light mode","🤍"),("navigation","🧭"),("performance","📈"),("optimize","📈"),("improve","📈"),("speed","⚡"),("quickly","⚡"),("fast","⚡"),("slow","🐌"),("lag","🐌"),
     ("cloud","☁️"),("network","🌐"),("local","🏠"),("home","🏠"),("computer","💻"),
-    ("both directions","↔️"),("bidirectional","↔️"),("two way","↔️"),("winner","🏆"),("best","⭐"),("result","📤"),("output","📤"),("input","📥"),
+    ("winner","🏆"),("best","⭐"),("result","📤"),("output","📤"),("input","📥"),
 )
 
-# Longest/specific relationship phrases win before shorter phrases.
+# Relationship phrases are ordered from most specific to least specific.
 RELATION_WORDS: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("only after",),"only_after","🚦➡️"),
     (("only before",),"only_before","🚦⬅️"),
     (("only if",),"only_if","🚦"),
-    (("because of","due to","caused by","because"),"cause","➡️"),
+    (("only when",),"only_when","🚦"),
+    (("because of","due to","caused by","because"),"cause","🔗➡️"),
     (("therefore","so that","resulting in"),"result","➡️"),
     (("prior to","before"),"before","⬅️"),
     (("following","after"),"after","➡️"),
+    (("until",),"until","🚦➡️"),
     (("unless",),"unless","🚦❌"),
     (("if","when"),"condition","🚦"),
+    (("while",),"while","🔗"),
     (("and","also","plus"),"and","➕"),
     (("or","alternatively"),"or","🔀"),
     (("do not","cannot","can't","without","never","not"),"negation","❌"),
@@ -92,7 +118,7 @@ ACTION_PHRASES = {
     "📥":"import","📤":"export","🧪":"run diagnostics","🧾":"validate","🔍":"inspect","🔄":"restart","🔂":"retry once","🔧":"repair","🧹":"clean up","🗑️":"delete","💾":"save","🚀":"deploy","▶️":"start","⏹️":"stop","⏸️":"pause","🔒":"lock","🔓":"unlock","✔️":"verify","✅":"confirm completion","🔔":"notify","💬":"message","🛂":"authenticate","🔐":"secure","❤️‍🩹":"restore","🧯":"recover safely","🔨":"build","🏗️":"implement","📈":"optimize","🔌":"connect"
 }
 ENTITY_PHRASES = {
-    "🤖":"AI bot","🖥️":"computer interface","💻":"computer","📡":"event/telemetry system","🗃️":"structured data store","⚙️":"core system","📦":"package or build artifact","📄":"file","📂":"folder","🌐":"network","☁️":"cloud service","👤":"user","👥":"user group","🧵":"session context","🎛️":"configuration","🪪":"system identity","🔑":"credential","📸":"screenshot","🦙":"Ollama","👁️":"visual observation","🛡️":"reliability protection","🔐":"security system","📊":"dashboard","💾":"saved data","📚":"canonical knowledge","🧠":"reasoning system"
+    "🤖":"AI bot","🖥️":"computer interface","💻":"computer","📡":"event/telemetry system","🗃️":"structured data store","⚙️":"core system","📦":"package or build artifact","📄":"file","📂":"folder","🌐":"network","☁️":"cloud service","👤":"user","👥":"user group","🧵":"session context","🎛️":"configuration","🪪":"system identity","🔑":"credential","📸":"screenshot","🦙":"Ollama","👁️":"visual observation","🛡️":"reliability protection","🔐":"security system","📊":"dashboard","💾":"saved data","📚":"canonical knowledge","🧠":"reasoning system","📎":"supporting evidence","🔤":"text","🔘":"control"
 }
 STATUS_PHRASES = {"🔴":"critical","❌":"failed","⚠️":"warning","🟡":"on hold","🔵":"active","🟢":"healthy","✅":"verified complete","📴":"offline","🚧":"blocked","🛑":"stopped","🔒":"locked"}
 
@@ -113,7 +139,7 @@ class Relation:
     kind: str; marker: str; phrase: str; position: int
 @dataclass(frozen=True, slots=True)
 class SemanticRole:
-    kind: str; symbol: str; phrase: str; position: int
+    kind: str; symbol: str; phrase: str; position: int; action_index: int = -1
 @dataclass(frozen=True, slots=True)
 class SemanticClause:
     source: str; concepts: tuple[ConceptMatch,...]; numbers: tuple[NumberBinding,...]; relations: tuple[Relation,...]; negated: bool; unknown_words: tuple[str,...]=(); roles: tuple[SemanticRole,...]=()
@@ -139,14 +165,36 @@ def emit_stage(index:int,total:int,label:str,enabled:bool=True)->None:
 def normalize_text(text:str)->str:
     value=unicodedata.normalize("NFKC",str(text or "")).replace("’","'").replace("–","-").replace("—","-")
     return re.sub(r"[ \t]+"," ",value).strip()
+
 @lru_cache(maxsize=4096)
 def split_sentences(text:str)->tuple[str,...]:
-    value=normalize_text(text); return tuple(p.strip() for p in SENTENCE_RE.split(value) if p.strip()) if value else ()
+    value=normalize_text(text)
+    return tuple(p.strip() for p in SENTENCE_RE.split(value) if p.strip()) if value else ()
+
 @lru_cache(maxsize=4096)
 def find_number_bindings(text:str)->tuple[NumberBinding,...]:
     return tuple(NumberBinding(m.group("number"),(m.group("unit") or "").lower(),m.start(),m.end()) for m in NUMBER_UNIT_RE.finditer(text))
 
-def _overlaps(a:int,b:int,spans:list[tuple[int,int]])->bool: return any(not(b<=x or a>=y) for x,y in spans)
+def _overlaps(a:int,b:int,spans:list[tuple[int,int]])->bool:
+    return any(not(b<=x or a>=y) for x,y in spans)
+
+@lru_cache(maxsize=4096)
+def word_roots(word:str)->tuple[str,...]:
+    w=word.lower().strip("'")
+    roots=[w]
+    irregular={"using":"use","used":"use","uses":"use","loading":"load","loaded":"load","loads":"load","running":"run","ran":"run","written":"write","wrote":"write","kept":"keep","keeping":"keep","sent":"send","sending":"send","built":"build","building":"build","went":"go","gone":"go","better":"good","best":"good"}
+    if w in irregular: roots.append(irregular[w])
+    if len(w)>4 and w.endswith("ies"): roots.append(w[:-3]+"y")
+    if len(w)>5 and w.endswith("ing"):
+        stem=w[:-3]; roots.extend((stem,stem+"e"))
+        if len(stem)>2 and stem[-1]==stem[-2]: roots.append(stem[:-1])
+    if len(w)>4 and w.endswith("ed"):
+        stem=w[:-2]; roots.extend((stem,stem+"e"))
+        if len(stem)>2 and stem[-1]==stem[-2]: roots.append(stem[:-1])
+    if len(w)>4 and w.endswith("es"): roots.extend((w[:-2],w[:-1]))
+    elif len(w)>3 and w.endswith("s"): roots.append(w[:-1])
+    if len(w)>4 and w.endswith("ly"): roots.append(w[:-2])
+    return tuple(dict.fromkeys(r for r in roots if r))
 
 @lru_cache(maxsize=1)
 def canonical_patterns():
@@ -161,6 +209,21 @@ def canonical_patterns():
     rows.sort(key=lambda r:(0 if r[3]=="alias" else 1,-len(r[1]),ORDINAL_BY_SYMBOL[r[2]],r[1]))
     return tuple(rows)
 
+@lru_cache(maxsize=1)
+def single_word_index():
+    mapping:dict[str,list[tuple[str,str,float]]]={}
+    for phrase,symbol in ALIASES:
+        if " " not in phrase:
+            mapping.setdefault(phrase.lower(),[]).append((symbol,"alias",0.98))
+    authority_candidates:dict[str,list[str]]={}
+    for symbol,meaning in MEANING_BY_SYMBOL.items():
+        for raw in meaning.split("/"):
+            phrase=raw.strip().lower()
+            if re.fullmatch(r"[a-z][a-z0-9'-]{2,}",phrase): authority_candidates.setdefault(phrase,[]).append(symbol)
+    for phrase,symbols in authority_candidates.items():
+        if len(set(symbols))==1: mapping.setdefault(phrase,[]).append((symbols[0],"authority-root",0.80))
+    return {key:tuple(rows) for key,rows in mapping.items()}
+
 @lru_cache(maxsize=4096)
 def match_concepts(text:str)->tuple[ConceptMatch,...]:
     value=normalize_text(text).lower(); raw=[]
@@ -173,6 +236,17 @@ def match_concepts(text:str)->tuple[ConceptMatch,...]:
         if _overlaps(start,end,spans) and not same_span: continue
         if any(c.symbol==symbol and c.start==start and c.end==end for c in accepted): continue
         accepted.append(ConceptMatch(symbol,phrase,MEANING_BY_SYMBOL[symbol],start,end,kind,confidence)); spans.append((start,end))
+
+    index=single_word_index()
+    for m in WORD_RE.finditer(value):
+        if _overlaps(m.start(),m.end(),spans): continue
+        rows=[]
+        for root in word_roots(m.group(0)):
+            rows.extend(index.get(root,()))
+        if not rows: continue
+        rows=sorted(set(rows),key=lambda r:(0 if r[1]=="alias" else 1,-r[2],ORDINAL_BY_SYMBOL[r[0]]))
+        symbol,kind,confidence=rows[0]
+        accepted.append(ConceptMatch(symbol,m.group(0),MEANING_BY_SYMBOL[symbol],m.start(),m.end(),kind,confidence));spans.append((m.start(),m.end()))
     return tuple(sorted(accepted,key=lambda c:(c.start,c.end,ORDINAL_BY_SYMBOL[c.symbol])))
 
 @lru_cache(maxsize=4096)
@@ -180,43 +254,52 @@ def detect_relations(text:str)->tuple[Relation,...]:
     value=normalize_text(text).lower(); raw=[]
     for phrases,kind,marker in RELATION_WORDS:
         for phrase in phrases:
-            for m in re.finditer(r"(?<![a-z0-9])"+re.escape(phrase)+r"(?![a-z0-9])",value):
-                raw.append((m.start(),m.end(),kind,marker,phrase))
+            for m in re.finditer(r"(?<![a-z0-9])"+re.escape(phrase)+r"(?![a-z0-9])",value): raw.append((m.start(),m.end(),kind,marker,phrase))
     raw.sort(key=lambda row:(row[0],-(row[1]-row[0]),row[2]))
     accepted=[]; spans=[]
     for start,end,kind,marker,phrase in raw:
         if _overlaps(start,end,spans): continue
-        accepted.append(Relation(kind,marker,phrase,start)); spans.append((start,end))
+        accepted.append(Relation(kind,marker,phrase,start));spans.append((start,end))
     return tuple(accepted)
 
-def assign_roles(text:str, concepts:tuple[ConceptMatch,...])->tuple[SemanticRole,...]:
-    if not concepts: return ()
-    ordered=sorted(concepts,key=lambda c:c.start); action_positions=[c.start for c in ordered if is_action(c.symbol)]
-    first_action=min(action_positions) if action_positions else None; roles=[]
+def assign_roles(text:str,concepts:tuple[ConceptMatch,...])->tuple[SemanticRole,...]:
+    if not concepts:return ()
+    ordered=sorted(concepts,key=lambda c:c.start)
+    actions=[c for c in ordered if is_action(c.symbol)]
+    if not actions:
+        return tuple(SemanticRole("state" if c.symbol in STATUS_PHRASES else "entity" if c.symbol in ENTITY_PHRASES else "modifier",c.symbol,c.phrase,c.start,-1) for c in ordered)
+    roles=[]
     for concept in ordered:
-        if is_action(concept.symbol): kind="action"
-        elif concept.symbol in STATUS_PHRASES: kind="state"
+        if is_action(concept.symbol):
+            action_index=actions.index(concept);kind="action"
+        elif concept.symbol in STATUS_PHRASES:
+            action_index=min(range(len(actions)),key=lambda i:abs(actions[i].start-concept.start));kind="state"
         elif concept.symbol in ENTITY_PHRASES:
-            kind="actor" if first_action is not None and concept.start < first_action else "object"
-        else: kind="modifier"
-        roles.append(SemanticRole(kind,concept.symbol,concept.phrase,concept.start))
+            before=[i for i,a in enumerate(actions) if a.start>concept.start]
+            if before and concept.start<actions[0].start: action_index=0;kind="actor"
+            else: action_index=min(range(len(actions)),key=lambda i:abs(actions[i].start-concept.start));kind="object"
+        else:
+            action_index=min(range(len(actions)),key=lambda i:abs(actions[i].start-concept.start));kind="modifier"
+        roles.append(SemanticRole(kind,concept.symbol,concept.phrase,concept.start,action_index))
     return tuple(roles)
 
 def unknown_content_words(text:str,concepts:tuple[ConceptMatch,...])->tuple[str,...]:
-    value=normalize_text(text).lower(); spans=[(c.start,c.end) for c in concepts]; out=[]
+    value=normalize_text(text).lower();spans=[(c.start,c.end) for c in concepts];out=[]
     relation_words={word for phrases,_,_ in RELATION_WORDS for phrase in phrases for word in phrase.split()}
     for m in WORD_RE.finditer(value):
         word=m.group(0)
-        if word in STOPWORDS or word in relation_words or word.isdigit() or _overlaps(m.start(),m.end(),spans): continue
-        if word not in out: out.append(word)
+        if word in STOPWORDS or word in relation_words or word.isdigit() or _overlaps(m.start(),m.end(),spans):continue
+        roots=word_roots(word)
+        if any(root in STOPWORDS or root in relation_words for root in roots):continue
+        if word not in out:out.append(word)
     return tuple(out)
 
 @lru_cache(maxsize=2048)
 def parse_abc_document(text:str)->SemanticDocument:
     clauses=[]
     for sentence in split_sentences(text):
-        concepts=match_concepts(sentence); relations=detect_relations(sentence)
-        clauses.append(SemanticClause(sentence,concepts,find_number_bindings(sentence),relations,any(r.kind=="negation" for r in relations),unknown_content_words(sentence,concepts),assign_roles(sentence,concepts)))
+        concepts=match_concepts(sentence);relations=detect_relations(sentence)
+        clauses.append(SemanticClause(sentence,concepts,find_number_bindings(sentence),relations,any(r.kind in {"negation","unless"} for r in relations),unknown_content_words(sentence,concepts),assign_roles(sentence,concepts)))
     return SemanticDocument(normalize_text(text),tuple(clauses))
 
 def content_word_count(text:str)->int:
@@ -224,31 +307,31 @@ def content_word_count(text:str)->int:
     return sum(1 for m in WORD_RE.finditer(normalize_text(text).lower()) if not m.group(0).isdigit() and m.group(0) not in STOPWORDS and m.group(0) not in relation_words)
 
 def unknown_density(document:SemanticDocument)->float:
-    unknown=sum(len(c.unknown_words) for c in document.clauses); total=sum(content_word_count(c.source) for c in document.clauses)
+    unknown=sum(len(c.unknown_words) for c in document.clauses);total=sum(content_word_count(c.source) for c in document.clauses)
     return unknown/max(1,total)
 
 def unresolved_clause_count(document:SemanticDocument)->int:
     return sum(1 for c in document.clauses if c.unknown_words and not c.concepts)
 
-def canonical_symbols(text:str)->tuple[str,...]: return tuple(g for g in _core.split_graphemes(text) if g in MEANING_BY_SYMBOL)
+def canonical_symbols(text:str)->tuple[str,...]:return tuple(g for g in _core.split_graphemes(text) if g in MEANING_BY_SYMBOL)
 def valid_el(text:str)->bool:
-    if not isinstance(text,str) or not text.strip() or any(ch.isalpha() for ch in text): return False
+    if not isinstance(text,str) or not text.strip() or any(ch.isalpha() for ch in text):return False
     parsed=_core.CoreEngine().parse(text,el_mode=True)
-    if parsed.status is _core.ValidationStatus.FAIL: return False
+    if parsed.status is _core.ValidationStatus.FAIL:return False
     return _vocab.VocabularyEngine().resolve(parsed).status is _core.ValidationStatus.PASS
 
 def dedupe_adjacent(items):
     out=[]
     for item in items:
-        if item and (not out or out[-1]!=item): out.append(item)
+        if item and (not out or out[-1]!=item):out.append(item)
     return tuple(out)
-def concept_signature_from_abc(text:str)->tuple[str,...]: return tuple(c.symbol for c in match_concepts(text))
-def concept_signature_from_el(text:str)->tuple[str,...]: return tuple(s for s in canonical_symbols(text) if s not in {"➡️","➕"})
+def concept_signature_from_abc(text:str)->tuple[str,...]:return tuple(c.symbol for c in match_concepts(text))
+def concept_signature_from_el(text:str)->tuple[str,...]:return tuple(s for s in canonical_symbols(text) if s not in {"➡️","➕"})
 def multiset_similarity(left,right)->float:
     if not left and not right:return 1.0
     if not left or not right:return 0.0
-    lc=Counter(left); rc=Counter(right); keys=set(lc)|set(rc)
-    over=sum(min(lc.get(k,0),rc.get(k,0)) for k in keys); total=sum(max(lc.get(k,0),rc.get(k,0)) for k in keys)
+    lc=Counter(left);rc=Counter(right);keys=set(lc)|set(rc)
+    over=sum(min(lc.get(k,0),rc.get(k,0)) for k in keys);total=sum(max(lc.get(k,0),rc.get(k,0)) for k in keys)
     return over/total if total else 1.0
 def order_similarity(left,right)->float:
     if not left or not right:return 0.0
@@ -267,18 +350,18 @@ def preferred_phrase(symbol:str)->str:
     return MEANING_BY_SYMBOL.get(symbol,"unknown concept").split("/",1)[0].strip()
 def is_action(symbol:str)->bool:return symbol in ACTION_PHRASES
 def is_status(symbol:str)->bool:return symbol in STATUS_PHRASES
-def is_relation(symbol:str)->bool:return symbol in {"➡️","⬅️","↔️","➕","🔀","🚦"}
+def is_relation(symbol:str)->bool:return symbol in {"➡️","⬅️","↔️","➕","🔀","🚦","🔗"}
 def sentence_case(text:str)->str:
     value=re.sub(r"\s+"," ",text).strip(" ,;")
     if not value:return ""
     value=value[0].upper()+value[1:]
     return value if value[-1] in ".!?" else value+"."
-def score_candidate(source_signature,candidate_signature,base:float=0.0,order_weight:float=22.0):
-    coverage=multiset_similarity(source_signature,candidate_signature); order=order_similarity(source_signature,candidate_signature)
-    return base+76.0*coverage+order_weight*order,coverage,order
+def score_candidate(source_signature,candidate_signature,base:float=0.0,order_weight:float=24.0):
+    coverage=multiset_similarity(source_signature,candidate_signature);order=order_similarity(source_signature,candidate_signature)
+    return base+82.0*coverage+order_weight*order,coverage,order
 def apply_roundtrip(candidate:Candidate,similarity:float)->Candidate:
-    penalty=0.0 if similarity>=0.72 else (18.0 if similarity>=0.45 else 42.0)
-    return replace(candidate,score=candidate.score+55.0*similarity-penalty,roundtrip=similarity,reasons=candidate.reasons+("round-trip",f"round-trip:{similarity:.3f}"))
+    penalty=0.0 if similarity>=0.80 else (20.0 if similarity>=0.60 else 55.0)
+    return replace(candidate,score=candidate.score+70.0*similarity-penalty,roundtrip=similarity,reasons=candidate.reasons+("round-trip",f"round-trip:{similarity:.3f}"))
 def sort_candidates(candidates):
     unique={}
     for c in candidates:
