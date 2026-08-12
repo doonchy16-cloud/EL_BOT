@@ -139,7 +139,8 @@ function createWindow() {
     },
   });
 
-  win.loadFile(VIEW);
+  const html = fs.readFileSync(VIEW, 'utf8');
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 }
 
 ipcMain.handle('😀➡️🤖', async (_event, source) => runBot(source));
