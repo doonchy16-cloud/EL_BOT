@@ -60,7 +60,21 @@ jobs:
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import pathlib,runpy,sys; p=next(x for x in pathlib.Path('.').iterdir() if x.is_file() and x.name==chr(0x1F916)); s='🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝'; sys.argv=[str(p),s]; runpy.run_path(str(p),run_name='__main__')"
+          & $exe -c "import pathlib,subprocess,sys; p=next(x for x in pathlib.Path('.').iterdir() if x.is_file() and x.name==chr(0x1F916)); s='🔥➡️🚀'; r=subprocess.run([sys.executable,str(p)],input=s,text=True,capture_output=True,encoding='utf-8'); print(r.stdout.strip()); assert r.returncode==0; assert r.stdout.strip(); assert not r.stdout.lstrip().startswith(chr(0x274C))"
+
+      - name: "🧪⚡"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $main = Join-Path (Get-Location) '⚡\⚡'
+          $preload = Join-Path (Get-Location) '⚡\🔌'
+          $view = Join-Path (Get-Location) '⚡\🖥️'
+          node --check $main
+          node --check $preload
+          if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
+          $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
+          if (-not $html.Contains('▶️') -or -not $html.Contains('🧪') -or -not $html.Contains('🦙🔍')) { throw 'ui controls missing' }
+          Write-Output '✅⚡🖥️'
 
       - name: "🧪"
         shell: powershell
