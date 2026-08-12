@@ -33,6 +33,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     require(manifest["phase"] == 2, "wrong phase manifest")
+    require(manifest["status"] == "PASS", "Phase 2 authority state must remain PASS")
     require(manifest["source_present_target_engines"] == 30, "source-present target count must be 30")
     require(manifest["planned_only_target_engines"] == 14, "planned-only target count must be 14")
     require(manifest["canonical_vocabulary_count"] == 501, "501 authority changed")
