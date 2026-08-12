@@ -30,6 +30,7 @@ _intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
 _valid = _load("_el_valid", _ROOT / "🧾" / "🧾")
 _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
+_workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,5 +88,20 @@ class DiagnosticsEngine:
             restored = persistence.load()
             persist_ok = len(restored.turns) == 1 and restored.latest is not None and restored.latest.source == "🔥➡️🚀"
         checks.append(DiagnosticCheck("8️⃣💾", persist_ok))
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "🗃️"
+            persistence = _persist.PersistenceEngine(path)
+            workflow = _workflow.WorkflowEngine(persistence)
+            output = workflow.process("🔥➡️🚀")
+            saved = workflow.process("💾")
+            loaded = workflow.process("📥")
+            workflow_ok = (
+                output == "🔥➡️🚀\n✅🧵1"
+                and saved == "✅💾1"
+                and loaded == "✅📥1"
+                and workflow.render_el_status().startswith("✅🔁")
+            )
+        checks.append(DiagnosticCheck("9️⃣🔁", workflow_ok))
 
         return DiagnosticReport(tuple(checks))
