@@ -1,0 +1,18 @@
+"""Engine 21: local protocol authentication boundary."""
+
+from __future__ import annotations
+
+
+class AuthenticationEngine:
+    """Authenticate only the known local bot protocol; no human credential is invented."""
+
+    def verify(self, kind: str, protocol: int) -> bool:
+        return kind == "🤖" and protocol == 1
+
+    def process(self, text: str) -> str:
+        if text == "🛂":
+            return "✅🛂🏠"
+        return "🟡🛂❓"
+
+    def render_el_status(self) -> str:
+        return "✅🛂🏠"
