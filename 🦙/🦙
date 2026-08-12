@@ -1,10 +1,9 @@
 """Local Ollama provider boundary for EL Bot.
 
 User-facing methods render only EL-safe status. Raw model text is available only
-through explicitly internal methods and must pass downstream validation before
-it can ever reach an EL surface.
+through explicitly internal methods and must pass downstream deterministic
+validation before it can ever reach an EL surface.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,203 +12,98 @@ from typing import Callable, Iterable
 import urllib.error
 import urllib.request
 
+DEFAULT_BASE_URL="http://127.0.0.1:11434"
+DEFAULT_MODEL="qwen2.5vl:7b"
 
-DEFAULT_BASE_URL = "http://127.0.0.1:11434"
-DEFAULT_MODEL = "qwen2.5vl:7b"
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True,slots=True)
 class OllamaEvidence:
-    reachable: bool
-    model_present: bool
-    model: str
-
-    def render_el(self) -> str:
-        if not self.reachable:
-            return "❌🦙📡"
-        if not self.model_present:
-            return "🟡🦙❓"
+    reachable:bool
+    model_present:bool
+    model:str
+    def render_el(self)->str:
+        if not self.reachable:return "❌🦙📡"
+        if not self.model_present:return "🟡🦙❓"
         return "✅🦙👁️7️⃣"
 
-
 class OllamaConnector:
-    """Strict local Ollama connector with evidence-backed model selection."""
+    """Strict local provider boundary. Normal translation never imports this module."""
+    def __init__(self,model:str=DEFAULT_MODEL,base_url:str=DEFAULT_BASE_URL,probe_timeout:float=5.0,generation_timeout:float=300.0,urlopen:Callable[...,object]=urllib.request.urlopen)->None:
+        if not isinstance(model,str) or not model.strip():raise ValueError("model must be a non-empty string")
+        if not isinstance(base_url,str) or not base_url.startswith(("http://","https://")):raise ValueError("base_url must be http(s)")
+        if probe_timeout<=0 or generation_timeout<=0:raise ValueError("timeouts must be positive")
+        self.model=model.strip();self.base_url=base_url.rstrip("/");self.probe_timeout=float(probe_timeout);self.generation_timeout=float(generation_timeout);self._urlopen=urlopen;self._last_evidence:OllamaEvidence|None=None
 
-    def __init__(
-        self,
-        model: str = DEFAULT_MODEL,
-        base_url: str = DEFAULT_BASE_URL,
-        probe_timeout: float = 5.0,
-        generation_timeout: float = 300.0,
-        urlopen: Callable[..., object] = urllib.request.urlopen,
-    ) -> None:
-        if not isinstance(model, str) or not model.strip():
-            raise ValueError("model must be a non-empty string")
-        if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
-            raise ValueError("base_url must be http(s)")
-        if probe_timeout <= 0 or generation_timeout <= 0:
-            raise ValueError("timeouts must be positive")
-        self.model = model.strip()
-        self.base_url = base_url.rstrip("/")
-        self.probe_timeout = float(probe_timeout)
-        self.generation_timeout = float(generation_timeout)
-        self._urlopen = urlopen
-        self._last_evidence: OllamaEvidence | None = None
-
-    def _request_json(
-        self,
-        path: str,
-        payload: dict | None = None,
-        *,
-        timeout: float | None = None,
-    ) -> dict:
-        data = None
-        headers = {"Accept": "application/json"}
-        method = "GET"
+    def _request_json(self,path:str,payload:dict|None=None,*,timeout:float|None=None)->dict:
+        data=None;headers={"Accept":"application/json"};method="GET"
         if payload is not None:
-            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-            method = "POST"
-        request = urllib.request.Request(
-            self.base_url + path,
-            data=data,
-            headers=headers,
-            method=method,
-        )
-        effective_timeout = self.probe_timeout if timeout is None else timeout
-        response = self._urlopen(request, timeout=effective_timeout)
-        manager = response if hasattr(response, "__enter__") else None
+            data=json.dumps(payload,ensure_ascii=False).encode("utf-8");headers["Content-Type"]="application/json";method="POST"
+        request=urllib.request.Request(self.base_url+path,data=data,headers=headers,method=method)
+        response=self._urlopen(request,timeout=self.probe_timeout if timeout is None else timeout)
+        manager=response if hasattr(response,"__enter__") else None
         if manager is not None:
-            with manager as opened:
-                raw = opened.read()
-        else:
-            raw = response.read()
-        decoded = json.loads(raw.decode("utf-8"))
-        if not isinstance(decoded, dict):
-            raise ValueError("Ollama response must be a JSON object")
+            with manager as opened:raw=opened.read()
+        else:raw=response.read()
+        decoded=json.loads(raw.decode("utf-8"))
+        if not isinstance(decoded,dict):raise ValueError("Ollama response must be a JSON object")
         return decoded
 
-    def models(self) -> tuple[str, ...]:
-        payload = self._request_json("/api/tags", timeout=self.probe_timeout)
-        models = payload.get("models", [])
-        if not isinstance(models, list):
-            raise ValueError("Ollama models payload must be a list")
-        names: list[str] = []
-        for item in models:
-            if not isinstance(item, dict):
-                continue
-            name = item.get("name")
-            if isinstance(name, str) and name:
-                names.append(name)
-        return tuple(names)
-
-    def running_models(self) -> tuple[str, ...]:
-        payload = self._request_json("/api/ps", timeout=self.probe_timeout)
-        models = payload.get("models", [])
-        if not isinstance(models, list):
-            raise ValueError("Ollama running-model payload must be a list")
-        return tuple(
-            item["name"]
-            for item in models
-            if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
-        )
-
-    def probe(self) -> OllamaEvidence:
-        try:
-            names = self.models()
-        except (OSError, TimeoutError, ValueError, json.JSONDecodeError, urllib.error.URLError):
-            evidence = OllamaEvidence(False, False, self.model)
-        except Exception:
-            evidence = OllamaEvidence(False, False, self.model)
-        else:
-            evidence = OllamaEvidence(True, self.model in names, self.model)
-        self._last_evidence = evidence
-        return evidence
-
-    def warm_internal(self, keep_alive: str = "10m") -> bool:
-        if not isinstance(keep_alive, str) or not keep_alive:
-            raise ValueError("keep_alive must be a non-empty string")
-        payload = {
-            "model": self.model,
-            "prompt": "",
-            "stream": False,
-            "keep_alive": keep_alive,
-        }
-        self._request_json(
-            "/api/generate",
-            payload,
-            timeout=self.generation_timeout,
-        )
+    def models(self)->tuple[str,...]:
+        payload=self._request_json("/api/tags",timeout=self.probe_timeout);models=payload.get("models",[])
+        if not isinstance(models,list):raise ValueError("Ollama models payload must be a list")
+        return tuple(item["name"] for item in models if isinstance(item,dict) and isinstance(item.get("name"),str) and item["name"])
+    def running_models(self)->tuple[str,...]:
+        payload=self._request_json("/api/ps",timeout=self.probe_timeout);models=payload.get("models",[])
+        if not isinstance(models,list):raise ValueError("Ollama running-model payload must be a list")
+        return tuple(item["name"] for item in models if isinstance(item,dict) and isinstance(item.get("name"),str) and item["name"])
+    def probe(self)->OllamaEvidence:
+        try:names=self.models()
+        except (OSError,TimeoutError,ValueError,json.JSONDecodeError,urllib.error.URLError):evidence=OllamaEvidence(False,False,self.model)
+        except Exception:evidence=OllamaEvidence(False,False,self.model)
+        else:evidence=OllamaEvidence(True,self.model in names,self.model)
+        self._last_evidence=evidence;return evidence
+    def warm_internal(self,keep_alive:str="10m")->bool:
+        if not isinstance(keep_alive,str) or not keep_alive:raise ValueError("keep_alive must be a non-empty string")
+        self._request_json("/api/generate",{"model":self.model,"prompt":"","stream":False,"keep_alive":keep_alive},timeout=self.generation_timeout)
         return self.model in self.running_models()
-
     @staticmethod
-    def _validate_images(images: Iterable[str]) -> tuple[str, ...]:
-        image_list = tuple(images)
-        if any(not isinstance(item, str) or not item for item in image_list):
-            raise ValueError("images must contain non-empty base64 strings")
+    def _validate_images(images:Iterable[str])->tuple[str,...]:
+        image_list=tuple(images)
+        if any(not isinstance(item,str) or not item for item in image_list):raise ValueError("images must contain non-empty base64 strings")
         return image_list
-
-    def generate_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
-        """Return raw /api/generate text for internal reasoning only."""
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError("prompt must be a non-empty string")
-        image_list = self._validate_images(images)
-        payload: dict[str, object] = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "keep_alive": "10m",
-            "options": {"temperature": 0},
-        }
-        if image_list:
-            payload["images"] = list(image_list)
-        decoded = self._request_json(
-            "/api/generate",
-            payload,
-            timeout=self.generation_timeout,
-        )
-        response = decoded.get("response")
-        if not isinstance(response, str) or not response.strip():
-            raise ValueError("Ollama response text is missing")
-        return response
-
-    def chat_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
-        """Return raw /api/chat content; preferred for multimodal vision."""
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError("prompt must be a non-empty string")
-        image_list = self._validate_images(images)
-        message: dict[str, object] = {
-            "role": "user",
-            "content": prompt,
-        }
-        if image_list:
-            message["images"] = list(image_list)
-        payload: dict[str, object] = {
-            "model": self.model,
-            "messages": [message],
-            "stream": False,
-            "keep_alive": "10m",
-            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 96},
-        }
-        decoded = self._request_json(
-            "/api/chat",
-            payload,
-            timeout=self.generation_timeout,
-        )
-        message_payload = decoded.get("message")
-        if not isinstance(message_payload, dict):
-            raise ValueError("Ollama chat message is missing")
-        content = message_payload.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("Ollama chat content is missing")
+    @staticmethod
+    def _chat_content(decoded:dict)->str:
+        payload=decoded.get("message")
+        if not isinstance(payload,dict):raise ValueError("Ollama chat message is missing")
+        content=payload.get("content")
+        if not isinstance(content,str) or not content.strip():raise ValueError("Ollama chat content is missing")
         return content
 
-    def process(self, text: str) -> str:
-        if text in {"🦙", "🦙🔍"}:
-            return self.probe().render_el()
-        return "🟡🦙❓"
+    def generate_internal(self,prompt:str,images:Iterable[str]=())->str:
+        if not isinstance(prompt,str) or not prompt.strip():raise ValueError("prompt must be a non-empty string")
+        image_list=self._validate_images(images);payload={"model":self.model,"prompt":prompt,"stream":False,"keep_alive":"10m","options":{"temperature":0}}
+        if image_list:payload["images"]=list(image_list)
+        decoded=self._request_json("/api/generate",payload,timeout=self.generation_timeout);response=decoded.get("response")
+        if not isinstance(response,str) or not response.strip():raise ValueError("Ollama response text is missing")
+        return response
 
-    def render_el_status(self) -> str:
-        if self._last_evidence is None:
-            return "⚪🦙"
-        return self._last_evidence.render_el()
+    def chat_internal(self,prompt:str,images:Iterable[str]=())->str:
+        if not isinstance(prompt,str) or not prompt.strip():raise ValueError("prompt must be a non-empty string")
+        image_list=self._validate_images(images);message={"role":"user","content":prompt}
+        if image_list:message["images"]=list(image_list)
+        payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":"10m","options":{"temperature":0,"num_ctx":4096,"num_predict":192}}
+        return self._chat_content(self._request_json("/api/chat",payload,timeout=self.generation_timeout))
+
+    def chat_json_internal(self,prompt:str,images:Iterable[str]=(),*,num_predict:int=320)->str:
+        """Single-call structured vision helper. This does not perform translation."""
+        if not isinstance(prompt,str) or not prompt.strip():raise ValueError("prompt must be a non-empty string")
+        if not isinstance(num_predict,int) or num_predict<64 or num_predict>1024:raise ValueError("num_predict out of range")
+        image_list=self._validate_images(images);message={"role":"user","content":prompt}
+        if image_list:message["images"]=list(image_list)
+        payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":"10m","format":"json","options":{"temperature":0,"num_ctx":4096,"num_predict":num_predict}}
+        return self._chat_content(self._request_json("/api/chat",payload,timeout=self.generation_timeout))
+
+    def process(self,text:str)->str:
+        if text in {"🦙","🦙🔍"}:return self.probe().render_el()
+        return "🟡🦙❓"
+    def render_el_status(self)->str:
+        return "⚪🦙" if self._last_evidence is None else self._last_evidence.render_el()
