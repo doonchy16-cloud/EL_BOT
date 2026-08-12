@@ -189,7 +189,7 @@ class OllamaConnector:
             "messages": [message],
             "stream": False,
             "keep_alive": "5m",
-            "options": {"temperature": 0},
+            "options": {"temperature": 0, "num_ctx": 8192},
         }
         decoded = self._request_json(
             "/api/chat",
