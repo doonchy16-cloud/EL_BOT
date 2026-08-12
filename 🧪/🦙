@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Deterministic tests for the local Ollama provider boundary."""
+
+from __future__ import annotations
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+import json
+from pathlib import Path
+import sys
+import urllib.error
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+ROOT = Path(__file__).resolve().parent.parent
+ollama = _load("_el_ollama", ROOT / "🦙" / "🦙")
+
+
+class FakeResponse:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def healthy(request, timeout=0):
+    if request.full_url.endswith("/api/tags"):
+        return FakeResponse({"models": [{"name": "qwen2.5vl:7b"}, {"name": "qwen2.5-coder:7b"}]})
+    if request.full_url.endswith("/api/generate"):
+        body = json.loads(request.data.decode("utf-8"))
+        assert body["model"] == "qwen2.5vl:7b"
+        assert body["stream"] is False
+        assert body["options"]["temperature"] == 0
+        return FakeResponse({"response": "internal semantic result"})
+    raise AssertionError(request.full_url)
+
+
+def missing(request, timeout=0):
+    return FakeResponse({"models": [{"name": "qwen2.5-coder:7b"}]})
+
+
+def offline(request, timeout=0):
+    raise urllib.error.URLError("offline")
+
+
+def main() -> int:
+    connector = ollama.OllamaConnector(urlopen=healthy)
+    assert connector.render_el_status() == "⚪🦙"
+    assert connector.process("🦙🔍") == "✅🦙👁️7️⃣"
+    assert connector.render_el_status() == "✅🦙👁️7️⃣"
+    assert connector.generate_internal("translate") == "internal semantic result"
+    assert connector.process("🦙🎲") == "🟡🦙❓"
+
+    absent = ollama.OllamaConnector(urlopen=missing)
+    assert absent.process("🦙🔍") == "🟡🦙❓"
+
+    disconnected = ollama.OllamaConnector(urlopen=offline)
+    assert disconnected.process("🦙🔍") == "❌🦙📡"
+
+    print("✅🧪🦙")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
