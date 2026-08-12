@@ -28,9 +28,11 @@ def _load(name: str, path: Path):
 _ROOT = Path(__file__).resolve().parent.parent
 _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
+_event = _load("_el_event", _ROOT / "📡" / "📡")
 
 SessionEngine = _session.SessionEngine
 PersistenceEngine = _persist.PersistenceEngine
+EventEngine = _event.EventEngine
 
 
 class WorkflowEngine:
@@ -39,27 +41,60 @@ class WorkflowEngine:
     def __init__(self, persistence: PersistenceEngine | None = None) -> None:
         self.persistence = persistence if persistence is not None else PersistenceEngine()
         self.session = self.persistence.load()
+        self.events = EventEngine()
+        self.events.emit("🔁", "🔵")
+
+    @staticmethod
+    def _turn_status(turn) -> str:
+        rendered = turn.render_el_status()
+        if rendered.startswith("❌"):
+            return "❌"
+        if rendered.startswith("🟡"):
+            return "🟡"
+        return "✅"
 
     def process(self, text: str) -> str:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
 
+        if text == "📡":
+            return self.events.render_el()
+
         if text == "🧹":
+            self.events.emit("🧹", "🔵")
             self.session.clear()
             self.persistence.clear()
+            self.events.emit("🧹", "✅")
             return "✅🧹"
 
         if text == "💾":
+            self.events.emit("💾", "🔵")
             count = self.persistence.save(self.session)
+            self.events.emit("💾", "✅", str(count))
             return f"✅💾{count}"
 
         if text == "📥":
+            self.events.emit("📥", "🔵")
             self.session = self.persistence.load()
-            return f"✅📥{len(self.session.turns)}"
+            count = len(self.session.turns)
+            self.events.emit("📥", "✅", str(count))
+            return f"✅📥{count}"
 
+        self.events.emit("📥", "🔵")
         turn = self.session.ingest(text)
-        self.persistence.save(self.session)
+        status = self._turn_status(turn)
+        self.events.emit("🧵", status)
+        count = self.persistence.save(self.session)
+        self.events.emit("💾", "✅", str(count))
+        self.events.emit("📤", status)
         return turn.safe_output() + "\n" + self.session.render_el_status()
 
     def render_el_status(self) -> str:
-        return "✅🔁 " + self.session.render_el_status() + " " + self.persistence.render_el_status()
+        return (
+            "✅🔁 "
+            + self.session.render_el_status()
+            + " "
+            + self.persistence.render_el_status()
+            + " "
+            + self.events.render_el_status()
+        )
