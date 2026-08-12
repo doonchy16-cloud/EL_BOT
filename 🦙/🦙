@@ -142,13 +142,18 @@ class OllamaConnector:
         )
         return self.model in self.running_models()
 
-    def generate_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
-        """Return raw model text for internal reasoning only, never direct EL output."""
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError("prompt must be a non-empty string")
+    @staticmethod
+    def _validate_images(images: Iterable[str]) -> tuple[str, ...]:
         image_list = tuple(images)
         if any(not isinstance(item, str) or not item for item in image_list):
             raise ValueError("images must contain non-empty base64 strings")
+        return image_list
+
+    def generate_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
+        """Return raw /api/generate text for internal reasoning only."""
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
+        image_list = self._validate_images(images)
         payload: dict[str, object] = {
             "model": self.model,
             "prompt": prompt,
@@ -167,6 +172,37 @@ class OllamaConnector:
         if not isinstance(response, str) or not response.strip():
             raise ValueError("Ollama response text is missing")
         return response
+
+    def chat_internal(self, prompt: str, images: Iterable[str] = ()) -> str:
+        """Return raw /api/chat content; preferred for multimodal vision."""
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
+        image_list = self._validate_images(images)
+        message: dict[str, object] = {
+            "role": "user",
+            "content": prompt,
+        }
+        if image_list:
+            message["images"] = list(image_list)
+        payload: dict[str, object] = {
+            "model": self.model,
+            "messages": [message],
+            "stream": False,
+            "keep_alive": "5m",
+            "options": {"temperature": 0},
+        }
+        decoded = self._request_json(
+            "/api/chat",
+            payload,
+            timeout=self.generation_timeout,
+        )
+        message_payload = decoded.get("message")
+        if not isinstance(message_payload, dict):
+            raise ValueError("Ollama chat message is missing")
+        content = message_payload.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Ollama chat content is missing")
+        return content
 
     def process(self, text: str) -> str:
         if text in {"🦙", "🦙🔍"}:
