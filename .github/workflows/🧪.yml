@@ -55,6 +55,13 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
 
+      - name: "🧪🤖"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy,sys; p=next(x for x in pathlib.Path('.').iterdir() if x.is_file() and x.name==chr(0x1F916)); s='🏠💻🦙🤖🧠👁️2️⃣.5️⃣-7️⃣🐝'; sys.argv=[str(p),s]; runpy.run_path(str(p),run_name='__main__')"
+
       - name: "🧪"
         shell: powershell
         run: |
