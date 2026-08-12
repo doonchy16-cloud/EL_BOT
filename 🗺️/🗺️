@@ -1,0 +1,159 @@
+"""N04: deterministic semantic graph for EL Bot Phase 3.
+
+The graph is read-only in Phase 3. It supplies concept/sense relationships and
+canonical EL hints, but it does not rank candidates, graduate knowledge, or call
+providers.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from collections import deque
+import re
+
+_WORD = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticNode:
+    key: str
+    kind: str
+    labels: tuple[str, ...]
+    canonical_hints: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticEdge:
+    source: str
+    relation: str
+    target: str
+    weight: float = 1.0
+
+
+_NODES = (
+    SemanticNode("conversion-tool", "tool", ("converter", "conversion tool", "format converter"), ("⚙️", "🔄", "📥", "📤")),
+    SemanticNode("transform-action", "action", ("convert", "conversion", "transform", "change", "translate"), ("🔄", "↔️")),
+    SemanticNode("input", "role", ("input", "source", "incoming"), ("📥",)),
+    SemanticNode("output", "role", ("output", "result", "outgoing"), ("📤",)),
+    SemanticNode("tool", "entity", ("tool", "utility", "system", "engine"), ("⚙️",)),
+    SemanticNode("chatgpt-assistant", "product", ("chatgpt", "chat gpt", "conversational ai assistant"), ("🤖", "💬", "🧠")),
+    SemanticNode("ai", "entity", ("ai", "artificial intelligence", "model", "bot"), ("🤖",)),
+    SemanticNode("conversation", "capability", ("conversation", "chat", "dialogue", "message"), ("💬",)),
+    SemanticNode("assistant", "role", ("assistant", "helper", "agent"), ("🤖", "🧠")),
+    SemanticNode("language-word", "language-unit", ("word", "words", "term", "token", "language unit"), ("🔤",)),
+    SemanticNode("text-unit", "language-unit", ("text", "word", "token", "character sequence"), ("🔤",)),
+    SemanticNode("language", "domain", ("language", "linguistic", "textual"), ("🔤", "💬")),
+    SemanticNode("microsoft-word-product", "product", ("microsoft word", "word processor", "document editor"), ("⚙️", "📄")),
+    SemanticNode("software", "entity", ("software", "application", "app", "program"), ("⚙️",)),
+    SemanticNode("document", "entity", ("document", "file", "docx"), ("📄",)),
+    SemanticNode("document-editing", "action", ("document editing", "edit document", "word processing"), ("📄", "🔧")),
+    SemanticNode("translation-tool", "tool", ("translator", "translation tool"), ("⚙️", "↔️", "📥", "📤")),
+    SemanticNode("encoding-tool", "tool", ("encoder", "encoding tool"), ("⚙️", "🔤", "📥", "📤")),
+    SemanticNode("decoding-tool", "tool", ("decoder", "decoding tool"), ("⚙️", "🔤", "📥", "📤")),
+    SemanticNode("parsing-tool", "tool", ("parser", "parsing tool"), ("⚙️", "🔤")),
+    SemanticNode("rendering-tool", "tool", ("renderer", "rendering tool"), ("⚙️", "🖥️", "📤")),
+    SemanticNode("generation-tool", "tool", ("generator", "generation tool"), ("⚙️", "📤")),
+    SemanticNode("validation-tool", "tool", ("validator", "validation tool"), ("⚙️", "🧾")),
+)
+
+_EDGES = (
+    SemanticEdge("conversion-tool", "is-a", "tool"),
+    SemanticEdge("conversion-tool", "performs", "transform-action"),
+    SemanticEdge("conversion-tool", "accepts", "input"),
+    SemanticEdge("conversion-tool", "produces", "output"),
+    SemanticEdge("transform-action", "from", "input"),
+    SemanticEdge("transform-action", "to", "output"),
+    SemanticEdge("chatgpt-assistant", "is-a", "ai"),
+    SemanticEdge("chatgpt-assistant", "has-capability", "conversation"),
+    SemanticEdge("chatgpt-assistant", "has-role", "assistant"),
+    SemanticEdge("chatgpt-assistant", "is-a", "software"),
+    SemanticEdge("language-word", "is-a", "text-unit"),
+    SemanticEdge("language-word", "belongs-to", "language"),
+    SemanticEdge("microsoft-word-product", "is-a", "software"),
+    SemanticEdge("microsoft-word-product", "edits", "document"),
+    SemanticEdge("microsoft-word-product", "performs", "document-editing"),
+    SemanticEdge("translation-tool", "is-a", "conversion-tool"),
+    SemanticEdge("encoding-tool", "is-a", "conversion-tool"),
+    SemanticEdge("decoding-tool", "is-a", "conversion-tool"),
+    SemanticEdge("parsing-tool", "is-a", "tool"),
+    SemanticEdge("rendering-tool", "is-a", "tool"),
+    SemanticEdge("generation-tool", "is-a", "tool"),
+    SemanticEdge("validation-tool", "is-a", "tool"),
+)
+
+
+class SemanticGraphEngine:
+    """Read-only concept graph used by deterministic Phase-3 reasoning."""
+
+    def __init__(self) -> None:
+        self._nodes = {node.key: node for node in _NODES}
+        self._edges = _EDGES
+        aliases: dict[str, list[str]] = {}
+        for node in _NODES:
+            aliases.setdefault(node.key, []).append(node.key)
+            for label in node.labels:
+                aliases.setdefault(label.lower(), []).append(node.key)
+        self._aliases = {key: tuple(dict.fromkeys(values)) for key, values in aliases.items()}
+
+    @property
+    def nodes(self) -> tuple[SemanticNode, ...]:
+        return tuple(self._nodes.values())
+
+    @property
+    def edges(self) -> tuple[SemanticEdge, ...]:
+        return self._edges
+
+    def node(self, key: str) -> SemanticNode | None:
+        return self._nodes.get(str(key).strip().lower())
+
+    def resolve_label(self, text: str) -> tuple[str, ...]:
+        return self._aliases.get(str(text).strip().lower(), ())
+
+    def neighbors(self, key: str, *, relation: str | None = None) -> tuple[SemanticEdge, ...]:
+        key = str(key).strip().lower()
+        return tuple(edge for edge in self._edges if edge.source == key and (relation is None or edge.relation == relation))
+
+    def expand(self, key: str, *, depth: int = 2) -> tuple[str, ...]:
+        """Return deterministic breadth-first related concept keys."""
+        key = str(key).strip().lower()
+        if key not in self._nodes:
+            return ()
+        seen = {key}
+        ordered = [key]
+        queue = deque([(key, 0)])
+        while queue:
+            current, level = queue.popleft()
+            if level >= max(0, int(depth)):
+                continue
+            for edge in self._edges:
+                if edge.source == current:
+                    nxt = edge.target
+                elif edge.target == current:
+                    nxt = edge.source
+                else:
+                    continue
+                if nxt in seen:
+                    continue
+                seen.add(nxt)
+                ordered.append(nxt)
+                queue.append((nxt, level + 1))
+        return tuple(ordered)
+
+    def semantic_terms(self, key: str, *, depth: int = 2) -> tuple[str, ...]:
+        terms: list[str] = []
+        for related in self.expand(key, depth=depth):
+            node = self._nodes[related]
+            terms.append(related.replace("-", " "))
+            terms.extend(node.labels)
+        words: list[str] = []
+        for term in terms:
+            words.extend(match.group(0).lower() for match in _WORD.finditer(term))
+        return tuple(dict.fromkeys(words))
+
+    def canonical_hints(self, key: str, *, depth: int = 1) -> tuple[str, ...]:
+        hints: list[str] = []
+        for related in self.expand(key, depth=depth):
+            hints.extend(self._nodes[related].canonical_hints)
+        return tuple(dict.fromkeys(hints))
+
+    def render_el_status(self) -> str:
+        return f"✅🗺️{len(self._nodes)}➕{len(self._edges)}"
