@@ -26,6 +26,7 @@ _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
 _config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
 _connector = _load("_el_connector", _ROOT / "🔌" / "🔌")
+_ollama = _load("_el_ollama", _ROOT / "🦙" / "🦙")
 _orchestration = _load("_el_orchestration", _ROOT / "✦" / "✦")
 _instructor = _load("_el_instructor", _ROOT / "🧑‍🏫" / "🧑‍🏫")
 _animation = _load("_el_animation", _ROOT / "🎞️" / "🎞️")
@@ -37,6 +38,7 @@ PersistenceEngine = _persist.PersistenceEngine
 EventEngine = _event.EventEngine
 ConfigurationEngine = _config.ConfigurationEngine
 ConnectorEngine = _connector.ConnectorEngine
+OllamaConnector = _ollama.OllamaConnector
 OrchestrationEngine = _orchestration.OrchestrationEngine
 InstructorEngine = _instructor.InstructorEngine
 AnimationEngine = _animation.AnimationEngine
@@ -45,10 +47,11 @@ UpdaterEngine = _updater.UpdaterEngine
 
 
 class WorkflowEngine:
-    def __init__(self, persistence=None, configuration=None, connectors=None) -> None:
+    def __init__(self, persistence=None, configuration=None, connectors=None, ollama=None) -> None:
         self.persistence = persistence if persistence is not None else PersistenceEngine()
         self.configuration = configuration if configuration is not None else ConfigurationEngine()
         self.connectors = connectors if connectors is not None else ConnectorEngine()
+        self.ollama = ollama if ollama is not None else OllamaConnector()
         self.orchestration = OrchestrationEngine()
         self.instructor = InstructorEngine()
         self.animation = AnimationEngine()
@@ -78,6 +81,8 @@ class WorkflowEngine:
             return self.configuration.process(text)
         if text.startswith("🔌"):
             return self.connectors.process(text)
+        if text.startswith("🦙"):
+            return self.ollama.process(text)
         if text == "✦":
             return self.orchestration.process(text)
         if text.startswith("🧑‍🏫"):
@@ -121,4 +126,4 @@ class WorkflowEngine:
         return turn.safe_output() + "\n" + self.session.render_el_status()
 
     def render_el_status(self) -> str:
-        return " ".join(("✅🔁", self.configuration.render_el_status(), self.connectors.render_el_status(), self.orchestration.render_el_status(), self.instructor.render_el_status(), self.animation.render_el_status(), self.notifications.render_el_status(), self.updater.render_el_status(), self.session.render_el_status(), self.persistence.render_el_status(), self.events.render_el_status()))
+        return " ".join(("✅🔁", self.configuration.render_el_status(), self.connectors.render_el_status(), self.ollama.render_el_status(), self.orchestration.render_el_status(), self.instructor.render_el_status(), self.animation.render_el_status(), self.notifications.render_el_status(), self.updater.render_el_status(), self.session.render_el_status(), self.persistence.render_el_status(), self.events.render_el_status()))
