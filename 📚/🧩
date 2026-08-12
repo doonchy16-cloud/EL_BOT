@@ -1,0 +1,16 @@
+"""Owner-defined multi-symbol EL compounds.
+
+These compounds are separate from the locked 500-symbol primary authority.
+They may contain noncanonical glyphs when the Owner explicitly defines the
+entire sequence and its meaning. Unknown sequences remain HOLD; no guessing.
+"""
+
+from __future__ import annotations
+
+COMPOUND_MEANINGS: dict[str, str] = {
+    "💻🦙🤖🧠👁️7️⃣:🐝": "local ollama model qwen2.5-vl:7b",
+}
+
+
+def lookup_compound(source: str) -> str | None:
+    return COMPOUND_MEANINGS.get(source)
