@@ -1,4 +1,4 @@
-"""Canonical 500-symbol Emoji Language authority."""
+"""Canonical 500-symbol Emoji Language authority plus explicit Owner compounds."""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -23,6 +23,7 @@ def _load(name: str, path: Path):
 
 _ROOT = Path(__file__).resolve().parent.parent
 _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_compounds = _load("_el_compounds", _ROOT / "📚" / "🧩")
 ParseResult = _core.ParseResult
 Token = _core.Token
 TokenKind = _core.TokenKind
@@ -49,10 +50,15 @@ class VocabularyResult:
     resolved: tuple[SymbolAuthority, ...]
     unknown_emoji: tuple[Token, ...]
     status: ValidationStatus
+    compound_meaning: str | None = None
 
     @property
     def is_fully_canonical(self) -> bool:
-        return self.status is ValidationStatus.PASS
+        return self.status is ValidationStatus.PASS and self.compound_meaning is None
+
+    @property
+    def is_explicit_compound(self) -> bool:
+        return self.status is ValidationStatus.PASS and self.compound_meaning is not None
 
     def render_el_status(self) -> str:
         if self.status is ValidationStatus.FAIL:
@@ -61,6 +67,8 @@ class VocabularyResult:
             if self.unknown_emoji:
                 return "🟡❓" + "".join(token.text for token in self.unknown_emoji)
             return "🟡❓"
+        if self.compound_meaning is not None:
+            return "✅📚🧩"
         return "✅📚"
 
 
@@ -68,6 +76,8 @@ class VocabularyEngine:
     def resolve(self, parsed: ParseResult) -> VocabularyResult:
         if not isinstance(parsed, ParseResult):
             raise TypeError("parsed must be a ParseResult")
+
+        compound_meaning = _compounds.lookup_compound(parsed.source)
         resolved: list[SymbolAuthority] = []
         unknown_emoji: list[Token] = []
         for token in parsed.tokens:
@@ -76,13 +86,26 @@ class VocabularyEngine:
                 resolved.append(SymbolAuthority(token.text, ordinal))
             elif token.kind is TokenKind.EMOJI:
                 unknown_emoji.append(token)
+
         if parsed.status is ValidationStatus.FAIL:
             status = ValidationStatus.FAIL
-        elif parsed.status is ValidationStatus.HOLD or unknown_emoji:
+        elif parsed.status is ValidationStatus.HOLD:
+            status = ValidationStatus.HOLD
+        elif compound_meaning is not None:
+            status = ValidationStatus.PASS
+            unknown_emoji = []
+        elif unknown_emoji:
             status = ValidationStatus.HOLD
         else:
             status = ValidationStatus.PASS
-        return VocabularyResult(parsed, tuple(resolved), tuple(unknown_emoji), status)
+
+        return VocabularyResult(
+            parsed,
+            tuple(resolved),
+            tuple(unknown_emoji),
+            status,
+            compound_meaning,
+        )
 
     @staticmethod
     def lookup(symbol: str) -> SymbolAuthority | None:
@@ -90,3 +113,7 @@ class VocabularyEngine:
         if ordinal is None:
             return None
         return SymbolAuthority(symbol, ordinal)
+
+    @staticmethod
+    def lookup_compound(source: str) -> str | None:
+        return _compounds.lookup_compound(source)
