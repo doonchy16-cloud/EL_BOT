@@ -1,0 +1,143 @@
+"""N19: deterministic knowledge snapshot versioning and rollback foundation."""
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
+from pathlib import Path
+from typing import Callable
+import json
+import os
+
+
+def _stable_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _state_hash(snapshot: dict) -> str:
+    return sha256(_stable_json(snapshot).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeVersion:
+    version_id: str
+    parent_id: str
+    created_at: str
+    label: str
+    state_hash: str
+    snapshot: dict
+    change_ids: tuple[str, ...]
+
+    def render_el(self) -> str:
+        return "✅🗃️" + self.version_id
+
+
+class KnowledgeVersioningRollbackEngine:
+    """Version language knowledge snapshots; never decides what should graduate."""
+
+    def __init__(self, path: str | Path | None = None, clock: Callable[[], datetime] | None = None) -> None:
+        self.path = Path(path) if path is not None else None
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._versions: list[KnowledgeVersion] = []
+        if self.path is not None and self.path.is_file():
+            self._load()
+
+    @property
+    def versions(self) -> tuple[KnowledgeVersion, ...]:
+        return tuple(self._versions)
+
+    @property
+    def current(self) -> KnowledgeVersion | None:
+        return self._versions[-1] if self._versions else None
+
+    def _serialize(self) -> dict:
+        return {
+            "schema": 1,
+            "versions": [
+                {
+                    "version_id": item.version_id,
+                    "parent_id": item.parent_id,
+                    "created_at": item.created_at,
+                    "label": item.label,
+                    "state_hash": item.state_hash,
+                    "snapshot": item.snapshot,
+                    "change_ids": list(item.change_ids),
+                }
+                for item in self._versions
+            ],
+        }
+
+    def _persist(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        temporary.write_text(_stable_json(self._serialize()), encoding="utf-8")
+        os.replace(temporary, self.path)
+
+    def _load(self) -> None:
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        if payload.get("schema") != 1 or not isinstance(payload.get("versions"), list):
+            raise ValueError("unsupported knowledge-version file")
+        restored: list[KnowledgeVersion] = []
+        parent = ""
+        for raw in payload["versions"]:
+            snapshot = raw.get("snapshot")
+            if not isinstance(snapshot, dict):
+                raise ValueError("knowledge snapshot must be an object")
+            expected = _state_hash(snapshot)
+            if raw.get("state_hash") != expected:
+                raise ValueError("knowledge snapshot hash mismatch")
+            if str(raw.get("parent_id", "")) != parent:
+                raise ValueError("knowledge version lineage mismatch")
+            item = KnowledgeVersion(
+                version_id=str(raw["version_id"]),
+                parent_id=str(raw.get("parent_id", "")),
+                created_at=str(raw["created_at"]),
+                label=str(raw.get("label", "")),
+                state_hash=expected,
+                snapshot=deepcopy(snapshot),
+                change_ids=tuple(str(value) for value in raw.get("change_ids", [])),
+            )
+            restored.append(item)
+            parent = item.version_id
+        self._versions = restored
+
+    def commit(self, snapshot: dict, *, change_ids: tuple[str, ...] | list[str] = (), label: str = "", created_at: str | None = None) -> KnowledgeVersion:
+        if not isinstance(snapshot, dict):
+            raise TypeError("snapshot must be a dict")
+        frozen_snapshot = deepcopy(snapshot)
+        parent_id = self.current.version_id if self.current is not None else ""
+        version_id = str(len(self._versions) + 1)
+        timestamp = created_at or self._clock().astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        item = KnowledgeVersion(
+            version_id=version_id,
+            parent_id=parent_id,
+            created_at=timestamp,
+            label=str(label),
+            state_hash=_state_hash(frozen_snapshot),
+            snapshot=frozen_snapshot,
+            change_ids=tuple(str(value) for value in change_ids),
+        )
+        self._versions.append(item)
+        self._persist()
+        return item
+
+    def snapshot_for(self, version_id: str) -> dict:
+        for item in self._versions:
+            if item.version_id == str(version_id):
+                return deepcopy(item.snapshot)
+        raise KeyError(version_id)
+
+    def rollback(self, version_id: str, *, label: str = "rollback") -> KnowledgeVersion:
+        target = self.snapshot_for(version_id)
+        return self.commit(target, change_ids=("rollback:" + str(version_id),), label=label)
+
+    def process(self, text: str) -> str:
+        if text == "🗃️":
+            return "✅🗃️" + str(len(self._versions))
+        return "🟡🗃️❓"
+
+    def render_el_status(self) -> str:
+        return "✅🗃️" + str(len(self._versions))
