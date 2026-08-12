@@ -39,10 +39,16 @@ CoreEngine = _core.CoreEngine
 VocabularyEngine = _vocab.VocabularyEngine
 OllamaConnector = _ollama.OllamaConnector
 
-_GLOSSARY = "\n".join(
-    f"{symbol} = {meaning}"
-    for symbol, meaning in zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True)
+_SYMBOL_TO_MEANING = dict(zip(_vocab.CANONICAL_SYMBOLS, _meanings.PRIMARY_MEANINGS, strict=True))
+_VISION_SYMBOLS = (
+    "📸","👁️","🖥️","💻","📱","⌨️","🖱️","📷","📹","🖼️","🎥","🤖","🧠","🦙","⚙️","🎛️",
+    "🔌","📡","🌐","🖧","📶","✅","❌","🟡","🔴","🔵","🟢","⚪","⚠️","❗","‼️","❓","🚨","🚧",
+    "🛑","⛔","📴","🔒","🔓","🔐","🛡️","🧯","🔍","🔧","🛠️","🧰","🧪","🧾","📋","📄","📑","📂",
+    "📁","🗃️","🗄️","💾","🗑️","🧹","📥","📤","⬅️","➡️","↔️","🔁","🔄","▶️","⏸️","⏹️","⏳","⏱️",
+    "⚡","🐌","📊","📈","📉","🔘","🖤","🤍","👤","👥","🏠","🏢","🏭","📦","🚀","🏁","🔔","💬","📨",
+    "📩","✉️","🔑","🆔","🔢","🔤","🔣","💥","❤️‍🩹","🪫","🔋","🌈","🎨","📐","📏","📍","💯","👍","👎"
 )
+_VISION_GLOSSARY = "\n".join(f"{symbol} = {_SYMBOL_TO_MEANING[symbol]}" for symbol in _VISION_SYMBOLS)
 _ALLOWED = "".join(_vocab.CANONICAL_SYMBOLS)
 
 
@@ -82,17 +88,17 @@ def _mode_prompt(mode: int) -> str:
     if mode == 1:
         return """Analyze the supplied screenshot/image visually and describe the important visible state in concise English.
 This is Mode 1: visual evidence to text.
-Prioritize visible errors, warnings, success states, UI state, controls, files, devices, people, relationships, and the user's likely actionable evidence.
-Do not invent hidden facts, causes, identities, or unseen state. If text is visibly readable, summarize it rather than fabricating missing words.
+Prioritize visible errors, warnings, success states, UI state, controls, files, devices, people, relationships, and actionable evidence.
+Do not invent hidden facts, causes, identities, or unseen state. If text is visibly readable, summarize it faithfully.
 Return 1-5 short sentences, no markdown, under 180 words."""
     return f"""Analyze the supplied screenshot/image visually and convert the important visible evidence into canonical Emoji Language (EL).
 This is Mode 2: visual evidence to emoji.
-Output ONLY canonical EL symbols from the authority below, plus digits, punctuation, and whitespace. Never output alphabetic letters or words.
+Output ONLY canonical EL symbols from the compact glossary below, plus digits, punctuation, arrows, and whitespace. Never output alphabetic letters or words.
 Preserve visible error/warning/success state, UI/device/file relationships, direction, counts, and actions. Do not invent hidden facts.
 If genuinely unclear, output 🟡📸❓. Keep the result concise and information-complete.
 
-Canonical EL glossary:
-{_GLOSSARY}"""
+Compact visual EL glossary:
+{_VISION_GLOSSARY}"""
 
 
 def analyze(mode: int, image_value: str) -> str:
