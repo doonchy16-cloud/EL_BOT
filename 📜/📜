@@ -1,0 +1,80 @@
+"""N17: immutable provenance ledger for learned-language evidence."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Callable
+
+_ALLOWED_SOURCE_KINDS = frozenset({"deterministic", "provider", "user", "experiment", "revalidation", "import"})
+_ALLOWED_VALIDATION = frozenset({"pass", "hold", "fail", "unknown"})
+
+
+@dataclass(frozen=True, slots=True)
+class ProvenanceRecord:
+    record_id: str
+    claim_id: str
+    source_kind: str
+    source_ref: str
+    provider: str
+    model: str
+    validation_status: str
+    knowledge_version: str
+    created_at: str
+    evidence_ids: tuple[str, ...]
+
+    def render_el(self) -> str:
+        marker = "✅" if self.validation_status == "pass" else "🟡" if self.validation_status in {"hold", "unknown"} else "❌"
+        return marker + "📜"
+
+
+class ProvenanceLedgerEngine:
+    """Append-only origin/history authority; never promotes or mutates knowledge."""
+
+    def __init__(self, clock: Callable[[], datetime] | None = None) -> None:
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._records: list[ProvenanceRecord] = []
+        self._ids: set[str] = set()
+
+    @property
+    def records(self) -> tuple[ProvenanceRecord, ...]:
+        return tuple(self._records)
+
+    def append(self, *, record_id: str, claim_id: str, source_kind: str, source_ref: str, provider: str = "", model: str = "", validation_status: str = "unknown", knowledge_version: str = "", evidence_ids: tuple[str, ...] | list[str] = (), created_at: str | None = None) -> ProvenanceRecord:
+        for label, value in (("record_id", record_id), ("claim_id", claim_id), ("source_ref", source_ref)):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{label} must be non-empty")
+        if record_id in self._ids:
+            raise ValueError("provenance record_id already exists")
+        if source_kind not in _ALLOWED_SOURCE_KINDS:
+            raise ValueError("unsupported source_kind")
+        if validation_status not in _ALLOWED_VALIDATION:
+            raise ValueError("unsupported validation_status")
+        if source_kind == "provider" and (not provider.strip() or not model.strip()):
+            raise ValueError("provider provenance requires provider and model")
+        timestamp = created_at or self._clock().astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        record = ProvenanceRecord(
+            record_id=record_id.strip(),
+            claim_id=claim_id.strip(),
+            source_kind=source_kind,
+            source_ref=source_ref.strip(),
+            provider=provider.strip(),
+            model=model.strip(),
+            validation_status=validation_status,
+            knowledge_version=knowledge_version.strip(),
+            created_at=timestamp,
+            evidence_ids=tuple(str(item).strip() for item in evidence_ids if str(item).strip()),
+        )
+        self._ids.add(record.record_id)
+        self._records.append(record)
+        return record
+
+    def for_claim(self, claim_id: str) -> tuple[ProvenanceRecord, ...]:
+        return tuple(item for item in self._records if item.claim_id == claim_id)
+
+    def process(self, text: str) -> str:
+        if text == "📜":
+            return "✅📜" + str(len(self._records))
+        return "🟡📜❓"
+
+    def render_el_status(self) -> str:
+        return "✅📜" + str(len(self._records))
