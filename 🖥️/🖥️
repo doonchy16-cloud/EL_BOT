@@ -1,4 +1,4 @@
-"""Emoji-only user interface engine for EL Bot."""
+"""Engine 8: emoji-only user interface for EL Bot."""
 
 from __future__ import annotations
 
@@ -22,37 +22,23 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent.parent
-_session = _load("_el_session", _ROOT / "🧵" / "🧵")
-_persist = _load("_el_persist", _ROOT / "💾" / "💾")
+_workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 _diag = _load("_el_diag", _ROOT / "🧪" / "🧪")
 
-SessionEngine = _session.SessionEngine
-PersistenceEngine = _persist.PersistenceEngine
+WorkflowEngine = _workflow.WorkflowEngine
 DiagnosticsEngine = _diag.DiagnosticsEngine
 
 
 class UIEngine:
+    """Thin EL-facing boundary; workflow owns state and normal command routing."""
+
     def __init__(self) -> None:
-        self.persistence = PersistenceEngine()
-        self.session = self.persistence.load()
+        self.workflow = WorkflowEngine()
 
     def process(self, text: str) -> str:
         if text == "🧪":
             return DiagnosticsEngine().run().render_el()
-        if text == "🧹":
-            self.session.clear()
-            self.persistence.clear()
-            return "✅🧹"
-        if text == "💾":
-            count = self.persistence.save(self.session)
-            return f"✅💾{count}"
-        if text == "📥":
-            self.session = self.persistence.load()
-            return f"✅📥{len(self.session.turns)}"
-
-        turn = self.session.ingest(text)
-        self.persistence.save(self.session)
-        return turn.safe_output() + "\n" + self.session.render_el_status()
+        return self.workflow.process(text)
 
     def render_el_status(self) -> str:
-        return "✅🖥️ " + self.session.render_el_status() + " " + self.persistence.render_el_status()
+        return "✅🖥️ " + self.workflow.render_el_status()
