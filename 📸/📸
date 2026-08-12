@@ -196,38 +196,52 @@ def _failure_text(state:str)->str:
     return {
         "provider-unreachable":"Screenshot observation failed: the local vision provider is unreachable.",
         "model-unavailable":"Screenshot observation failed: the local vision model is unavailable.",
-        "model-prepare-failed":"Screenshot observation failed while preparing the local vision model.",
+        "vision-timeout":"Screenshot observation timed out before reliable visible facts were returned.",
+        "vision-provider-error":"Screenshot observation failed at the local vision provider.",
         "structured-observation-hold":"Screenshot observation failed: structured visible facts remained invalid after the controlled retry.",
     }.get(state,"Screenshot observation failed before reliable visible facts were produced.")
 def _failure_el(state:str)->str:
-    return {"provider-unreachable":"❌📸➡️🦙📴","model-unavailable":"❌📸➡️🦙❓","model-prepare-failed":"❌📸➡️🦙⏱️","structured-observation-hold":"❌📸➡️📋❌"}.get(state,"❌📸➡️❓")
+    return {"provider-unreachable":"❌📸➡️🦙📴","model-unavailable":"❌📸➡️🦙❓","vision-timeout":"❌📸➡️⏱️","vision-provider-error":"❌📸➡️🦙❌","structured-observation-hold":"❌📸➡️📋❌"}.get(state,"❌📸➡️❓")
 
 
 def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int,bool]:
-    connector=OllamaConnector(generation_timeout=65.0);evidence=connector.probe()
+    connector=OllamaConnector(generation_timeout=80.0);evidence=connector.probe()
     if not evidence.reachable:return _sanitize_facts(None),"provider-unreachable",0,"probe",0,False
     if not evidence.model_present:return _sanitize_facts(None),"model-unavailable",0,"probe",0,False
-    _lang.emit_stage(2,6,"Screenshot Vision — Prepare Vision Model")
-    was_running=False
+    _lang.emit_stage(2,6,"Screenshot Vision — Check Vision Model")
+    try:was_running=connector.model in connector.running_models()
+    except Exception:was_running=False
+    answers=[];sensor_calls=0
+    _lang.emit_stage(3,6,"Screenshot Vision — Observe Visible Facts" if was_running else "Screenshot Vision — Load Model and Observe Visible Facts")
     try:
-        was_running=connector.model in connector.running_models()
-        if not was_running:connector.warm_internal("10m")
+        sensor_calls+=1
+        # Live runtime evidence showed schema-constrained format can stall this
+        # installed vision model. JSON mode remains fast; the exact schema is
+        # enforced by the prompt plus deterministic parsing and validation.
+        answer=connector.chat_json_internal(_vision_prompt(compact=False),images=(raw,),schema=None,num_predict=512).strip();answers.append(answer)
+    except TimeoutError as exc:
+        _debug_exception(exc);return _sanitize_facts(None),"vision-timeout",sensor_calls,"provider-timeout",0,was_running
     except Exception as exc:
-        _debug_exception(exc);return _sanitize_facts(None),"model-prepare-failed",0,"model-prepare",0,was_running
-    answers=[]
-    for attempt in (1,2):
-        _lang.emit_stage(3,6,"Screenshot Vision — Observe Visible Facts" if attempt==1 else "Screenshot Vision — Retry Compact Visible Facts")
-        try:
-            # Runtime evidence showed schema-constrained format could stall this
-            # installed vision model. Keep JSON mode fast, while the prompt and
-            # deterministic validator enforce the exact schema.
-            answer=connector.chat_json_internal(_vision_prompt(compact=attempt==2),images=(raw,),schema=None,num_predict=512 if attempt==1 else 320).strip();answers.append(answer)
-            facts,strategy=_parse_observation(answer)
-            if facts is not None:
-                state="structured-vision" if attempt==1 and strategy=="json" else ("structured-vision-retry" if attempt==2 else "deterministic-structure-repair")
-                return facts,state,attempt,strategy,sum(len(v) for v in answers),was_running
-        except Exception as exc:_debug_exception(exc)
-    return _sanitize_facts(None),"structured-observation-hold",2,"unparsed",sum(len(v) for v in answers),was_running
+        _debug_exception(exc);return _sanitize_facts(None),"vision-provider-error",sensor_calls,"provider-error",0,was_running
+    facts,strategy=_parse_observation(answer)
+    if facts is not None:
+        state="structured-vision" if strategy=="json" else "deterministic-structure-repair"
+        return facts,state,sensor_calls,strategy,sum(len(v) for v in answers),was_running
+
+    # Retry only malformed/empty structure. Provider timeouts are terminal so
+    # one slow call cannot become two consecutive long waits.
+    _lang.emit_stage(3,6,"Screenshot Vision — Retry Compact Visible Facts")
+    connector.generation_timeout=45.0
+    try:
+        sensor_calls+=1
+        answer=connector.chat_json_internal(_vision_prompt(compact=True),images=(raw,),schema=None,num_predict=320).strip();answers.append(answer)
+    except TimeoutError as exc:
+        _debug_exception(exc);return _sanitize_facts(None),"vision-timeout",sensor_calls,"retry-timeout",sum(len(v) for v in answers),was_running
+    except Exception as exc:
+        _debug_exception(exc);return _sanitize_facts(None),"vision-provider-error",sensor_calls,"retry-provider-error",sum(len(v) for v in answers),was_running
+    facts,strategy=_parse_observation(answer)
+    if facts is not None:return facts,"structured-vision-retry",sensor_calls,strategy,sum(len(v) for v in answers),was_running
+    return _sanitize_facts(None),"structured-observation-hold",sensor_calls,"unparsed",sum(len(v) for v in answers),was_running
 
 
 def _facts_to_el(facts:dict[str,tuple[str,...]])->tuple[tuple[_lang.Candidate,...],dict[str,float|int|str]]:
