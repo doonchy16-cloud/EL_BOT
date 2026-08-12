@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Screenshot / image interpretation bridge for EL Bot using local Ollama vision."""
+
+from __future__ import annotations
+
+import base64
+import json
+import re
+import sys
+import urllib.error
+import urllib.request
+
+_MODEL = "qwen2.5vl:7b"
+_URL = "http://127.0.0.1:11434/api/chat"
+_LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
+
+_ALLOWED = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭🦙"
+
+_PROMPT = """Analyze the supplied screenshot or image visually. Return a concise Emoji Language (EL) description only. Never output alphabetic letters or words. Use only emoji from the allowed authority plus punctuation, whitespace, and numbers. Describe the most important visible state, object, action, error, warning, success, UI, person, device, or relationship. Do not invent hidden facts. If the image is unclear, output 🟡📸❓. Core EL meanings include: 📸 screenshot/image evidence; 👁️ observation; 🖥️ UI; 💻 computer; 📱 phone; ⚙️ system/settings; 🔧 fix; 🔍 inspect; ✅ pass/success; ❌ fail/error; 🟡 hold/caution; 🔴 critical; 🔵 active; ⚪ unknown; 📄 file; 📂 folder; 💬 message; 🔔 notification; 🧪 test; 🧯 recovery; 🔌 connector; 🦙 Ollama; 🤖 AI/bot; 🧠 intelligence; ➡️ next/relationship; ⬅️ back; 🔁 workflow; ⏳ pending; 🚧 blocker; ⚠️ warning; 🔒 locked; 🔓 unlocked. Keep the answer under 80 grapheme symbols. Allowed authority follows:\n""" + _ALLOWED
+
+
+def _strip_data_url(value: str) -> str:
+    if value.startswith("data:"):
+        marker = ";base64,"
+        index = value.find(marker)
+        if index < 0:
+            raise ValueError("image data URL is not base64")
+        return value[index + len(marker):]
+    return value
+
+
+def _has_letters(text: str) -> bool:
+    return bool(_LETTER_RE.search(text))
+
+
+def analyze(image_value: str) -> str:
+    try:
+        raw = _strip_data_url(image_value)
+        base64.b64decode(raw, validate=True)
+    except Exception:
+        return "❌📸🔣"
+
+    body = {
+        "model": _MODEL,
+        "stream": False,
+        "messages": [
+            {
+                "role": "user",
+                "content": _PROMPT,
+                "images": [raw],
+            }
+        ],
+        "options": {"temperature": 0},
+    }
+    request = urllib.request.Request(
+        _URL,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return "🟡📸🦙❓"
+
+    content = str(payload.get("message", {}).get("content", "")).strip()
+    if not content:
+        return "🟡📸❓"
+    if _has_letters(content):
+        return "🟡📸🦙🔤"
+    return content
+
+
+def main() -> int:
+    value = sys.stdin.read().strip()
+    print(analyze(value))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
