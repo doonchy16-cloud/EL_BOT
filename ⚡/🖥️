@@ -22,6 +22,7 @@ button:active{transform:translateY(1px)}
 button.mode{font-size:19px;opacity:.72}button.mode.on{opacity:1;border-color:#61e294;background:#17352e;box-shadow:0 0 18px #61e29433}
 textarea,pre{width:100%;height:100%;min-height:0;margin:0;border:1px solid #283653;background:#070b13;color:#f7f9ff;border-radius:15px;padding:15px;font:clamp(17px,1.25vw,21px)/1.5 "Segoe UI Emoji","Noto Color Emoji","Segoe UI",sans-serif;outline:none;resize:none;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal}
 textarea:focus{border-color:#5f80bd;box-shadow:0 0 0 3px #5f80bd22}
+#output{transition:border-color .2s,box-shadow .2s}.richSegment{transition:color .12s,text-shadow .12s}.richBold{font-weight:800}.richItalic{font-style:italic}.richUnderline{text-decoration:underline}.richCode{font-family:Consolas,"Cascadia Code",monospace;background:#111a2a;border:1px solid #31415f;border-radius:6px;padding:1px 5px;color:#d7e4ff}.richPipe{color:#556784;font-weight:700}.tone-ok{color:#72f2a6;text-shadow:0 0 10px #42e88438}.tone-bad{color:#ff6b7a;text-shadow:0 0 10px #ff445538}.tone-warn{color:#ffd166;text-shadow:0 0 10px #ffc43d30}.tone-lock{color:#d39cff;text-shadow:0 0 10px #b867ff34}.tone-info{color:#76b7ff;text-shadow:0 0 10px #4f9cff32}.tone-ai{color:#d48cff;text-shadow:0 0 10px #b54cff34}.tone-cyan{color:#65e8ff;text-shadow:0 0 10px #35d8ff32}.tone-win{color:#ffe56b;text-shadow:0 0 12px #ffd84d44;font-weight:800}.tone-muted{color:#9aa8bf}.ansi-black{color:#6f7a8e}.ansi-white{color:#f7f9ff}
 .inputStack{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:10px;min-height:0;min-width:0}
 .preview{display:none;position:relative;border:1px solid #34486d;border-radius:15px;background:#070b13;padding:10px;min-height:110px;max-height:250px;overflow:hidden}
 .preview.on{display:block}.preview img{display:block;max-width:100%;max-height:225px;margin:auto;border-radius:10px;object-fit:contain}.previewBadge{position:absolute;top:12px;left:12px;background:#0d1320dd;border:1px solid #34486d;border-radius:10px;padding:5px 8px;font-size:18px}
@@ -62,7 +63,7 @@ footer{background:#0d1320cc;border:1px solid #26334f;border-radius:18px;padding:
   </div>
   <div class="panel">
     <div class="modes"><span id="direction">2️⃣ 🔤➡️😀</span></div>
-    <div class="toolbar"><span>📤 🤖</span><button id="altToggle" class="altToggle">🔀0</button></div>
+    <div class="toolbar"><span>📤 🤖 🎨</span><button id="altToggle" class="altToggle">🔀0</button></div>
     <div class="outputStack">
       <pre id="output">⚪</pre>
       <div id="alternatives" class="alternatives"></div>
@@ -90,10 +91,100 @@ let rankedCandidates = [];
 let chosenValue = '';
 
 const ranks = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣'];
+const colorClasses = ['ansi-black','ansi-white','tone-ok','tone-bad','tone-warn','tone-lock','tone-info','tone-ai','tone-cyan','tone-win','tone-muted'];
+const ansiColors = new Map([[30,'ansi-black'],[31,'tone-bad'],[32,'tone-ok'],[33,'tone-warn'],[34,'tone-info'],[35,'tone-ai'],[36,'tone-cyan'],[37,'ansi-white'],[90,'tone-muted'],[91,'tone-bad'],[92,'tone-ok'],[93,'tone-win'],[94,'tone-info'],[95,'tone-ai'],[96,'tone-cyan'],[97,'ansi-white']]);
 
 function status(symbol){
   state.textContent = symbol;
   lights.forEach((node,index)=>node.classList.toggle('on', index === (symbol === '✅' ? 2 : symbol === '🔵' ? 1 : 0)));
+}
+
+function semanticTone(text){
+  const value = String(text || '').toLowerCase();
+  if (/(❌|🔴|fail|error|wrong|rejected|blocked|critical|crash)/.test(value)) return 'tone-bad';
+  if (/(⚠️|🟡|warning|risk|hold|pending|timeout|slow|lag|non-canonical)/.test(value)) return 'tone-warn';
+  if (/(✅|pass|verified|complete|success|ready)/.test(value)) return 'tone-ok';
+  if (/(🔒|locked|frozen|authority|canonical)/.test(value)) return 'tone-lock';
+  if (/(🏆|🥇|winner|top achievement)/.test(value)) return 'tone-win';
+  if (/(🚀|🔥|priority|launch|deployment|release|hot)/.test(value)) return 'tone-cyan';
+  if (/(🧪|🧠|🤖|diagnostics|testing|qa|intelligence|reasoning|instructor|training)/.test(value)) return 'tone-ai';
+  if (/(📸|screenshot|captured|camera|image)/.test(value)) return 'tone-cyan';
+  if (/(🖥️|ui|terminal|computer|interface|dashboard)/.test(value)) return 'tone-info';
+  return '';
+}
+
+function ansiRuns(value){
+  const source = String(value ?? '');
+  const matcher = /\x1b\[([0-9;]*)m/g;
+  const runs = [];
+  const active = new Set();
+  let index = 0;
+  let match;
+  const clearColor = ()=>colorClasses.forEach(name=>active.delete(name));
+  while ((match = matcher.exec(source))) {
+    if (match.index > index) runs.push({text:source.slice(index,match.index),classes:[...active]});
+    const codes = (match[1] || '0').split(';').map(part=>Number(part || 0));
+    for (const code of codes) {
+      if (code === 0) active.clear();
+      else if (code === 1) active.add('richBold');
+      else if (code === 3) active.add('richItalic');
+      else if (code === 4) active.add('richUnderline');
+      else if (code === 22) active.delete('richBold');
+      else if (code === 23) active.delete('richItalic');
+      else if (code === 24) active.delete('richUnderline');
+      else if (code === 39) clearColor();
+      else if (ansiColors.has(code)) { clearColor(); active.add(ansiColors.get(code)); }
+    }
+    index = matcher.lastIndex;
+  }
+  if (index < source.length || !runs.length) runs.push({text:source.slice(index),classes:[...active]});
+  return runs;
+}
+
+function appendInline(parent, source, classes=[]){
+  const text = String(source || '');
+  const matcher = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
+  let index = 0;
+  let match;
+  const append = (value, extra=[])=>{
+    if (!value) return;
+    const span = document.createElement('span');
+    span.className = ['richSegment',...classes,...extra].join(' ').trim();
+    span.textContent = value;
+    parent.appendChild(span);
+  };
+  while ((match = matcher.exec(text))) {
+    append(text.slice(index,match.index));
+    const token = match[0];
+    if (token.startsWith('**')) append(token.slice(2,-2),['richBold']);
+    else if (token.startsWith('`')) append(token.slice(1,-1),['richCode']);
+    else append(token.slice(1,-1),['richItalic']);
+    index = matcher.lastIndex;
+  }
+  append(text.slice(index));
+}
+
+function appendSemantic(parent, text, inherited=[]){
+  const pieces = String(text || '').split(/(\s*\|\s*)/g);
+  const hasExplicitColor = inherited.some(name=>colorClasses.includes(name));
+  for (const piece of pieces) {
+    if (!piece) continue;
+    if (/^\s*\|\s*$/.test(piece)) {
+      appendInline(parent,piece,[...inherited,'richPipe']);
+      continue;
+    }
+    const tone = hasExplicitColor ? '' : semanticTone(piece);
+    appendInline(parent,piece,tone ? [...inherited,tone] : inherited);
+  }
+}
+
+function renderRich(target, value){
+  target.replaceChildren();
+  for (const run of ansiRuns(value)) appendSemantic(target,run.text,run.classes);
+}
+
+function setOutput(value='⚪'){
+  renderRich(output,String(value ?? '⚪'));
 }
 
 function clearAlternatives(){
@@ -112,7 +203,7 @@ function setMode(next){
   const marker = mode === 1 ? '1️⃣ 😀➡️🔤' : '2️⃣ 🔤➡️😀';
   $('direction').textContent = marker;
   $('footerMode').textContent = marker;
-  output.textContent = '⚪';
+  setOutput('⚪');
   clearAlternatives();
   status('⚪');
   input.focus();
@@ -153,14 +244,14 @@ function readImage(blob){
   if (!blob || !String(blob.type || '').startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = async ()=>showImage(await compressImage(String(reader.result || '')));
-  reader.onerror = () => {output.textContent='❌📸';status('❌');};
+  reader.onerror = () => {setOutput('❌📸');status('❌');};
   reader.readAsDataURL(blob);
 }
 
 function applyResult(result, fallback='⚪'){
   clearAlternatives();
   const value = String(result || fallback);
-  output.textContent = value;
+  setOutput(value);
   status(value.startsWith('❌') ? '❌' : value.startsWith('🟡') ? '🟡' : '✅');
 }
 
@@ -176,7 +267,7 @@ function renderAlternatives(){
     rank.textContent = ranks[index] || String(index + 1);
     const text = document.createElement('span');
     text.className = 'altValue';
-    text.textContent = value;
+    renderRich(text,value);
     const chosen = document.createElement('span');
     chosen.className = 'altChosen';
     chosen.textContent = value === chosenValue ? '🏆' : '';
@@ -189,7 +280,7 @@ function renderAlternatives(){
 async function chooseAlternative(value){
   if (!value) return;
   chosenValue = value;
-  output.textContent = value;
+  setOutput(value);
   renderAlternatives();
   status('✅');
   if (window['😀'] && window['😀']['🏆'] && lastSource) {
@@ -206,7 +297,7 @@ function applyRanked(result, source){
   chosenValue = winner;
   rankedCandidates = Array.isArray(result.candidates) ? result.candidates.filter(item=>item && typeof item.value === 'string' && item.value) : [];
   if (!rankedCandidates.some(item=>item.value === winner)) rankedCandidates.unshift({value:winner});
-  output.textContent = winner;
+  setOutput(winner);
   status(winner.startsWith('❌') ? '❌' : winner.startsWith('🟡') ? '🟡' : '✅');
   if (rankedCandidates.length > 1) {
     altToggle.textContent = '🔀' + rankedCandidates.length;
@@ -216,31 +307,31 @@ function applyRanked(result, source){
 }
 
 async function runBot(source){
-  if (!window['😀'] || !window['😀']['▶️']) { output.textContent='❌🔌';status('❌');return; }
-  clearAlternatives();status('🔵');output.textContent='⏳';
+  if (!window['😀'] || !window['😀']['▶️']) { setOutput('❌🔌');status('❌');return; }
+  clearAlternatives();status('🔵');setOutput('⏳');
   try { applyResult(await window['😀']['▶️'](source)); }
-  catch (_) { output.textContent='❌🧯';status('❌'); }
+  catch (_) { setOutput('❌🧯');status('❌'); }
 }
 
 async function runTranslation(){
-  if (!window['😀'] || !window['😀']['↔️']) { output.textContent='❌↔️🔌';status('❌');return; }
+  if (!window['😀'] || !window['😀']['↔️']) { setOutput('❌↔️🔌');status('❌');return; }
   const source = input.value.trim();
-  if (!source) { output.textContent='🟡❓';status('🟡');return; }
-  clearAlternatives();status('🔵');output.textContent=mode===1?'😀➡️🔤⏳':'🔤➡️😀⏳';
+  if (!source) { setOutput('🟡❓');status('🟡');return; }
+  clearAlternatives();status('🔵');setOutput(mode===1?'😀➡️🔤⏳':'🔤➡️😀⏳');
   try { applyRanked(await window['😀']['↔️'](mode,source),source); }
-  catch (_) { output.textContent='❌↔️🧯';status('❌'); }
+  catch (_) { setOutput('❌↔️🧯');status('❌'); }
 }
 
 async function runImage(){
   if (!imageDataUrl) { file.click(); return; }
-  if (!window['😀'] || !window['😀']['📸']) { output.textContent='❌📸🔌';status('❌');return; }
-  clearAlternatives();status('🔵');output.textContent=mode===1?'📸➡️🔤⏳':'📸➡️😀⏳';
+  if (!window['😀'] || !window['😀']['📸']) { setOutput('❌📸🔌');status('❌');return; }
+  clearAlternatives();status('🔵');setOutput(mode===1?'📸➡️🔤⏳':'📸➡️😀⏳');
   try { applyRanked(await window['😀']['📸'](mode,imageDataUrl),imageDataUrl); }
-  catch (_) { output.textContent='❌📸🧯';status('❌'); }
+  catch (_) { setOutput('❌📸🧯');status('❌'); }
 }
 
 function clearAll(){
-  input.value='';output.textContent='⚪';imageDataUrl='';lastSource='';
+  input.value='';setOutput('⚪');imageDataUrl='';lastSource='';
   previewImage.removeAttribute('src');preview.classList.remove('on');file.value='';clearAlternatives();status('⚪');input.focus();
 }
 
