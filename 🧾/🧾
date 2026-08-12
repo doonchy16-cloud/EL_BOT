@@ -1,0 +1,85 @@
+"""Evidence-backed EL release gate."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
+_vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
+_intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
+CoreEngine = _core.CoreEngine
+ParseResult = _core.ParseResult
+ValidationStatus = _core.ValidationStatus
+VocabularyEngine = _vocab.VocabularyEngine
+VocabularyResult = _vocab.VocabularyResult
+InterpretationResult = _intel.InterpretationResult
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationReport:
+    source: InterpretationResult
+    proposed_output: str
+    output_surface: ParseResult
+    output_vocabulary: VocabularyResult
+    status: ValidationStatus
+
+    @property
+    def releasable(self) -> bool:
+        return self.status is ValidationStatus.PASS
+
+    def render_el_status(self) -> str:
+        if self.status is ValidationStatus.FAIL:
+            return "❌🧾"
+        if self.status is ValidationStatus.HOLD:
+            return "🟡🧾❓"
+        return "✅🧾"
+
+    def safe_output(self) -> str:
+        if self.releasable:
+            return self.proposed_output
+        return self.render_el_status()
+
+
+class ValidationEngine:
+    def validate(self, source: InterpretationResult, proposed_output: str) -> ValidationReport:
+        if not isinstance(source, InterpretationResult):
+            raise TypeError("source must be an InterpretationResult")
+        if not isinstance(proposed_output, str):
+            raise TypeError("proposed_output must be a string")
+
+        output_surface = CoreEngine().parse(proposed_output, el_mode=True)
+        output_vocabulary = VocabularyEngine().resolve(output_surface)
+
+        if source.status is ValidationStatus.FAIL or output_surface.status is ValidationStatus.FAIL:
+            status = ValidationStatus.FAIL
+        elif source.status is ValidationStatus.HOLD or output_vocabulary.status is ValidationStatus.HOLD:
+            status = ValidationStatus.HOLD
+        else:
+            status = ValidationStatus.PASS
+
+        return ValidationReport(
+            source=source,
+            proposed_output=proposed_output,
+            output_surface=output_surface,
+            output_vocabulary=output_vocabulary,
+            status=status,
+        )
