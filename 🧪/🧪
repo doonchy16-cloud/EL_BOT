@@ -1,4 +1,4 @@
-"""Deterministic full-stack diagnostics for the 24-engine EL Bot."""
+"""Deterministic full-stack diagnostics for the 30 source-present EL Bot engines."""
 
 from __future__ import annotations
 
@@ -47,6 +47,12 @@ _updater = _load("_el_updater", _ROOT / "🔄" / "🔄")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 _abc = _load("_el_abc_engine_diag", _ROOT / "🔤➡️😀" / "🔤➡️😀")
 _emoji = _load("_el_emoji_engine_diag", _ROOT / "😀➡️🔤" / "😀➡️🔤")
+_canonicalization = _load("_el_canonicalization_diag", _ROOT / "🧷" / "🧷")
+_universe = _load("_el_universe_diag", _ROOT / "🌐" / "🌐")
+_provenance = _load("_el_provenance_diag", _ROOT / "📜" / "📜")
+_evidence = _load("_el_evidence_diag", _ROOT / "📊" / "📊")
+_versioning = _load("_el_versioning_diag", _ROOT / "🗃️" / "🗃️")
+_integrity = _load("_el_integrity_diag", _ROOT / "🧿" / "🧿")
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +184,37 @@ class DiagnosticsEngine:
         lower = emoji_result.winner.lower()
         checks.append(DiagnosticCheck("2️⃣4️⃣😀➡️🔤", len(emoji_engine.stage_names) == 24 and "test" in lower and "valid" in lower and "deploy" in lower and "the el sequence communicates" not in lower and "|" not in emoji_result.winner and emoji_engine.render_el_status() == "✅😀➡️🔤24"))
 
-        if len(checks) != 24:
+        canonicalizer = _canonicalization.EmojiCanonicalizationEngine()
+        sun = canonicalizer.canonicalize_unit("☀")
+        keycap = canonicalizer.canonicalize_unit("1\u20e3")
+        checks.append(DiagnosticCheck("2️⃣5️⃣🧷", sun.valid and sun.canonical == "☀️" and keycap.valid and keycap.canonical == "1️⃣" and not canonicalizer.canonicalize_unit("abc").valid))
+
+        universe = _universe.EmojiUniverseEngine()
+        checks.append(DiagnosticCheck("2️⃣6️⃣🌐", universe.snapshot.count > 501 and universe.snapshot.canonical_coverage == 501 and not universe.snapshot.rgi_complete and universe.contains("😀")))
+
+        provenance = _provenance.ProvenanceLedgerEngine()
+        p1 = provenance.append(record_id="p1", claim_id="c1", source_kind="deterministic", source_ref="diagnostics", validation_status="pass", created_at="2026-08-12T23:00:00Z")
+        checks.append(DiagnosticCheck("2️⃣7️⃣📜", provenance.for_claim("c1") == (p1,) and p1.validation_status == "pass"))
+
+        evidence = _evidence.EvidenceConfidenceEngine()
+        evidence.record(evidence_id="e1", claim_id="c1", polarity="positive", weight=0.9, source="validation", reason="pass", provenance_id="p1")
+        evidence.record(evidence_id="e2", claim_id="c1", polarity="negative", weight=0.1, source="countercheck", reason="minor", provenance_id="p1")
+        confidence = evidence.confidence("c1")
+        checks.append(DiagnosticCheck("2️⃣8️⃣📊", confidence.evidence_count == 2 and abs(confidence.confidence - 0.9) < 1e-9))
+
+        with tempfile.TemporaryDirectory() as folder:
+            knowledge = _versioning.KnowledgeVersioningRollbackEngine(Path(folder) / "knowledge.json")
+            v1 = knowledge.commit({"claims": {"c1": {"expression": "🔥"}}}, change_ids=("c1",), created_at="2026-08-12T23:00:00Z")
+            v2 = knowledge.commit({"claims": {"c1": {"expression": "🚀"}}}, change_ids=("c1",), created_at="2026-08-12T23:01:00Z")
+            v3 = knowledge.rollback("1")
+            version_ok = v1.version_id == "1" and v2.parent_id == "1" and v3.parent_id == "2" and knowledge.snapshot_for("3") == knowledge.snapshot_for("1")
+        checks.append(DiagnosticCheck("2️⃣9️⃣🗃️", version_ok))
+
+        integrity = _integrity.KnowledgeIntegrityEngine()
+        good = integrity.assess({"claim_id":"c1","concept":"deploy","expression":"🚀","maturity":"canonical"}, confidence=confidence, provenance=provenance.for_claim("c1"))
+        bad = integrity.assess({"claim_id":"c2","concept":"converter","expression":"🔄","maturity":"discovered"})
+        checks.append(DiagnosticCheck("3️⃣0️⃣🧿", good.passed and bad.status == "fail"))
+
+        if len(checks) != 30:
             raise RuntimeError("diagnostic check count invariant violated")
         return DiagnosticReport(tuple(checks))
