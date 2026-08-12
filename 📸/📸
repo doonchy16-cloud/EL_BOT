@@ -92,7 +92,7 @@ def analyze(mode: int, image_value: str) -> str:
     except Exception:
         return "❌📸🔣"
 
-    connector = OllamaConnector(generation_timeout=300.0)
+    connector = OllamaConnector(generation_timeout=150.0)
     evidence = connector.probe()
     if not evidence.reachable:
         return "🟡📸🦙📡❓"
@@ -101,7 +101,7 @@ def analyze(mode: int, image_value: str) -> str:
 
     prompt = _mode_prompt(mode)
     try:
-        content = connector.generate_internal(prompt, images=(raw,)).strip()
+        content = connector.chat_internal(prompt, images=(raw,)).strip()
     except Exception:
         return "🟡📸🦙❓"
 
@@ -120,7 +120,7 @@ Previous invalid answer:
 {content}
 """
     try:
-        corrected = connector.generate_internal(retry, images=(raw,)).strip()
+        corrected = connector.chat_internal(retry, images=(raw,)).strip()
     except Exception:
         corrected = ""
     if _valid_el(corrected):
