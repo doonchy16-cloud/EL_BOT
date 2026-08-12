@@ -57,10 +57,11 @@ identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.
 normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","😀➡️🔤/😀➡️🔤","🧠/🧬"))
 for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
-for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_json_internal","sensor_calls","structured-vision-retry","controlled retry","Load Vision Model","valid empty observation"):
+for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_internal","sensor_calls","structured-vision-retry","Load Vision Model","valid-empty-observation"):
     assert marker in vision_source,marker
+assert "chat_json_internal(" not in vision_source
 ollama_source=(ROOT/"🦙"/"🦙").read_text(encoding="utf-8")
-for marker in ("chat_json_internal","schema if schema is not None else","num_ctx\":8192","num_predict"):
+for marker in ("chat_internal","num_ctx:int=4096","keep_alive:str=\"30m\"","chat_json_internal","schema if schema is not None else","num_predict"):
     assert marker in ollama_source,marker
 
 abc_engine=abc.ABCToEmojiEngine();emoji_engine=emoji.EmojiToABCEngine();assert len(abc_engine.stage_names)==24 and len(set(abc_engine.stage_names))==24;assert len(emoji_engine.stage_names)==24 and len(set(emoji_engine.stage_names))==24
@@ -124,5 +125,5 @@ for index in range(120):abc_engine.translate(f"Restart the local server after {3
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
 report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==24
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
