@@ -124,8 +124,11 @@ function emitStage(event, payload) {
 function stagePayload(payload, kind) {
   const value = payload && typeof payload === 'object' ? { ...payload } : {};
   const label = String(value.label || '');
-  if (kind === 'vision') value.warn_after_ms = /Observe|Retry/i.test(label) ? 20000 : 8000;
-  else if (kind === 'translation') value.warn_after_ms = 5000;
+  if (kind === 'vision') {
+    if (/Load Vision Model/i.test(label)) value.warn_after_ms = 30000;
+    else if (/Observe|Retry/i.test(label)) value.warn_after_ms = 20000;
+    else value.warn_after_ms = 8000;
+  } else if (kind === 'translation') value.warn_after_ms = 5000;
   return value;
 }
 
@@ -185,7 +188,7 @@ async function runTranslation(event, mode, source) {
 
 async function runVision(event, mode, imageDataUrl) {
   if (![1, 2].includes(mode) || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) return { winner: '❌📸🔣', candidates: [], metrics: {} };
-  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 170000, ['🔀'], (payload) => emitStage(event, stagePayload(payload, 'vision')));
+  const raw = await runPython(VISION, `${mode}\n${imageDataUrl}`, 350000, ['🔀'], (payload) => emitStage(event, stagePayload(payload, 'vision')));
   return parseRanked(raw);
 }
 
