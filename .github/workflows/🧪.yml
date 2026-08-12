@@ -38,8 +38,21 @@ jobs:
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import json,urllib.request; u='http://127.0.0.1:11434/api/tags'; d=json.load(urllib.request.urlopen(u,timeout=5)); print(json.dumps([m.get('name','') for m in d.get('models',[])],ensure_ascii=True))"
-        continue-on-error: true
+          & $exe -c "import json,urllib.request; u='http://127.0.0.1:11434/api/tags'; d=json.load(urllib.request.urlopen(u,timeout=5)); names=[m.get('name','') for m in d.get('models',[])]; assert 'qwen2.5vl:7b' in names; print(chr(0x2705)+chr(0x1F999)+chr(0x1F441)+chr(0xFE0F)+'7')"
+
+      - name: "🧪🦙"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🦙🧠"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import json,urllib.request; body=json.dumps({'model':'qwen2.5vl:7b','prompt':'Return one short confirmation.','stream':False,'options':{'temperature':0}}).encode(); req=urllib.request.Request('http://127.0.0.1:11434/api/generate',data=body,headers={'Content-Type':'application/json'},method='POST'); d=json.load(urllib.request.urlopen(req,timeout=90)); r=d.get('response',''); assert isinstance(r,str) and r.strip(); print(chr(0x2705)+chr(0x1F999)+chr(0x1F9E0))"
 
       - name: "🧪"
         shell: powershell
