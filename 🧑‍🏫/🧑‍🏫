@@ -25,6 +25,7 @@ def _load(name: str, path: Path):
 _ROOT = Path(__file__).resolve().parent.parent
 _vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
 _meanings = _load("_el_meanings", _ROOT / "📚" / "🧾")
+_compounds = _load("_el_compounds", _ROOT / "📚" / "🧩")
 
 CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
 PRIMARY_MEANINGS = _meanings.PRIMARY_MEANINGS
@@ -56,6 +57,9 @@ class InstructorEngine:
             return None
         return InstructionRecord(symbol, ordinal, meaning)
 
+    def lookup_compound(self, source: str) -> str | None:
+        return _compounds.lookup_compound(source)
+
     def translate_to_text(self, symbols: tuple[str, ...] | list[str]) -> tuple[str, ...]:
         meanings: list[str] = []
         for symbol in symbols:
@@ -65,13 +69,23 @@ class InstructorEngine:
             meanings.append(record.primary_meaning)
         return tuple(meanings)
 
+    def translate_compound_to_text(self, source: str) -> str:
+        meaning = self.lookup_compound(source)
+        if meaning is None:
+            raise KeyError(source)
+        return meaning
+
     def process(self, text: str) -> str:
         if text == "🧑‍🏫":
             return "✅🧑‍🏫500"
         if text.startswith("🧑‍🏫"):
             symbol = text[len("🧑‍🏫"):]
             record = self.lookup(symbol)
-            return record.render_el() if record is not None else "🟡🧑‍🏫❓"
+            if record is not None:
+                return record.render_el()
+            if self.lookup_compound(symbol) is not None:
+                return "✅🧑‍🏫🧩"
+            return "🟡🧑‍🏫❓"
         return "🟡🧑‍🏫❓"
 
     def render_el_status(self) -> str:
