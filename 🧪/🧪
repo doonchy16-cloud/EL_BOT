@@ -31,6 +31,7 @@ _valid = _load("_el_valid", _ROOT / "🧾" / "🧾")
 _session = _load("_el_session", _ROOT / "🧵" / "🧵")
 _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
+_security = _load("_el_security", _ROOT / "🔐" / "🔐")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
@@ -100,6 +101,16 @@ class DiagnosticsEngine:
             and _core.CoreEngine().parse(event_text).status is _core.ValidationStatus.PASS
         )
         checks.append(DiagnosticCheck("🔟📡", event_ok))
+
+        security = _security.SecurityEngine()
+        security_ok = (
+            security.authorize("🔥➡️🚀").authorized
+            and security.authorize("🧹").authorized
+            and not security.authorize("abc").authorized
+            and security.authorize("abc").render_el_status() == "❌🔐🔤"
+            and security.render_el_status() == "✅🔐"
+        )
+        checks.append(DiagnosticCheck("1️⃣1️⃣🔐", security_ok))
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "🗃️"
