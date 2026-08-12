@@ -94,7 +94,7 @@ def main()->int:
     ui=(ROOT/"⚡"/"🖥️").read_text(encoding="utf-8");electron=(ROOT/"⚡"/"⚡").read_text(encoding="utf-8")
     for marker in ("@media(max-width:1100px)","controlBar","sandTop","sandBottom","sandStream","sandGrain","flowDown","flowUp","sandGrainDown","sandGrainUp","g5","u5","rotate(180deg)","stageStarted","processingStarted","warnAfterMs","Σ ","maxSide=png?1800:1600","updateStage(payload)"):assert marker in ui,marker
     assert "rotate(360deg)" not in ui and "background:#070b13;padding" in ui
-    for marker in ("stagePayload","warn_after_ms","170000"):assert marker in electron,marker
+    for marker in ("stagePayload","warn_after_ms","350000"):assert marker in electron,marker
     print("1️⃣4️⃣ 🖥️⏳🏖️⏱️0↔180✅");passed+=1
 
     print(f"✅🧪🔤{passed}/14")
