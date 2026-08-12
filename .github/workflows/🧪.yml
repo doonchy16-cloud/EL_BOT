@@ -7,6 +7,10 @@ on:
       - "⏩🏁"
   workflow_dispatch:
 
+concurrency:
+  group: "🧪-${{ github.ref }}"
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: "🧪🏃🪟"
@@ -98,6 +102,17 @@ jobs:
           import unicodedata
 
           bidi = chr(0x2194) + chr(0xFE0F)
+          cross = chr(0x274C)
+          yellow = chr(0x1F7E1)
+          red = chr(0x1F534)
+          timer = chr(0x23F1) + chr(0xFE0F)
+          refresh = chr(0x1F504)
+          black_heart = chr(0x1F5A4)
+          chart = chr(0x1F4CA)
+          lightning = chr(0x26A1)
+          growth = chr(0x1F4C8)
+          snail = chr(0x1F40C)
+
           translator = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == bidi and path.parent.name == bidi)
 
           def run(mode, source):
@@ -113,16 +128,16 @@ jobs:
               output = result.stdout.strip()
               print(str(mode) + ': ' + output)
               assert output
-              assert not output.startswith(chr(0x274C))
-              assert not output.startswith(chr(0x1F7E1))
+              assert not output.startswith(cross)
+              assert not output.startswith(yellow)
               return output
 
           test1 = '[Critical error: The database connection timed out after 30 seconds. The local server crashed and went offline. Please restart the docker container immediately to restore the service.]'
           out1 = run(2, test1)
           assert not any(unicodedata.category(ch).startswith('L') for ch in out1)
-          assert any(mark in out1 for mark in ('❌','🔴'))
-          assert '⏱️' in out1 or '30' in out1
-          assert '🔄' in out1
+          assert cross in out1 or red in out1
+          assert timer in out1 or '30' in out1
+          assert refresh in out1
 
           test2 = '\U0001F4E6\U0001F501\u2B07\uFE0F. \U0001F433\U0001F3D7\uFE0F\U0001F680. \U0001F310\U0001F50C\u27A1\uFE0F\U0001F512\U0001F4E1. \u274C\U0001F510. \u26A0\uFE0F\U0001F534\u27A1\uFE0F\U0001F527\U0001F6E1\uFE0F\U0001F511.'
           out2 = run(1, test2)
@@ -131,9 +146,9 @@ jobs:
           test3 = '[Add a dark mode toggle button to the main dashboard navigation bar. Also, optimize the page loading speed so that the dashboard renders instantly without lag.]'
           out3 = run(2, test3)
           assert not any(unicodedata.category(ch).startswith('L') for ch in out3)
-          assert '🖤' in out3
-          assert '📊' in out3
-          assert any(mark in out3 for mark in ('⚡','📈','🐌'))
+          assert black_heart in out3
+          assert chart in out3
+          assert any(mark in out3 for mark in (lightning, growth, snail))
           '@ | Set-Content -LiteralPath $script -Encoding UTF8
           & $exe $script
 
@@ -204,9 +219,9 @@ jobs:
           if (-not (Test-Path -LiteralPath $view)) { throw 'view missing' }
           if ((Get-Item -LiteralPath $view).Length -lt 100) { throw 'view empty' }
           $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
-          if (-not $html.Contains('1️⃣ 😀➡️🔤')) { throw 'mode1 missing' }
-          if (-not $html.Contains('2️⃣ 🔤➡️😀')) { throw 'mode2 missing' }
-          if (-not $html.Contains('📸')) { throw 'vision missing' }
+          if (-not $html.Contains('id="mode1"')) { throw 'mode1 missing' }
+          if (-not $html.Contains('id="mode2"')) { throw 'mode2 missing' }
+          if (-not $html.Contains('id="image"')) { throw 'vision missing' }
           Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
 
       - name: "🧪"
