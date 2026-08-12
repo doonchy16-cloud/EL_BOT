@@ -45,4 +45,4 @@ jobs:
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import pathlib,subprocess,sys; p=next(x for x in pathlib.Path('.').iterdir() if x.name==chr(0x1F916)); s='🔥➡️🚀'; r=subprocess.run([sys.executable,str(p),s],capture_output=True,text=True,encoding='utf-8'); print(r.stdout,end=''); assert r.returncode==0; assert s in r.stdout"
+          & $exe -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x1F680)); runpy.run_path(str(p), run_name='__main__')"
