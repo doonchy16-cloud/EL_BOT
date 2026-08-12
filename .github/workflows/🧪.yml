@@ -92,6 +92,7 @@ jobs:
           from importlib.machinery import SourceFileLoader
           from importlib.util import module_from_spec, spec_from_loader
           import pathlib
+          import sys
           import tempfile
 
           brain = chr(0x1F9E0)
@@ -100,6 +101,7 @@ jobs:
           loader = SourceFileLoader('_rank_test', str(rank_path))
           spec = spec_from_loader('_rank_test', loader)
           mod = module_from_spec(spec)
+          sys.modules['_rank_test'] = mod
           loader.exec_module(mod)
 
           temp = pathlib.Path(tempfile.gettempdir()) / 'el_rank_test_store.json'
