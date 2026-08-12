@@ -33,6 +33,7 @@ _persist = _load("_el_persist", _ROOT / "💾" / "💾")
 _event = _load("_el_event", _ROOT / "📡" / "📡")
 _security = _load("_el_security", _ROOT / "🔐" / "🔐")
 _recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
+_config = _load("_el_config", _ROOT / "🎛️" / "🎛️")
 _workflow = _load("_el_workflow", _ROOT / "🔁" / "🔁")
 
 
@@ -131,6 +132,28 @@ class DiagnosticsEngine:
             and recovery.render_el_status() == "❌🧯2"
         )
         checks.append(DiagnosticCheck("1️⃣2️⃣🧯", recovery_ok))
+
+        configuration = _config.ConfigurationEngine()
+        config_default = configuration.process("🎛️")
+        configuration.process("🎛️💾❌")
+        configuration.process("🎛️📡❌")
+        config_off = configuration.process("🎛️")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "🗃️"
+            persistence = _persist.PersistenceEngine(path)
+            workflow_config = _workflow.WorkflowEngine(persistence, configuration)
+            config_output = workflow_config.process("🔥➡️🚀")
+            config_ok = (
+                config_default == "🎛️ 💾✅ 📡✅ 🔤❌🔒"
+                and config_off == "🎛️ 💾❌ 📡❌ 🔤❌🔒"
+                and not configuration.enabled("💾")
+                and not configuration.enabled("📡")
+                and config_output == "🔥➡️🚀\n✅🧵"
+                and not path.exists()
+                and workflow_config.process("📡") == "⚪📡"
+                and _core.CoreEngine().parse(config_off).status is _core.ValidationStatus.PASS
+            )
+        checks.append(DiagnosticCheck("1️⃣3️⃣🎛️", config_ok))
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "🗃️"
