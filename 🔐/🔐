@@ -32,7 +32,22 @@ _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
 ValidationStatus = _core.ValidationStatus
 CoreEngine = _core.CoreEngine
 
-_COMMANDS = frozenset({"🧪", "🧹", "💾", "📥", "📡"})
+_COMMANDS = frozenset(
+    {
+        "🧪",
+        "🧹",
+        "💾",
+        "📥",
+        "📡",
+        "🎛️",
+        "🎛️💾",
+        "🎛️📡",
+        "🎛️💾✅",
+        "🎛️💾❌",
+        "🎛️📡✅",
+        "🎛️📡❌",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
