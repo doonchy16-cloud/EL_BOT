@@ -1,0 +1,62 @@
+"""N08: deterministic candidate competition and ranking engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class RankedCandidate:
+    rank: int
+    candidate: str
+    score: float
+    canonical: bool
+    reasons: tuple[str, ...]
+    labels: tuple[str, ...]
+    source_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class CompetitionResult:
+    ranked: tuple[RankedCandidate, ...]
+
+    @property
+    def winner(self) -> RankedCandidate | None:
+        return self.ranked[0] if self.ranked else None
+
+    @property
+    def alternatives(self) -> tuple[RankedCandidate, ...]:
+        return self.ranked[1:]
+
+    def render_el(self) -> str:
+        return ("✅" if self.winner is not None else "🟡") + "🏆" + str(len(self.ranked))
+
+
+class CandidateCompetitionEngine:
+    """Rank already-evaluated survivors; never enumerates a search frontier."""
+
+    @staticmethod
+    def compete(evaluations, *, canonical_preference: float = 0.0, limit: int | None = None) -> CompetitionResult:
+        rows = []
+        for item in evaluations:
+            if not bool(getattr(item, "valid", False)):
+                continue
+            score = float(getattr(item, "score", 0.0)) + (float(canonical_preference) if bool(getattr(item, "canonical", False)) else 0.0)
+            rows.append((
+                score,
+                bool(getattr(item, "canonical", False)),
+                str(getattr(item, "candidate", "")),
+                int(getattr(item, "index", 0)),
+                tuple(str(x) for x in getattr(item, "reasons", ())),
+                tuple(str(x) for x in getattr(item, "labels", ())),
+            ))
+        rows.sort(key=lambda row: (-row[0], -int(row[1]), len(row[2]), row[2], row[3]))
+        if limit is not None:
+            rows = rows[:max(0, int(limit))]
+        ranked = tuple(
+            RankedCandidate(rank, candidate, score, canonical, reasons, labels, source_index)
+            for rank, (score, canonical, candidate, source_index, reasons, labels) in enumerate(rows, 1)
+        )
+        return CompetitionResult(ranked)
+
+    def render_el_status(self) -> str:
+        return "✅🏆"
