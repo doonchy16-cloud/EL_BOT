@@ -13,6 +13,8 @@ const TRANSLATE = path.join(ROOT, '↔️', '↔️');
 const VISION = path.join(ROOT, '📸', '📸');
 const PRELOAD = path.join(__dirname, '🔌');
 const VIEW_SOURCE = path.join(__dirname, '🖥️');
+const POLISH_CSS = path.join(__dirname, '✨');
+const POLISH_JS = path.join(__dirname, '🎞️');
 const IDENTITY_DIR = path.join(ROOT, '🪪');
 const IDENTITY_CONFIG = JSON.parse(fs.readFileSync(path.join(IDENTITY_DIR, '🎛️'), 'utf8'));
 const APP_NAME = String(IDENTITY_CONFIG.name || 'EL Bot');
@@ -31,6 +33,7 @@ function hasCommand(command, args = []) {
 function pythonCandidate() {
   const candidates = [];
   if (process.env.EL_PYTHON) candidates.push({ command: process.env.EL_PYTHON, prefix: [] });
+  candidates.push({ command: path.join(ROOT, 'python', 'python.exe'), prefix: [] });
   if (process.env.RUNNER_TOOL_CACHE) candidates.push({ command: path.join(process.env.RUNNER_TOOL_CACHE, 'ELPython', '3.12.10', 'python.exe'), prefix: [] });
   candidates.push(
     { command: 'C:\\Git\\EL-bot-runner\\actions-runner\\_work\\_tool\\ELPython\\3.12.10\\python.exe', prefix: [] },
@@ -104,6 +107,15 @@ async function verifyRenderedView(win) {
   })()`, true));
 }
 
+async function applyPhase5Enhancements(win) {
+  if (!fs.existsSync(POLISH_CSS) || !fs.existsSync(POLISH_JS)) throw new Error('Phase-5 visual polish layer is missing');
+  const css = fs.readFileSync(POLISH_CSS, 'utf8');
+  const script = fs.readFileSync(POLISH_JS, 'utf8');
+  if (!css.includes('@keyframes hourglassFlip') || css.includes('rotate(360deg)')) throw new Error('invalid Phase-5 hourglass contract');
+  await win.webContents.insertCSS(css);
+  await win.webContents.executeJavaScript(script, true);
+}
+
 function startupFailureHtml(error) {
   const message = String(error && error.message ? error.message : error || 'unknown startup failure').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   return `<!doctype html><html><head><meta charset="utf-8"><title>${APP_NAME}</title><style>html,body{height:100%;margin:0;background:#080b12;color:#f6f8ff;font-family:Segoe UI,Arial,sans-serif}body{display:grid;place-items:center}.card{max-width:760px;margin:28px;padding:28px;border:1px solid #7b3040;border-radius:20px;background:#170c12;box-shadow:0 18px 60px #0009}h1{margin:0 0 12px;font-size:30px}p{font-size:18px;line-height:1.5;color:#ffc7cf}code{display:block;margin-top:18px;padding:14px;border-radius:12px;background:#080b12;color:#fff;white-space:pre-wrap}</style></head><body><div class="card"><h1>❌ EL Bot UI failed to load</h1><p>The application blocked an invalid or incomplete interface instead of displaying raw source code.</p><code>${message}</code></div></body></html>`;
@@ -114,6 +126,7 @@ async function loadApplicationView(win) {
   if (path.extname(runtimeView).toLowerCase() !== '.html') throw new Error('runtime view is not an HTML file');
   await win.loadFile(runtimeView);
   if (!(await verifyRenderedView(win))) throw new Error('rendered UI verification failed');
+  await applyPhase5Enhancements(win);
   return runtimeView;
 }
 
@@ -199,7 +212,7 @@ async function recordSelection(mode, source, value) {
 
 async function createWindow() {
   const iconPath = ensureAppIconPath();
-  const win = new BrowserWindow({width:1400,height:900,minWidth:780,minHeight:580,title:APP_NAME,icon:iconPath,backgroundColor:'#080b12',autoHideMenuBar:true,show: false,webPreferences:{preload:PRELOAD,contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const win = new BrowserWindow({width:1400,height:900,minWidth:780,minHeight:580,title:APP_NAME,icon:iconPath,backgroundColor:'#080b12',autoHideMenuBar:true,show:false,webPreferences:{preload:PRELOAD,contextIsolation:true,nodeIntegration:false,sandbox:true}});
   if (process.platform === 'win32') {
     try { win.setAppDetails({ appId: APP_ID, appIconPath: iconPath }); } catch (_) {}
     try { win.setThumbnailToolTip(APP_NAME); } catch (_) {}
