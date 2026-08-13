@@ -1,0 +1,57 @@
+{
+  "name": "el-bot",
+  "version": "0.5.0",
+  "private": true,
+  "description": "EL Bot deterministic Emoji Language desktop application",
+  "main": "main.js",
+  "author": "The Spark",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron .",
+    "proof:visual": "electron scripts/phase5-visual-proof.js",
+    "build:icon": "node scripts/materialize-icon.js",
+    "build:windows": "node scripts/materialize-icon.js && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
+    "ffmpeg-static": "5.3.0"
+  },
+  "build": {
+    "appId": "com.thespark.elbot",
+    "productName": "EL Bot",
+    "executableName": "EL-Bot",
+    "asar": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!.github/**",
+      "!architecture/**",
+      "!scripts/**",
+      "!proof/**",
+      "!dist/**",
+      "!PLANNING_*.md"
+    ],
+    "win": {
+      "icon": "build/el-bot.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "EL-Bot-Setup-${version}-${arch}.${ext}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "EL-Bot-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}
