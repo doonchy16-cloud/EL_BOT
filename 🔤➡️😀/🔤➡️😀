@@ -19,6 +19,7 @@ def _load(name: str, path: Path):
 _ROOT=Path(__file__).resolve().parent.parent
 _lang=_load("_el_language_foundation",_ROOT/"🧠"/"🧬")
 _compounds=_load("_el_abc_compounds",_ROOT/"📚"/"🧩")
+_phase3=_load("_el_abc_phase3_bridge",_ROOT/"🔤➡️😀"/"🧠")
 TOTAL_STAGES=24
 STAGES=(
     "Input Integrity","Structural Segmentation","Tokenization","Phrase Detection","Canonical Phrase Lookup","Linguistic Normalization","Semantic Concept Extraction","Semantic Role Assignment","Relationship Extraction","Negation Detection","Severity Detection","Quantity + Number Binding","Temporal Analysis","Direction + Order Analysis","Canonical Symbol Resolution","Compound Resolution","Ambiguity Expansion","Candidate Construction","Hard Constraint Filtering","Meaning Coverage Audit","Grammar + Relationship Audit","Information-Loss Score","Round-Trip Verification","Final Ranking + Winner Selection",
@@ -30,7 +31,9 @@ _CRITICAL_SYMBOLS={"🔴","❌","⚠️","📴","💥","🔄","‼️","❗","�
 
 class ABCToEmojiEngine:
     """Translate natural language to canonical EL with zero provider/model calls."""
-    def __init__(self)->None:self.stage_names=STAGES
+    def __init__(self)->None:
+        self.stage_names=STAGES
+        self.phase3=_phase3.Phase3SemanticBridge()
 
     @staticmethod
     def _emit(index:int,enabled:bool)->str:
@@ -41,7 +44,6 @@ class ABCToEmojiEngine:
         temporal=tuple(b for b in clause.numbers if b.unit in _lang.TEMPORAL_UNIT_SYMBOLS)
         rows=[]
         for concept in clause.concepts:
-            # A bound duration already carries the timer concept. Avoid detached/duplicate ⏱️.
             if concept.symbol=="⏱️" and temporal:continue
             rows.append((concept.start,concept.end,"concept",concept.symbol))
         for number in clause.numbers:rows.append((number.start,number.end,"number",number.el))
@@ -98,7 +100,6 @@ class ABCToEmojiEngine:
         for relation in expected:
             marker=relation.marker
             if marker in value:matched+=1;continue
-            # Conservative fallbacks only when the exact compound marker cannot be found.
             if marker=="🚦➡️" and "🚦" in value and "➡️" in value:matched+=.6
             elif marker=="🚦⬅️" and "🚦" in value and "⬅️" in value:matched+=.6
             elif marker=="🚦❌" and "🚦" in value and "❌" in value:matched+=.6
@@ -111,8 +112,7 @@ class ABCToEmojiEngine:
         if not expected:return 1.0
         actual=list(_lang.canonical_symbols(value));used=[];retained=0
         for symbol in expected:
-            try:
-                idx=next(i for i,s in enumerate(actual) if s==symbol and i not in used)
+            try:idx=next(i for i,s in enumerate(actual) if s==symbol and i not in used)
             except StopIteration:continue
             used.append(idx);retained+=1
         return retained/len(expected)
@@ -136,9 +136,15 @@ class ABCToEmojiEngine:
         stages.append(self._emit(4,emit));phrase_matches=tuple(_lang.match_concepts(s) for s in sentences);metrics["phrase_matches"]=sum(len(r) for r in phrase_matches)
         stages.append(self._emit(5,emit));metrics["authority_matches"]=sum(1 for row in phrase_matches for item in row if item.source.startswith("authority"))
         stages.append(self._emit(6,emit));normalized=_lang.normalize_text(source)
-        stages.append(self._emit(7,emit));document=_lang.parse_abc_document(normalized);expected_signature=self._expected_signature(document);metrics["concepts"]=len(expected_signature)
-        unknown_count=sum(len(c.unknown_words) for c in document.clauses);unknown_density=_lang.unknown_density(document);unresolved=_lang.unresolved_clause_count(document)
-        metrics["unknown_count"]=unknown_count;metrics["unknown_density"]=round(unknown_density,4);metrics["unresolved_clauses"]=unresolved
+        stages.append(self._emit(7,emit));document=_lang.parse_abc_document(normalized)
+        legacy_signature=self._expected_signature(document)
+        phase3=self.phase3.resolve_document(document,normalized,render_clause=self._clause_to_el)
+        expected_signature=legacy_signature+phase3.expected_signature
+        metrics.update(phase3.metrics)
+        metrics["legacy_concepts"]=len(legacy_signature);metrics["concepts"]=len(expected_signature)
+        legacy_unknown=sum(len(c.unknown_words) for c in document.clauses)
+        unknown_count=phase3.effective_unknown_count;unknown_density=phase3.effective_unknown_density;unresolved=phase3.effective_unresolved_clauses
+        metrics["legacy_unknown_count"]=legacy_unknown;metrics["unknown_count"]=unknown_count;metrics["unknown_density"]=round(unknown_density,4);metrics["unresolved_clauses"]=unresolved
         stages.append(self._emit(8,emit));metrics["actions"]=sum(1 for s in expected_signature if _lang.is_action(s));metrics["statuses"]=sum(1 for s in expected_signature if _lang.is_status(s));metrics["entities"]=sum(1 for s in expected_signature if s in _lang.ENTITY_PHRASES);metrics["roles"]=sum(len(c.roles) for c in document.clauses)
         stages.append(self._emit(9,emit));relations=tuple(r for c in document.clauses for r in c.relations);metrics["relations"]=len(relations)
         stages.append(self._emit(10,emit));metrics["negations"]=sum(1 for r in relations if r.kind in {"negation","unless"})
@@ -148,13 +154,14 @@ class ABCToEmojiEngine:
         stages.append(self._emit(14,emit));metrics["directional"]=sum(1 for r in relations if r.kind in {"before","after","only_after","only_before","bidirectional","result","cause","until"})
         stages.append(self._emit(15,emit));metrics["canonical_resolved"]=sum(1 for s in expected_signature if s in _lang.MEANING_BY_SYMBOL)
         stages.append(self._emit(16,emit));exact_compound=_REVERSE_COMPOUNDS.get(normalized.lower());metrics["compound"]=1 if exact_compound else 0
-        stages.append(self._emit(17,emit));metrics["branches"]=3+(1 if exact_compound else 0)
+        stages.append(self._emit(17,emit));metrics["branches"]=3+(1 if exact_compound else 0)+len(phase3.candidates)
 
         stages.append(self._emit(18,emit));raw=[]
         if exact_compound:raw.append((exact_compound,"authority-compound"))
         faithful=self._document_candidate(document,compact=False);compact=self._document_candidate(document,compact=True)
         raw.extend(((faithful,"faithful-semantic"),(compact,"compact-semantic")))
         if faithful!=compact:raw.append((faithful,"relationship-preserving"))
+        raw.extend(phase3.candidates)
 
         stages.append(self._emit(19,emit));valid=[(v,r) for v,r in raw if _lang.valid_el(v)] or [("🟡❓","hold")]
         stages.append(self._emit(20,emit));candidates=[]
@@ -162,6 +169,7 @@ class ABCToEmojiEngine:
             sig=_lang.concept_signature_from_el(value);score,coverage,order_score=_lang.score_candidate(expected_signature,sig,base=max(0.0,18.0-order))
             relation_score=self._relation_integrity(document,value);number_score=self._number_integrity(document,value);critical_score=self._critical_integrity(document,value);role_score=self._role_integrity(document,value)
             score+=34*relation_score+34*number_score+40*critical_score+22*role_score
+            if reason.startswith("phase3-"):score+=18.0
             if bindings and number_score<1.0:score-=90
             if any(r.kind not in {"and"} for r in relations) and relation_score<.75:score-=85
             if critical_score<.80:score-=90
