@@ -17,16 +17,21 @@ const CYCLE_MS = 5600;
 const FRAME_COUNT = Math.round(CYCLE_MS / 1000 * FPS);
 
 function sha(buffer) { return crypto.createHash('sha256').update(buffer).digest('hex'); }
+function stage(name) { console.log(`PHASE5_PROOF_STAGE ${name}`); }
 function runFfmpeg(args) {
   const result = spawnSync(ffmpeg, args, { stdio: 'inherit', windowsHide: true });
   if (result.status !== 0) throw new Error('ffmpeg failed: ' + result.status);
 }
 async function capture(win, target) {
-  const image = await win.webContents.capturePage();
-  const bytes = image.toPNG();
-  if (bytes.length < 1000) throw new Error('rendered screenshot is unexpectedly small');
-  fs.writeFileSync(target, bytes);
-  return bytes;
+  try {
+    const image = await win.webContents.capturePage();
+    const bytes = image.toPNG();
+    if (bytes.length < 1000) throw new Error('rendered screenshot is unexpectedly small');
+    fs.writeFileSync(target, bytes);
+    return bytes;
+  } catch (error) {
+    throw new Error(`capture failed for ${path.basename(target)}: ${error && error.message ? error.message : error}`);
+  }
 }
 async function angleAt(win, ms) {
   return Number(await win.webContents.executeJavaScript(`(() => {
@@ -48,6 +53,7 @@ async function streamOpacityAt(win, ms) {
 }
 
 async function main() {
+  stage('prepare');
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(FRAMES, { recursive: true });
   const viewSource = fs.readFileSync(VIEW, 'utf8');
@@ -61,33 +67,41 @@ async function main() {
   if (css.includes('rotate(360deg)')) throw new Error('360-degree hourglass rotation is forbidden');
   if (!css.includes('rotate(180deg)')) throw new Error('180-degree hourglass state missing');
 
+  stage('create-visible-window');
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    show: false,
+    show: true,
+    skipTaskbar: true,
     backgroundColor: '#080b12',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
   });
+  stage('load-production-html');
   await win.loadFile(proofView);
   const renderedAuthority = await win.webContents.executeJavaScript(`(() => {
     const required = ['mode1','mode2','run','image','clear','diag','ollama','input','output','state','hourglass','stageMeta','preview'];
     return required.every((id) => Boolean(document.getElementById(id))) && document.documentElement.tagName === 'HTML';
   })()`, true);
   if (!renderedAuthority) throw new Error('production UI did not render required Phase-5 nodes after HTML materialization');
+  stage('inject-production-polish');
   await win.webContents.insertCSS(css);
   await win.webContents.executeJavaScript(fs.readFileSync(ENHANCE, 'utf8'), true);
+  await new Promise((resolve) => setTimeout(resolve, 180));
 
   const sampleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700"><rect width="100%" height="100%" fill="#101827"/><rect x="60" y="60" width="1080" height="580" rx="30" fill="#17243a" stroke="#76b7ff" stroke-width="5"/><text x="100" y="160" font-family="Segoe UI" font-size="54" fill="white">PHASE 5 SCREENSHOT PREVIEW</text><text x="100" y="250" font-family="Segoe UI" font-size="38" fill="#ffd166">Visible evidence remains inspectable while processing.</text><text x="100" y="335" font-family="Segoe UI" font-size="34" fill="#72f2a6">Click preview to enlarge • Escape to close</text><text x="100" y="430" font-family="Segoe UI" font-size="34" fill="#ffb347">Slow-stage warning proof</text></svg>`;
   const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(sampleSvg, 'utf8').toString('base64');
   await win.webContents.executeJavaScript(`showImage(${JSON.stringify(dataUrl)});`, true);
+  stage('capture-idle');
   await capture(win, path.join(OUT, 'ui-idle.png'));
 
+  stage('capture-preview-zoom');
   await win.webContents.executeJavaScript(`document.getElementById('preview').click();`, true);
   const zoomed = await win.webContents.executeJavaScript(`document.getElementById('preview').classList.contains('zoom') && getComputedStyle(document.getElementById('preview')).position === 'fixed'`, true);
   if (!zoomed) throw new Error('preview zoom did not enter fixed enlarged state');
   await capture(win, path.join(OUT, 'preview-zoom.png'));
   await win.webContents.executeJavaScript(`document.getElementById('preview').click();`, true);
 
+  stage('begin-hourglass');
   await win.webContents.executeJavaScript(`(() => {
     beginProcessing('📸 Screenshot Vision — Phase 5 Render Proof');
     updateStage({index:4,total:7,label:'Screenshot Vision — Observe Visible Facts',warn_after_ms:999999});
@@ -95,6 +109,7 @@ async function main() {
     document.getAnimations().forEach((a) => { a.pause(); a.currentTime = 0; });
   })()`, true);
 
+  stage('capture-168-frames');
   const hashes = new Set();
   for (let i = 0; i < FRAME_COUNT; i += 1) {
     const ms = i * 1000 / FPS;
@@ -107,6 +122,7 @@ async function main() {
   }
   if (hashes.size < 24) throw new Error('hourglass render did not produce enough visually distinct frames');
 
+  stage('measure-animation');
   const sampledAngles = {
     start: await angleAt(win, 0),
     inverted: await angleAt(win, CYCLE_MS * 0.50),
@@ -124,6 +140,7 @@ async function main() {
     throw new Error('sand pause/resume contract failed: ' + JSON.stringify(streamOpacity));
   }
 
+  stage('capture-warning');
   await win.webContents.executeJavaScript(`(() => {
     document.getElementById('stageMeta').textContent = '4 / 7  •  ⏱️ 46s  •  Σ 52s  ⚠️';
   })()`, true);
@@ -132,7 +149,9 @@ async function main() {
   if (!warningOn) throw new Error('visual slow-stage warning state did not activate');
   await capture(win, path.join(OUT, 'ui-warning.png'));
 
+  stage('encode-mp4');
   runFfmpeg(['-y','-framerate',String(FPS),'-i',path.join(FRAMES,'frame%03d.png'),'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p',path.join(OUT,'hourglass-30fps.mp4')]);
+  stage('encode-contact-sheet');
   runFfmpeg(['-y','-framerate',String(FPS),'-i',path.join(FRAMES,'frame%03d.png'),'-vf','select=not(mod(n\\,7)),scale=350:-1,tile=6x4','-frames:v','1',path.join(OUT,'hourglass-contact-sheet.png')]);
 
   const proof = {
@@ -156,6 +175,7 @@ async function main() {
   };
   fs.writeFileSync(path.join(OUT, 'proof.json'), JSON.stringify(proof, null, 2));
   fs.rmSync(FRAMES, { recursive: true, force: true });
+  stage('complete');
   console.log(`✅📸🎞️${FRAME_COUNT}@${FPS}fps 0↔180 🏖️⏸️✅ 🔍✅ ⚠️✅`);
   win.destroy();
 }
