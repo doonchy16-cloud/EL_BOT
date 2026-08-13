@@ -2,7 +2,7 @@
   "schema_version": 1,
   "phase": 4,
   "name": "AI Fallback & Forever-Learning Loop",
-  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "status": "PASS",
   "source_present_target_engines": 44,
   "planned_only_target_engines": 0,
   "canonical_base_vocabulary_count": 501,
@@ -29,7 +29,10 @@
     "single_ai_guess_cannot_be_canonical": true,
     "learning_requires_provenance": true,
     "knowledge_is_reversible": true,
-    "base_501_remains_unchanged": true
+    "base_501_remains_unchanged": true,
+    "learned_validated_mapping_may_avoid_future_provider_call": true,
+    "temporary_qwen_semantic_timeout_seconds": 300,
+    "electron_host_process_ceiling_seconds": 350
   },
   "phase5": {
     "name": "Visual Polish & Windows Packaging",
