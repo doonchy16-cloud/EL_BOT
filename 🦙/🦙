@@ -95,7 +95,11 @@ class OllamaConnector:
         image_list=self._validate_images(images);message={"role":"user","content":prompt}
         if image_list:message["images"]=list(image_list)
         payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":keep_alive,"options":{"temperature":0,"num_ctx":num_ctx,"num_predict":num_predict}}
-        return self._chat_content(self._request_json("/api/chat",payload,timeout=self.generation_timeout))
+        # qwen2.5vl:7b image inference has repeatedly exceeded the screenshot
+        # caller's 140-second budget on the Windows runner. Keep text chat on the
+        # caller-supplied timeout, but give VL/image chat a bounded 210-second floor.
+        effective_timeout=max(self.generation_timeout,210.0) if image_list else self.generation_timeout
+        return self._chat_content(self._request_json("/api/chat",payload,timeout=effective_timeout))
 
     def chat_json_internal(self,prompt:str,images:Iterable[str]=(),*,schema:dict|None=None,num_predict:int=768,num_ctx:int=4096,keep_alive:str="30m")->str:
         """Structured internal provider mode for validated sensors/resolvers."""
@@ -113,4 +117,4 @@ class OllamaConnector:
         if text in {"🦙","🦙🔍"}:return self.probe().render_el()
         return "🟡🦙❓"
     def render_el_status(self)->str:
-        return "⚪🦙" if self._last_evidence is None else self._last_evidence.render_el()
+        return "⚪🦙" if self._last_evidence is None else self._last_evidence.render_el_status()
