@@ -1,6 +1,6 @@
 # EL Bot — Phase 4 AI Fallback & Forever-Learning Loop
 
-**Status:** 🟡 IMPLEMENTATION IN PROGRESS
+**Status:** ✅ PASS — IMPLEMENTED AND CI-GATED
 
 **Authority date:** 2026-08-12
 
@@ -15,34 +15,29 @@ ABC input
   ├─ PASS → release normally; no provider call
   ├─ HOLD → preserve HOLD; no provider call
   └─ FAIL
-      → ✦ Forgey Orchestration policy
-      → 🔌 internal provider connector
-      → TEMP: 🦙 Ollama / qwen2.5vl:7b
-      → structured semantic resolution
-      → deterministic EL validation + reverse verification
-      ├─ PASS → release validated assisted candidate
-      └─ HOLD/FAIL → reject provider candidate and keep safe deterministic failure
+      → mature learned mapping lookup
+      ├─ validated/canonical mapping → deterministic revalidation → release if still valid
+      └─ no releasable learned mapping
+          → ✦ Forgey Orchestration policy
+          → 🔌 internal provider connector
+          → TEMP: 🦙 Ollama / qwen2.5vl:7b
+          → semantic resolution only
+          → EL Bot deterministic construction + validation + reverse verification
+          ├─ PASS → release validated assisted candidate
+          └─ HOLD/FAIL → reject assistance and preserve safe deterministic failure
 ```
 
-The ABC→Emoji engine itself must remain provider-free. Provider-specific code belongs behind the connector adapter. Forgey Orchestration owns only escalation/routing policy and must not contain Ollama HTTP/model implementation.
+The ABC→Emoji engine remains provider-free. Provider-specific code lives behind `🔌/🧠`. Forgey Orchestration owns escalation/routing policy and contains no Ollama HTTP/model implementation.
 
-## Provider semantic contract
+## Temporary provider reality
 
-The provider is asked to resolve meaning, not to become final Emoji Language authority. The temporary provider returns a structured internal object containing:
+The current temporary provider is **`ollama:qwen2.5vl:7b`**. It is intentionally treated as a semantic resolver, not an Emoji Language author.
 
-- whether the source is meaningfully resolvable;
-- a short semantic definition/paraphrase;
-- an optional candidate EL expression;
-- a confidence estimate.
+On the current Windows runner, Qwen2.5VL text inference is materially slower than normal deterministic translation. Repeated 120-second tests timed out even after the semantic request was reduced to a tiny output. Therefore only this Phase-4 semantic adapter has a **300-second bounded generation timeout**, which remains below the Electron host's existing **350-second process ceiling**.
 
-The provider response is internal evidence only. Raw provider prose is never emitted as EL output.
+This is a temporary performance compromise, not the desired long-term provider behavior. Forgey is still the planned complete replacement behind the same connector/orchestration boundary.
 
-EL Bot validates assisted output through two possible paths:
-
-1. **semantic-definition path** — translate the provider definition through the normal deterministic ABC→Emoji engine, then validate the resulting canonical EL against original recognized semantics, numbers, relationships, negation/critical information, and deterministic round trip;
-2. **provider-candidate path** — only if a candidate EL expression is supplied, parse it as EL, require canonical vocabulary, reverse it deterministically to ABC, translate the reverse text back to EL, and require strict assisted validation before release.
-
-A failed assisted validation is a rejection, not a best-effort translation.
+The current provider emits a tiny internal semantic wire result. EL Bot converts that result into a strict internal object and discards any model-authored EL. Raw provider text is never released as Emoji Language output.
 
 ## New Phase-4 engines
 
@@ -54,54 +49,75 @@ A failed assisted validation is a rejection, not a best-effort translation.
 | N12 | 📈 | Learning Analytics | deterministic success, AI fallback, acceptance, learned-hit and maturity trends |
 | N20 | 🧺 | Knowledge Consolidation | merge compatible duplicates while preserving evidence/provenance |
 
-These five bring EL Bot to **44 / 44 source-present target engines**.
+These five bring EL Bot to **44 / 44 source-present target engines**. Diagnostics now owns **44 / 44 functional engine checks**.
+
+## Assisted validation boundary
+
+The failed original deterministic translation does not automatically poison an assisted candidate. Instead the assisted meaning must independently prove:
+
+- valid EL syntax;
+- canonical vocabulary membership;
+- no unknown marker in released output;
+- semantic-definition alignment;
+- preservation of already-recognized source meaning;
+- number preservation;
+- relationship preservation;
+- critical/negation retention;
+- deterministic reverse translation;
+- deterministic round-trip quality thresholds.
+
+A failed assisted validation is a rejection, never a best-effort release.
 
 ## Forever-learning evidence rule
 
-Every provider-assisted attempt becomes learning evidence:
+Every actual provider-assisted attempt becomes evidence:
 
-- accepted validated assists add positive evidence;
-- rejected/invalid assists add negative evidence;
-- provider/model/version and validation result are preserved in provenance;
+- accepted validated assists add positive provider evidence;
+- rejected/invalid assists add negative evidence and provider provenance to a rejection episode;
+- raw provider definitions are not stored as learned truth;
 - user selection can add independent user evidence;
-- revalidation adds independent revalidation evidence;
+- experiments and counterexample tests add independent evidence;
+- revalidation adds independent evidence;
 - knowledge maturity is controlled only by 🎓;
 - 🧿 integrity can block or demote;
-- 🗃️ versions make learned state reversible;
-- 🧺 consolidation never silently deletes evidence;
+- 🗃️ versions make every knowledge mutation reversible;
+- 🧺 consolidation preserves evidence/provenance and flags conflicts;
 - 📈 measures whether provider dependency decreases.
 
-A single provider success cannot become canonical. Strong promotion requires repeated evidence, multiple source kinds, integrity PASS, experiments/counterexamples, and revalidation.
+A single provider success remains **discovered**, not canonical. Canonical graduation requires repeated evidence, multiple source kinds, integrity PASS, experiment PASS, counterexample PASS, and revalidation PASS.
 
 ## Learned deterministic reuse
 
-Validated/canonical learned mappings may be reused before a provider call when the normal translator still FAILs. That reuse is deterministic and increments the learned-hit metric instead of the AI-attempt metric. This is the mechanism by which external-AI dependency can fall over time.
+Validated/canonical learned mappings are checked before a provider call after a deterministic FAIL. They are deterministically revalidated before release. A valid learned mapping therefore prevents a later provider call and increments the learned-hit metric instead of the AI-attempt metric.
 
-The static 📚501 source authority remains unchanged in Phase 4. Learned claims live in a versioned learning overlay; they do not silently rewrite the 501 base vocabulary.
+The static **📚501** source authority remains unchanged. Learned claims live in a versioned learning overlay; they do not silently rewrite the 501 base vocabulary.
 
-## PASS gate
+## CI evidence contract
 
-Phase 4 may be called PASS only when the exact final `main` SHA proves in CI:
+Phase 4 is gated to prove:
 
-- all five new engine sources are present and individually exercised;
-- Diagnostics expands from 39 to 44 checks;
-- PASS and HOLD translation paths perform zero provider calls;
+- all five new engine sources are present and exercised;
+- Diagnostics = **44 / 44**;
+- PASS and HOLD paths make zero provider calls;
 - only deterministic FAIL may trigger ✦ escalation;
-- the provider adapter is the only normal-translation layer importing Ollama;
-- current temporary provider is truthfully identified as `ollama:qwen2.5vl:7b`;
-- structured provider output is never directly released;
-- valid assisted candidates pass deterministic validation before release;
-- invalid/malformed assisted candidates are rejected;
-- accepted and rejected provider attempts produce positive/negative learning evidence respectively;
-- a single provider success cannot graduate to canonical;
-- cross-source evidence can promote through discovered → provisional → validated → canonical only when the full graduation contract is met;
-- revalidation can recommend demotion;
-- generalization outputs hypotheses, not automatic truth;
-- consolidation preserves provenance/evidence and identifies conflicts;
-- learned validated/canonical mappings can prevent a later provider call;
-- Phase 1, 2, and 3 gates remain green;
-- the exact final GitHub Actions run succeeds on the exact final `main` SHA.
+- the provider adapter is isolated behind 🔌;
+- the temporary provider is truthfully identified as `ollama:qwen2.5vl:7b`;
+- raw provider output cannot use the public connector path;
+- valid assisted candidates require deterministic validation before release;
+- malformed/unverifiable assistance is rejected;
+- accepted and rejected attempts create positive/negative learning evidence;
+- one provider success cannot become canonical;
+- full cross-source evidence can graduate discovered → provisional → validated → canonical;
+- failed revalidation can demote knowledge;
+- generalization produces hypotheses, not automatic truth;
+- consolidation preserves evidence/provenance and detects conflicts;
+- mature learned knowledge can eliminate a later provider call;
+- Phase 1, Phase 2, and Phase 3 gates remain green;
+- the real local Qwen adapter is available and returns the strictly validated semantic structure;
+- the exact final `main` SHA must have a successful GitHub Actions run.
 
-## Not Phase 4
+## Next boundary
 
-Phase 4 does not include hourglass visual polish or Windows packaging. Those remain locked until separately authorized.
+**Phase 5 — Visual Polish & Windows Packaging** remains **NOT AUTHORIZED** by this document.
+
+Phase 4 did not implement the planned hourglass visual polish or Windows packaging.
