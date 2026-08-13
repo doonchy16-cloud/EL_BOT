@@ -1,4 +1,4 @@
-"""Engine 14: deterministic EL connector boundary with explicit evidence states."""
+"""Engine 14: deterministic connector boundary with public EL-safe and internal provider channels."""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -38,6 +38,15 @@ class ConnectorRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class InternalConnectorRecord:
+    marker: str
+    handler: Callable[[dict], dict]
+    probe: Callable[[], bool] | None
+    provider: str
+    model: str
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectorEvidence:
     marker: str
     state: str
@@ -46,19 +55,39 @@ class ConnectorEvidence:
         return self.state + self.marker
 
 
+@dataclass(frozen=True, slots=True)
+class InternalConnectorResult:
+    marker: str
+    ok: bool
+    called: bool
+    provider: str
+    model: str
+    payload: dict | None = None
+    error_code: str = ""
+
+    def render_el(self) -> str:
+        marker = "✅" if self.ok else "🟡" if not self.called else "❌"
+        return marker + "🔌" + self.marker
+
+
 class ConnectorEngine:
-    """Register only explicit adapters; never fabricate connectivity or health."""
+    """Register explicit adapters; never fabricate connectivity or expose raw provider data publicly."""
 
     def __init__(self) -> None:
         self._records: dict[str, ConnectorRecord] = {}
+        self._internal_records: dict[str, InternalConnectorRecord] = {}
 
     @property
     def count(self) -> int:
-        return len(self._records)
+        return len(set(self._records).union(self._internal_records))
 
     @property
     def markers(self) -> tuple[str, ...]:
-        return tuple(self._records)
+        return tuple(dict.fromkeys(tuple(self._records) + tuple(self._internal_records)))
+
+    @property
+    def internal_count(self) -> int:
+        return len(self._internal_records)
 
     @staticmethod
     def _validate_marker(marker: str) -> None:
@@ -69,6 +98,10 @@ class ConnectorEngine:
             raise ValueError("connector marker must be exactly one EL-safe token")
         if VocabularyEngine.lookup(marker) is None:
             raise ValueError("connector marker must be canonical")
+
+    def _assert_unused(self, marker: str) -> None:
+        if marker in self._records or marker in self._internal_records:
+            raise ValueError("connector marker already registered")
 
     def register(
         self,
@@ -81,26 +114,52 @@ class ConnectorEngine:
             raise TypeError("handler must be callable")
         if probe is not None and not callable(probe):
             raise TypeError("probe must be callable")
-        if marker in self._records:
-            raise ValueError("connector marker already registered")
+        self._assert_unused(marker)
         self._records[marker] = ConnectorRecord(marker, handler, probe)
 
+    def register_internal(
+        self,
+        marker: str,
+        handler: Callable[[dict], dict],
+        *,
+        probe: Callable[[], bool] | None = None,
+        provider: str,
+        model: str,
+    ) -> None:
+        """Register a structured internal adapter. Its payload can never be returned by invoke()."""
+        self._validate_marker(marker)
+        if not callable(handler):
+            raise TypeError("handler must be callable")
+        if probe is not None and not callable(probe):
+            raise TypeError("probe must be callable")
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("provider must be non-empty")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("model must be non-empty")
+        self._assert_unused(marker)
+        self._internal_records[marker] = InternalConnectorRecord(marker, handler, probe, provider.strip(), model.strip())
+
     def unregister(self, marker: str) -> bool:
-        return self._records.pop(marker, None) is not None
+        removed = self._records.pop(marker, None) is not None
+        removed = self._internal_records.pop(marker, None) is not None or removed
+        return removed
 
     def evidence(self, marker: str) -> ConnectorEvidence:
         record = self._records.get(marker)
-        if record is None:
+        internal = self._internal_records.get(marker)
+        if record is None and internal is None:
             return ConnectorEvidence(marker, "⚪")
-        if record.probe is None:
+        probe = record.probe if record is not None else internal.probe
+        if probe is None:
             return ConnectorEvidence(marker, "🟡")
         try:
-            state = "✅" if record.probe() is True else "❌"
+            state = "✅" if probe() is True else "❌"
         except Exception:
             state = "❌"
         return ConnectorEvidence(marker, state)
 
     def invoke(self, marker: str, payload: str) -> str:
+        """Public EL-safe invocation. Internal providers are deliberately inaccessible here."""
         record = self._records.get(marker)
         if record is None:
             return "🟡🔌❓"
@@ -117,10 +176,27 @@ class ConnectorEngine:
             return "❌🔌🔤"
         return output
 
+    def invoke_internal(self, marker: str, payload: dict) -> InternalConnectorResult:
+        """Internal structured invocation. The caller must deterministically validate payload before release."""
+        record = self._internal_records.get(marker)
+        if record is None:
+            return InternalConnectorResult(marker, False, False, "", "", None, "unregistered")
+        if not isinstance(payload, dict):
+            return InternalConnectorResult(marker, False, False, record.provider, record.model, None, "invalid-payload")
+        if record.probe is not None and self.evidence(marker).state != "✅":
+            return InternalConnectorResult(marker, False, False, record.provider, record.model, None, "unavailable")
+        try:
+            output = record.handler(payload)
+        except Exception:
+            return InternalConnectorResult(marker, False, True, record.provider, record.model, None, "provider-error")
+        if not isinstance(output, dict):
+            return InternalConnectorResult(marker, False, True, record.provider, record.model, None, "invalid-provider-shape")
+        return InternalConnectorResult(marker, True, True, record.provider, record.model, output, "")
+
     def render_el(self) -> str:
-        if not self._records:
+        if not self.markers:
             return "⚪🔌0"
-        rendered = " ".join(self.evidence(marker).render_el() for marker in self._records)
+        rendered = " ".join(self.evidence(marker).render_el() for marker in self.markers)
         return "🔌" + str(self.count) + " " + rendered
 
     def process(self, text: str) -> str:
@@ -132,9 +208,9 @@ class ConnectorEngine:
         return "🟡🔌❓"
 
     def render_el_status(self) -> str:
-        if not self._records:
+        if not self.markers:
             return "⚪🔌0"
-        states = tuple(self.evidence(marker).state for marker in self._records)
+        states = tuple(self.evidence(marker).state for marker in self.markers)
         if any(state == "❌" for state in states):
             head = "❌"
         elif any(state == "🟡" for state in states):
