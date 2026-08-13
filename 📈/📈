@@ -1,0 +1,60 @@
+"""N12: deterministic learning and external-intelligence dependency analytics."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+_ALLOWED = frozenset({
+    "deterministic_attempt", "deterministic_pass", "deterministic_hold", "deterministic_fail",
+    "ai_attempt", "ai_accept", "ai_reject", "learned_hit", "discovery", "promotion", "demotion",
+    "revalidation_pass", "revalidation_hold", "revalidation_fail", "canonicalized",
+})
+
+
+@dataclass(frozen=True, slots=True)
+class LearningAnalyticsSnapshot:
+    counts: dict[str, int]
+    deterministic_success_rate: float
+    ai_fallback_rate: float
+    ai_acceptance_rate: float
+    learned_avoidance_rate: float
+
+    def render_el(self) -> str:
+        return "✅📈" + str(sum(self.counts.values()))
+
+
+class LearningAnalyticsEngine:
+    """Measure learning behavior only; never mutates knowledge or chooses providers."""
+
+    def __init__(self) -> None:
+        self._counts = {name: 0 for name in sorted(_ALLOWED)}
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return dict(self._counts)
+
+    def record(self, event: str, count: int = 1) -> None:
+        if event not in _ALLOWED:
+            raise ValueError("unsupported learning event")
+        if not isinstance(count, int) or count < 1:
+            raise ValueError("count must be a positive integer")
+        self._counts[event] += count
+
+    def snapshot(self) -> LearningAnalyticsSnapshot:
+        attempts = self._counts["deterministic_attempt"]
+        deterministic_pass = self._counts["deterministic_pass"]
+        ai_attempt = self._counts["ai_attempt"]
+        ai_accept = self._counts["ai_accept"]
+        learned_hit = self._counts["learned_hit"]
+        return LearningAnalyticsSnapshot(
+            counts=self.counts,
+            deterministic_success_rate=0.0 if attempts == 0 else deterministic_pass / attempts,
+            ai_fallback_rate=0.0 if attempts == 0 else ai_attempt / attempts,
+            ai_acceptance_rate=0.0 if ai_attempt == 0 else ai_accept / ai_attempt,
+            learned_avoidance_rate=0.0 if (learned_hit + ai_attempt) == 0 else learned_hit / (learned_hit + ai_attempt),
+        )
+
+    def process(self, text: str) -> str:
+        return self.snapshot().render_el() if text == "📈" else "🟡📈❓"
+
+    def render_el_status(self) -> str:
+        return "✅📈"
