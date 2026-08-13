@@ -1,4 +1,4 @@
-"""Deterministic full-stack diagnostics for the 39 source-present EL Bot engines."""
+"""Deterministic full-stack diagnostics for the 44 source-present EL Bot engines."""
 
 from __future__ import annotations
 
@@ -62,6 +62,11 @@ _search = _load("_el_search_diag", _ROOT / "🔍" / "🔍")
 _competition = _load("_el_competition_diag", _ROOT / "🏆" / "🏆")
 _experiment = _load("_el_experiment_diag", _ROOT / "🧫" / "🧫")
 _counterexample = _load("_el_counterexample_diag", _ROOT / "🪤" / "🪤")
+_graduation = _load("_el_graduation_diag", _ROOT / "🎓" / "🎓")
+_generalization = _load("_el_generalization_diag", _ROOT / "🧬" / "🧬")
+_revalidation = _load("_el_revalidation_diag", _ROOT / "♻️" / "♻️")
+_learning_analytics = _load("_el_learning_analytics_diag", _ROOT / "📈" / "📈")
+_consolidation = _load("_el_consolidation_diag", _ROOT / "🧺" / "🧺")
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,21 +113,17 @@ class DiagnosticsEngine:
         validation = _valid.ValidationEngine().validate(interpreted, "🔥➡️🚀")
         checks.append(DiagnosticCheck("4️⃣🧾", validation.releasable and validation.safe_output() == "🔥➡️🚀"))
 
-        session = _session.SessionEngine()
-        turn = session.ingest("🔥➡️🚀")
+        session = _session.SessionEngine(); turn = session.ingest("🔥➡️🚀")
         checks.append(DiagnosticCheck("5️⃣🧵", turn.safe_output() == "🔥➡️🚀" and session.render_el_status() == "✅🧵"))
 
         with tempfile.TemporaryDirectory() as folder:
             persistence = _persist.PersistenceEngine(Path(folder) / "🗃️")
-            persistence.save(session)
-            restored = persistence.load()
+            persistence.save(session); restored = persistence.load()
             persist_ok = len(restored.turns) == 1 and restored.latest is not None and restored.latest.source == "🔥➡️🚀"
         checks.append(DiagnosticCheck("6️⃣💾", persist_ok))
 
         checks.append(DiagnosticCheck("7️⃣🧪", DiagnosticReport((DiagnosticCheck("🧪", True),)).passed))
-
-        ui = _load("_el_ui_diag", _ROOT / "🖥️" / "🖥️")
-        ui_engine = ui.UIEngine()
+        ui = _load("_el_ui_diag", _ROOT / "🖥️" / "🖥️"); ui_engine = ui.UIEngine()
         checks.append(DiagnosticCheck("8️⃣🖥️", ui_engine.process("🪪").startswith("✅🪪") and ui_engine.process("abc") == "❌🔐🔤"))
 
         with tempfile.TemporaryDirectory() as folder:
@@ -130,132 +131,108 @@ class DiagnosticsEngine:
             workflow_ok = workflow.process("🔥➡️🚀") == "🔥➡️🚀\n✅🧵" and workflow.process("🎞️").startswith("🎞️")
         checks.append(DiagnosticCheck("9️⃣🔁", workflow_ok))
 
-        events = _event.EventEngine()
-        events.emit("📥", "🔵")
-        events.emit("📤", "✅")
+        events = _event.EventEngine(); events.emit("📥", "🔵"); events.emit("📤", "✅")
         checks.append(DiagnosticCheck("🔟📡", events.render_el() == "1:📥🔵\n2:📤✅"))
-
         security = _security.SecurityEngine()
         checks.append(DiagnosticCheck("1️⃣1️⃣🔐", security.authorize("✦").authorized and security.authorize("🪪").authorized and not security.authorize("abc").authorized))
 
         recovery = _recovery.RecoveryEngine()
-        def explode():
-            raise RuntimeError("hidden exception")
+        def explode(): raise RuntimeError("hidden exception")
         checks.append(DiagnosticCheck("1️⃣2️⃣🧯", recovery.protect("🖥️", lambda: "🔥") == "🔥" and recovery.protect("🖥️", explode) == "❌🧯" and recovery.protect("🖥️", lambda: "hidden words") == "❌🧯🔤"))
 
-        configuration = _config.ConfigurationEngine()
-        config_default = configuration.process("🎛️")
-        configuration.process("🎛️💾❌")
+        configuration = _config.ConfigurationEngine(); config_default = configuration.process("🎛️"); configuration.process("🎛️💾❌")
         checks.append(DiagnosticCheck("1️⃣3️⃣🎛️", config_default.startswith("🎛️") and "💾❌" in configuration.process("🎛️")))
 
-        connectors = _connector.ConnectorEngine()
-        empty = connectors.render_el() == "⚪🔌0"
-        connectors.register("🌐", lambda payload: "✅🔌" + payload)
+        connectors = _connector.ConnectorEngine(); empty = connectors.render_el() == "⚪🔌0"; connectors.register("🌐", lambda payload: "✅🔌" + payload)
         checks.append(DiagnosticCheck("1️⃣4️⃣🔌", empty and connectors.invoke("🌐", "🔥") == "✅🔌🔥" and connectors.invoke("☁️", "🔥") == "🟡🔌❓"))
 
         orchestration = _orchestration.OrchestrationEngine()
-        checks.append(DiagnosticCheck("1️⃣5️⃣✦", orchestration.process("✦").startswith("✅✦12 ") and len(orchestration.stages) == 12))
+        checks.append(DiagnosticCheck("1️⃣5️⃣✦", orchestration.process("✦").startswith("✅✦12 ") and len(orchestration.stages) == 12 and orchestration.should_escalate("fail") and not orchestration.should_escalate("hold")))
 
-        instructor = _instructor.InstructorEngine()
-        record = instructor.lookup("🔄")
+        instructor = _instructor.InstructorEngine(); record = instructor.lookup("🔄")
         checks.append(DiagnosticCheck("1️⃣6️⃣🧑‍🏫", instructor.process("🧑‍🏫") == "✅🧑‍🏫501" and record is not None and record.ordinal == 100))
 
         animation = _animation.AnimationEngine()
         checks.append(DiagnosticCheck("1️⃣7️⃣🎞️", animation.processing_symbol == "⏳" and animation.flip_degrees == 180 and animation.process("⏳") == "🎞️⏳↪️180"))
 
-        reliability = _reliability.ReliabilityEngine()
-        reliable = reliability.assess(("✅⚙️", "✅📚"))
-        held = reliability.assess(("✅⚙️", "🟡🔌0"))
-        translated = reliability.assess_translation({"coverage": 0.95, "roundtrip": 0.9, "candidates": 2})
+        reliability = _reliability.ReliabilityEngine(); reliable = reliability.assess(("✅⚙️", "✅📚")); held = reliability.assess(("✅⚙️", "🟡🔌0")); translated = reliability.assess_translation({"coverage": 0.95, "roundtrip": 0.9, "candidates": 2})
         checks.append(DiagnosticCheck("1️⃣8️⃣🛡️", reliable.marker == "✅" and held.marker == "🟡" and translated.marker == "✅"))
 
-        notifications = _notification.NotificationEngine()
-        notifications.emit("🟡", "🧵")
+        notifications = _notification.NotificationEngine(); notifications.emit("🟡", "🧵")
         checks.append(DiagnosticCheck("1️⃣9️⃣🔔", notifications.render_el() == "✅🔔1 🔔🟡🧵" and len(notifications.drain()) == 1))
-
-        identity = _identity.IdentityEngine()
-        identity_snapshot = identity.snapshot()
+        identity = _identity.IdentityEngine(); identity_snapshot = identity.snapshot()
         checks.append(DiagnosticCheck("2️⃣0️⃣🪪", identity.process("🪪").startswith("✅🪪🤖") and identity_snapshot.app_name == "EL Bot"))
-
         authentication = _auth.AuthenticationEngine()
         checks.append(DiagnosticCheck("2️⃣1️⃣🛂", authentication.verify(identity_snapshot.kind, identity_snapshot.protocol) and not authentication.verify("👤", identity_snapshot.protocol)))
 
-        updater = _updater.UpdaterEngine()
-        updater_ok = updater.process("🔄") == "✅🔄1" and updater.propose(2) and updater.apply() and updater.process("🔄") == "✅🔄2"
+        updater = _updater.UpdaterEngine(); updater_ok = updater.process("🔄") == "✅🔄1" and updater.propose(2) and updater.apply() and updater.process("🔄") == "✅🔄2"
         checks.append(DiagnosticCheck("2️⃣2️⃣🔄", updater_ok))
 
-        abc_engine = _abc.ABCToEmojiEngine()
-        abc_result = abc_engine.translate("A critical database connection timed out after 30 seconds. Restart the container immediately.", cross_verify=False, emit=False)
+        abc_engine = _abc.ABCToEmojiEngine(); abc_result = abc_engine.translate("A critical database connection timed out after 30 seconds. Restart the container immediately.", cross_verify=False, emit=False)
         checks.append(DiagnosticCheck("2️⃣3️⃣🔤➡️😀", len(abc_engine.stage_names) == 24 and "⏱️30" in abc_result.winner and "🔄" in abc_result.winner and abc_engine.render_el_status() == "✅🔤➡️😀24"))
-
-        emoji_engine = _emoji.EmojiToABCEngine()
-        emoji_result = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", cross_verify=False, emit=False)
-        lower = emoji_result.winner.lower()
+        emoji_engine = _emoji.EmojiToABCEngine(); emoji_result = emoji_engine.translate("📥➡️🧪➡️🧾➡️✅➡️🚀", cross_verify=False, emit=False); lower = emoji_result.winner.lower()
         checks.append(DiagnosticCheck("2️⃣4️⃣😀➡️🔤", len(emoji_engine.stage_names) == 24 and "test" in lower and "valid" in lower and "deploy" in lower and "the el sequence communicates" not in lower and "|" not in emoji_result.winner and emoji_engine.render_el_status() == "✅😀➡️🔤24"))
 
-        canonicalizer = _canonicalization.EmojiCanonicalizationEngine()
-        sun = canonicalizer.canonicalize_unit("☀")
-        keycap = canonicalizer.canonicalize_unit("1\u20e3")
+        canonicalizer = _canonicalization.EmojiCanonicalizationEngine(); sun = canonicalizer.canonicalize_unit("☀"); keycap = canonicalizer.canonicalize_unit("1\u20e3")
         checks.append(DiagnosticCheck("2️⃣5️⃣🧷", sun.valid and sun.canonical == "☀️" and keycap.valid and keycap.canonical == "1️⃣" and not canonicalizer.canonicalize_unit("abc").valid))
-
         universe = _universe.EmojiUniverseEngine()
         checks.append(DiagnosticCheck("2️⃣6️⃣🌐", universe.snapshot.count > 501 and universe.snapshot.canonical_coverage == 501 and not universe.snapshot.rgi_complete and universe.contains("😀")))
 
-        provenance = _provenance.ProvenanceLedgerEngine()
-        p1 = provenance.append(record_id="p1", claim_id="c1", source_kind="deterministic", source_ref="diagnostics", validation_status="pass", created_at="2026-08-12T23:00:00Z")
+        provenance = _provenance.ProvenanceLedgerEngine(); p1 = provenance.append(record_id="p1", claim_id="c1", source_kind="deterministic", source_ref="diagnostics", validation_status="pass", created_at="2026-08-12T23:00:00Z")
         checks.append(DiagnosticCheck("2️⃣7️⃣📜", provenance.for_claim("c1") == (p1,) and p1.validation_status == "pass"))
-
-        evidence = _evidence.EvidenceConfidenceEngine()
-        evidence.record(evidence_id="e1", claim_id="c1", polarity="positive", weight=0.9, source="validation", reason="pass", provenance_id="p1")
-        evidence.record(evidence_id="e2", claim_id="c1", polarity="negative", weight=0.1, source="countercheck", reason="minor", provenance_id="p1")
-        confidence = evidence.confidence("c1")
+        evidence = _evidence.EvidenceConfidenceEngine(); evidence.record(evidence_id="e1", claim_id="c1", polarity="positive", weight=0.9, source="validation", reason="pass", provenance_id="p1"); evidence.record(evidence_id="e2", claim_id="c1", polarity="negative", weight=0.1, source="countercheck", reason="minor", provenance_id="p1"); confidence = evidence.confidence("c1")
         checks.append(DiagnosticCheck("2️⃣8️⃣📊", confidence.evidence_count == 2 and abs(confidence.confidence - 0.9) < 1e-9))
 
         with tempfile.TemporaryDirectory() as folder:
-            knowledge = _versioning.KnowledgeVersioningRollbackEngine(Path(folder) / "knowledge.json")
-            v1 = knowledge.commit({"claims": {"c1": {"expression": "🔥"}}}, change_ids=("c1",), created_at="2026-08-12T23:00:00Z")
-            v2 = knowledge.commit({"claims": {"c1": {"expression": "🚀"}}}, change_ids=("c1",), created_at="2026-08-12T23:01:00Z")
-            v3 = knowledge.rollback("1")
-            version_ok = v1.version_id == "1" and v2.parent_id == "1" and v3.parent_id == "2" and knowledge.snapshot_for("3") == knowledge.snapshot_for("1")
+            knowledge = _versioning.KnowledgeVersioningRollbackEngine(Path(folder) / "knowledge.json"); v1 = knowledge.commit({"claims":{"c1":{"expression":"🔥"}}}, change_ids=("c1",), created_at="2026-08-12T23:00:00Z"); v2 = knowledge.commit({"claims":{"c1":{"expression":"🚀"}}}, change_ids=("c1",), created_at="2026-08-12T23:01:00Z"); v3 = knowledge.rollback("1"); version_ok = v1.version_id == "1" and v2.parent_id == "1" and v3.parent_id == "2" and knowledge.snapshot_for("3") == knowledge.snapshot_for("1")
         checks.append(DiagnosticCheck("2️⃣9️⃣🗃️", version_ok))
 
-        integrity = _integrity.KnowledgeIntegrityEngine()
-        good = integrity.assess({"claim_id":"c1","concept":"deploy","expression":"🚀","maturity":"canonical"}, confidence=confidence, provenance=provenance.for_claim("c1"))
-        bad = integrity.assess({"claim_id":"c2","concept":"converter","expression":"🔄","maturity":"discovered"})
+        integrity = _integrity.KnowledgeIntegrityEngine(); good = integrity.assess({"claim_id":"c1","concept":"deploy","expression":"🚀","maturity":"canonical"}, confidence=confidence, provenance=provenance.for_claim("c1")); bad = integrity.assess({"claim_id":"c2","concept":"converter","expression":"🔄","maturity":"discovered"})
         checks.append(DiagnosticCheck("3️⃣0️⃣🧿", good.passed and bad.status == "fail"))
 
-        context = _context.ContextSenseDisambiguationEngine()
-        word_product = context.resolve("word", "Microsoft Word edits a DOCX document.")
+        context = _context.ContextSenseDisambiguationEngine(); word_product = context.resolve("word", "Microsoft Word edits a DOCX document.")
         checks.append(DiagnosticCheck("3️⃣1️⃣🧭", context.resolve("converter", "Use the converter.").sense_id == "conversion-tool" and word_product.sense_id == "microsoft-word-product"))
-
         decomposition = _decomposition.ConceptDecompositionEngine().decompose("converter", "Use the converter.")
         checks.append(DiagnosticCheck("3️⃣2️⃣🧩", decomposition.resolved and {"input","transform-action","output"}.issubset(set(decomposition.concept_keys))))
-
         graph = _semantic_graph.SemanticGraphEngine()
         checks.append(DiagnosticCheck("3️⃣3️⃣🗺️", "transform-action" in graph.expand("conversion-tool", depth=1) and "conversation" in graph.expand("chatgpt-assistant", depth=1)))
-
         template = _grammar.ELGrammarCompositionEngine().compose_primary(decomposition)
         checks.append(DiagnosticCheck("3️⃣4️⃣🧱", template is not None and template.expression == "📥➡️🔄➡️📤" and template.canonical))
 
-        frontiers = _frontier.SearchFrontierExhaustionEngine()
-        toy = frontiers.define(units=("🔥","🚀"), min_length=1, max_length=2, frontier_id="diag-2x2")
+        frontiers = _frontier.SearchFrontierExhaustionEngine(); toy = frontiers.define(units=("🔥","🚀"), min_length=1, max_length=2, frontier_id="diag-2x2")
         checks.append(DiagnosticCheck("3️⃣5️⃣♾️", toy.total_candidates == 6 and frontiers.candidate_at(toy,0) == "🔥" and frontiers.candidate_at(toy,5) == "🚀🚀"))
-
-        search = _search.CompleteCandidateSearchEngine()
-        search_result, toy_done, proof = search.search_to_exhaustion(toy, lambda candidate,index: {"score":float(index),"valid":True,"canonical":True})
+        search = _search.CompleteCandidateSearchEngine(); search_result, toy_done, proof = search.search_to_exhaustion(toy, lambda candidate,index: {"score":float(index),"valid":True,"canonical":True})
         checks.append(DiagnosticCheck("3️⃣6️⃣🔍", search_result.evaluated_count == 6 and toy_done.cursor == 6 and proof.exhausted and proof.visited_candidates == 6))
-
         competition = _competition.CandidateCompetitionEngine.compete(search_result.evaluations)
         checks.append(DiagnosticCheck("3️⃣7️⃣🏆", competition.winner is not None and competition.winner.candidate == "🚀🚀" and len(competition.ranked) == 6))
-
         experiments = _experiment.ExperimentEngine().run("word", (("These words form a sentence.","language-word"),("Microsoft Word opened a document.","microsoft-word-product")))
         checks.append(DiagnosticCheck("3️⃣8️⃣🧫", experiments.passed and experiments.pass_rate == 1.0))
-
-        traps = _counterexample.CounterexampleAdversarialSemanticsEngine()
-        word_trap = traps.challenge("word", "language-word")
-        converter_trap = traps.challenge("converter", "conversion-tool")
+        traps = _counterexample.CounterexampleAdversarialSemanticsEngine(); word_trap = traps.challenge("word", "language-word"); converter_trap = traps.challenge("converter", "conversion-tool")
         checks.append(DiagnosticCheck("3️⃣9️⃣🪤", word_trap.tested == 2 and len(word_trap.counterexamples) == 1 and not word_trap.passed and converter_trap.passed))
 
-        if len(checks) != 39:
+        # Phase 4: all remaining learning engines receive functional diagnostics.
+        graduation = _graduation.KnowledgeGraduationEngine().evaluate({"claim_id":"c1","concept":"deploy","expression":"🚀","maturity":"unknown"}, confidence=confidence, integrity=good, provenance=provenance.for_claim("c1"))
+        checks.append(DiagnosticCheck("4️⃣0️⃣🎓", graduation.target == "provisional" and not graduation.canonical))
+
+        generalized = _generalization.GeneralizationEngine().derive((
+            {"claim_id":"g1","concept":"compile source","expression":"📥➡️🔄➡️📤","maturity":"validated","confidence":.93},
+            {"claim_id":"g2","concept":"convert input","expression":"📥➡️🔄➡️📤","maturity":"canonical","confidence":.97},
+        ))
+        checks.append(DiagnosticCheck("4️⃣1️⃣🧬", len(generalized.rules) == 1 and generalized.rules[0].status == "hypothesis" and len(generalized.rules[0].support_claim_ids) == 2))
+
+        revalidation = _revalidation.RevalidationEngine().revalidate(({"claim_id":"r1","maturity":"canonical"},), lambda claim: "fail")
+        checks.append(DiagnosticCheck("4️⃣2️⃣♻️", len(revalidation.outcomes) == 1 and revalidation.outcomes[0].status == "fail" and revalidation.outcomes[0].recommended_maturity == "discovered"))
+
+        analytics = _learning_analytics.LearningAnalyticsEngine(); analytics.record("deterministic_attempt", 4); analytics.record("deterministic_pass", 3); analytics.record("ai_attempt", 1); analytics.record("ai_accept", 1); analytics.record("learned_hit", 1); analytic = analytics.snapshot()
+        checks.append(DiagnosticCheck("4️⃣3️⃣📈", abs(analytic.deterministic_success_rate-.75)<1e-9 and abs(analytic.ai_fallback_rate-.25)<1e-9 and analytic.ai_acceptance_rate==1.0 and analytic.learned_avoidance_rate==.5))
+
+        consolidated = _consolidation.KnowledgeConsolidationEngine().consolidate((
+            {"claim_id":"a","concept":"thing","expression":"🔥","sense_id":"s","evidence_ids":["e1"],"provenance_ids":["p1"]},
+            {"claim_id":"b","concept":"thing","expression":"🔥","sense_id":"s","evidence_ids":["e2"],"provenance_ids":["p2"]},
+            {"claim_id":"c","concept":"thing","expression":"🚀","sense_id":"s","evidence_ids":["e3"],"provenance_ids":["p3"]},
+        )); merged = next(item for item in consolidated.consolidated if item.get("expression") == "🔥")
+        checks.append(DiagnosticCheck("4️⃣4️⃣🧺", consolidated.merged_groups == 1 and len(consolidated.conflicts) == 1 and set(merged["evidence_ids"]) == {"e1","e2"} and set(merged["provenance_ids"]) == {"p1","p2"}))
+
+        if len(checks) != 44:
             raise RuntimeError("diagnostic check count invariant violated")
         return DiagnosticReport(tuple(checks))
