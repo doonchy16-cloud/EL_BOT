@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Deterministic bidirectional translation facade for EL Bot.
+"""Bidirectional translation facade for EL Bot.
 
 1 = Emoji Language -> ABC
 2 = ABC -> Emoji Language
 
-Normal translation never imports or calls Ollama. The facade coordinates the
-two independent 24-stage engines, round-trip verification, and observed user
-choice evidence.
+ABC -> Emoji remains deterministic-first. PASS/HOLD never import or call an
+external provider. Only a genuine deterministic FAIL may enter the provider-neutral
+Forgey Orchestration boundary. Raw provider text is never returned by this facade.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
@@ -36,6 +37,9 @@ _lang = _load("_el_bidi_foundation", _ROOT / "🧠" / "🧬")
 _rank = _load("_el_bidi_rank", _ROOT / "🧠" / "🔀")
 _abc = _load("_el_abc_engine", _ROOT / "🔤➡️😀" / "🔤➡️😀")
 _emoji = _load("_el_emoji_engine", _ROOT / "😀➡️🔤" / "😀➡️🔤")
+_orchestration = _load("_el_bidi_orchestration", _ROOT / "✦" / "✦")
+_validation = _load("_el_bidi_validation", _ROOT / "🧾" / "🧾")
+_learning = _load("_el_bidi_learning", _ROOT / "🧑‍🏫" / "🧠")
 
 ABCToEmojiEngine = _abc.ABCToEmojiEngine
 EmojiToABCEngine = _emoji.EmojiToABCEngine
@@ -43,11 +47,24 @@ SelectionStore = _rank.SelectionStore
 
 
 class TranslationEngine:
-    def __init__(self, store=None) -> None:
+    def __init__(self, store=None, *, learning=None, connector=None, assist_enabled: bool = True) -> None:
         self.store = store if store is not None else SelectionStore()
         self.abc_to_emoji = ABCToEmojiEngine()
         self.emoji_to_abc = EmojiToABCEngine()
+        self.orchestration = _orchestration.OrchestrationEngine()
+        self.validation = _validation.ValidationEngine()
+        self.learning = learning if learning is not None else _learning.LearningCoordinator()
+        self._connector = connector
+        self.assist_enabled = bool(assist_enabled)
         self.provider_call_count = 0
+
+    def _ensure_connector(self):
+        if self._connector is None:
+            # Provider-specific implementation is loaded lazily and only after the
+            # permanent FAIL-only escalation policy has already fired.
+            adapter = _load("_el_current_semantic_provider_adapter", _ROOT / "🔌" / "🧠")
+            self._connector = adapter.build_current_intelligence_connector()
+        return self._connector
 
     def ranked_to_text(self, source: str, *, emit: bool = True):
         counts = self.store.counts(1, source)
@@ -59,15 +76,157 @@ class TranslationEngine:
             emit=emit,
         )
 
+    def _translate_definition(self, text: str):
+        return self.abc_to_emoji.translate(text, verifier=self.emoji_to_abc, cross_verify=True, emit=False)
+
+    def _reverse_candidate(self, value: str):
+        return self.emoji_to_abc.translate(value, verifier=self.abc_to_emoji, cross_verify=True, emit=False)
+
+    @staticmethod
+    def _assisted_result(base, candidate: str, *, metrics: dict, reasons: tuple[str, ...]):
+        coverage = float(metrics.get("known_source_coverage", metrics.get("coverage", 1.0)) or 0.0)
+        roundtrip = float(metrics.get("deterministic_roundtrip", metrics.get("roundtrip", 1.0)) or 0.0)
+        alignment = float(metrics.get("semantic_alignment", 1.0) or 0.0)
+        score = 100.0 * ((coverage + roundtrip + alignment) / 3.0)
+        item = _lang.Candidate(candidate, score, reasons, coverage, roundtrip)
+        return _lang.EngineResult(2, base.source, (item,), base.stages, dict(base.metrics))
+
+    def _try_learned(self, source: str, deterministic):
+        learned = self.learning.lookup_releasable(source)
+        if learned is None:
+            return None
+        try:
+            reverse = self._reverse_candidate(learned.expression)
+            forward = self._translate_definition(reverse.winner)
+            report = self.validation.validate_assisted(
+                source,
+                reverse.winner,
+                learned.expression,
+                reverse_text=reverse.winner,
+                deterministic_metrics=dict(forward.metrics),
+            )
+        except Exception:
+            try: self.learning.record_revalidation(learned.claim_id, status="fail", reasons=("learned-runtime-exception",))
+            except Exception: pass
+            return None
+        if not report.releasable:
+            try: self.learning.record_revalidation(learned.claim_id, status="fail", reasons=tuple(report.reasons))
+            except Exception: pass
+            return None
+        try: updated = self.learning.record_revalidation(learned.claim_id, status="pass", reasons=("learned-runtime-revalidation",))
+        except Exception: updated = learned
+        metrics = dict(deterministic.metrics)
+        metrics.update(report.metrics)
+        metrics.update({
+            "deterministic_quality_status": str(deterministic.metrics.get("quality_status", "fail")),
+            "quality_status": "pass",
+            "ai_assisted": False,
+            "learned_assisted": True,
+            "assist_path": "learned-validated",
+            "assist_validation": "pass",
+            "provider_calls": 0,
+            "learning_claim_id": updated.claim_id,
+            "learning_maturity": updated.maturity,
+            "raw_provider_exposed": False,
+        })
+        result = self._assisted_result(deterministic, learned.expression, metrics=metrics, reasons=("learned-validated", "deterministic-revalidation"))
+        return replace(result, metrics=metrics, stages=deterministic.stages + ("Learned Knowledge — deterministic revalidation",))
+
     def ranked_to_el(self, source: str, *, emit: bool = True):
         counts = self.store.counts(2, source)
-        return self.abc_to_emoji.translate(
+        deterministic = self.abc_to_emoji.translate(
             source,
             verifier=self.emoji_to_abc,
             preference_counts=counts,
             cross_verify=True,
             emit=emit,
         )
+        quality = str(deterministic.metrics.get("quality_status", "fail") or "fail").lower()
+        try: self.learning.record_deterministic(quality)
+        except Exception: pass
+
+        # Permanent boundary: PASS and HOLD return immediately with no provider import/call.
+        if not self.orchestration.should_escalate(quality):
+            return deterministic
+
+        learned = self._try_learned(source, deterministic)
+        if learned is not None:
+            return learned
+        if not self.assist_enabled:
+            return deterministic
+
+        if emit:
+            _lang.emit_stage(1, 3, "Forgey Orchestration — deterministic FAIL escalation", True)
+        try:
+            connector = self._ensure_connector()
+            request = _orchestration.AssistRequest(source, quality, deterministic.winner, dict(deterministic.metrics))
+            decision = self.orchestration.assist(
+                request,
+                connector=connector,
+                provider_marker="🦙",
+                translate_definition=self._translate_definition,
+                reverse_translate=self._reverse_candidate,
+                validate_assisted=self.validation.validate_assisted,
+            )
+        except Exception:
+            metrics = dict(deterministic.metrics)
+            metrics.update({"ai_assisted": False, "assist_path": "orchestration-error", "assist_validation": "fail", "provider_calls": 0, "raw_provider_exposed": False})
+            return replace(deterministic, metrics=metrics)
+
+        if decision.provider_called:
+            self.provider_call_count += 1
+        if emit:
+            _lang.emit_stage(2, 3, "Forgey Orchestration — validate assisted semantics", True)
+
+        learned_record = None
+        try:
+            learned_record = self.learning.record_provider_decision(
+                source=source,
+                candidate=decision.candidate,
+                accepted=decision.accepted,
+                provider=decision.provider,
+                model=decision.model,
+                validation_status=decision.validation_status,
+                reasons=decision.reasons,
+                provider_called=decision.provider_called,
+            )
+        except Exception:
+            learned_record = None
+
+        if not decision.accepted:
+            metrics = dict(deterministic.metrics)
+            metrics.update({
+                "ai_assisted": bool(decision.provider_called),
+                "learned_assisted": False,
+                "assist_path": decision.path,
+                "assist_provider": decision.provider,
+                "assist_model": decision.model,
+                "assist_validation": decision.validation_status,
+                "provider_calls": 1 if decision.provider_called else 0,
+                "raw_provider_exposed": False,
+            })
+            return replace(deterministic, metrics=metrics, stages=deterministic.stages + ("Forgey Orchestration — assisted candidate rejected",))
+
+        if emit:
+            _lang.emit_stage(3, 3, "Forgey Orchestration — validated assisted release", True)
+        metrics = dict(deterministic.metrics)
+        metrics.update(decision.validation_metrics)
+        metrics.update({
+            "deterministic_quality_status": quality,
+            "quality_status": "pass",
+            "ai_assisted": True,
+            "learned_assisted": False,
+            "assist_path": decision.path,
+            "assist_provider": decision.provider,
+            "assist_model": decision.model,
+            "assist_validation": "pass",
+            "provider_calls": 1 if decision.provider_called else 0,
+            "learning_claim_id": learned_record.claim_id if learned_record is not None else "",
+            "learning_maturity": learned_record.maturity if learned_record is not None else "discovered",
+            "raw_provider_exposed": False,
+        })
+        result = self._assisted_result(deterministic, decision.candidate, metrics=metrics, reasons=("ai-semantic-assist", "deterministically-validated", decision.path))
+        return replace(result, metrics=metrics, stages=deterministic.stages + ("Forgey Orchestration — provider semantic resolution", "Validation Engine — assisted release gate"))
 
     def ranked(self, mode: int, source: str, *, emit: bool = True):
         if mode == 1:
@@ -86,10 +245,14 @@ class TranslationEngine:
             raise ValueError("invalid ranking selection")
         if mode == 2 and not _lang.valid_el(value):
             raise ValueError("selected EL candidate is invalid")
-        return self.store.record(mode, source, value)
+        count = self.store.record(mode, source, value)
+        if mode == 2:
+            try: self.learning.record_user_selection(source, value)
+            except Exception: pass
+        return count
 
     def render_el_status(self) -> str:
-        return "✅↔️24+24🤖❌"
+        return "✅↔️24+24✦"
 
 
 def _read_mode_source() -> tuple[int, str] | None:
