@@ -17,7 +17,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $spark=[char]::ConvertFromUtf32(0x26A1); $entry=Join-Path (Join-Path (Get-Location) $spark) $spark; if(-not (Test-Path -LiteralPath $entry)){exit 3}; $npx=(Get-Command npx.cmd -ErrorAction Stop).Source; & $npx -y electron@latest $entry; exit $LASTEXITCODE"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $root=(Get-Location); $spark=[char]::ConvertFromUtf32(0x26A1); $entry=Join-Path (Join-Path $root $spark) $spark; if(-not (Test-Path -LiteralPath $entry)){exit 3}; $local=Join-Path $root 'node_modules\.bin\electron.cmd'; if(Test-Path -LiteralPath $local){ & $local $entry } else { $npx=(Get-Command npx.cmd -ErrorAction Stop).Source; & $npx -y electron@43.2.0 $entry }; exit $LASTEXITCODE"
 set "code=%errorlevel%"
 if not "%code%"=="0" (
   echo.
