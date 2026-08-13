@@ -248,6 +248,7 @@ jobs:
           Write-Output '✅📸🎞️30FPS'
 
       - name: "📤📸🎞️"
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: phase5-visual-proof
