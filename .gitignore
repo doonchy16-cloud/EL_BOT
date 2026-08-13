@@ -2,3 +2,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+node_modules/
+dist/
+build/
+python/
+proof/
+npm-debug.log*
