@@ -106,7 +106,10 @@ class CurrentSemanticProviderAdapter:
     """Temporary Ollama implementation behind the provider-neutral connector contract."""
 
     def __init__(self, provider=None) -> None:
-        self.provider = provider if provider is not None else _ollama.OllamaConnector()
+        # Local qwen2.5vl:7b is materially slower for text inference than the
+        # generic 120-second provider default. Bound only this fallback to 300s,
+        # remaining below Electron's existing 350-second process ceiling.
+        self.provider = provider if provider is not None else _ollama.OllamaConnector(generation_timeout=300.0)
 
     @property
     def model(self) -> str:
