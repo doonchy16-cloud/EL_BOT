@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real CLI launch smoke test plus architecture and Phase 2 foundation gates."""
+"""Real CLI launch smoke test plus Phase 1-3 architecture/runtime gates."""
 
 from pathlib import Path
 import subprocess
@@ -25,6 +25,7 @@ if any(char.isalpha() for char in result.stdout):
 for verifier in (
     ROOT / "architecture" / "verify_phase1_architecture.py",
     ROOT / "architecture" / "verify_phase2_knowledge_foundation.py",
+    ROOT / "architecture" / "verify_phase3_semantic_search.py",
 ):
     gate = subprocess.run(
         [sys.executable, str(verifier)],
