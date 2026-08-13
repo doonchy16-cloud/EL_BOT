@@ -1,0 +1,37 @@
+(() => {
+  'use strict';
+  const preview = document.getElementById('preview');
+  const badge = preview && preview.querySelector('.previewBadge');
+  const processing = document.getElementById('processing');
+  const stageMeta = document.getElementById('stageMeta');
+  if (preview) {
+    preview.tabIndex = 0;
+    preview.setAttribute('role', 'button');
+    preview.setAttribute('aria-label', 'Enlarge screenshot preview');
+    if (badge) badge.textContent = '📸 🔍';
+    const toggle = () => {
+      const next = !preview.classList.contains('zoom');
+      preview.classList.toggle('zoom', next);
+      preview.setAttribute('aria-label', next ? 'Close enlarged screenshot preview' : 'Enlarge screenshot preview');
+    };
+    preview.addEventListener('click', toggle);
+    preview.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && preview.classList.contains('zoom')) {
+        preview.classList.remove('zoom');
+        preview.setAttribute('aria-label', 'Enlarge screenshot preview');
+        preview.focus();
+      }
+    });
+  }
+  if (processing && stageMeta) {
+    const syncWarning = () => processing.classList.toggle('warn', stageMeta.textContent.includes('⚠️'));
+    new MutationObserver(syncWarning).observe(stageMeta, { childList: true, characterData: true, subtree: true });
+    syncWarning();
+  }
+})();
