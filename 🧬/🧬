@@ -1,0 +1,76 @@
+"""N09: deterministic reusable-rule hypotheses from validated knowledge."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+
+_WORD = re.compile(r"[a-z0-9]+", re.I)
+
+
+@dataclass(frozen=True, slots=True)
+class GeneralizationRule:
+    rule_id: str
+    expression: str
+    concepts: tuple[str, ...]
+    support_claim_ids: tuple[str, ...]
+    confidence: float
+    status: str = "hypothesis"
+
+    def render_el(self) -> str:
+        return "🟡🧬" + str(len(self.support_claim_ids))
+
+
+@dataclass(frozen=True, slots=True)
+class GeneralizationReport:
+    rules: tuple[GeneralizationRule, ...]
+    rejected_examples: int
+
+    def render_el(self) -> str:
+        return "✅🧬" + str(len(self.rules))
+
+
+class GeneralizationEngine:
+    """Derive hypotheses only from validated/canonical examples; never canonizes them."""
+
+    @staticmethod
+    def _normalize_concept(value: object) -> str:
+        words = [m.group(0).lower() for m in _WORD.finditer(str(value or ""))]
+        return " ".join(words)
+
+    def derive(self, examples: tuple[dict, ...] | list[dict]) -> GeneralizationReport:
+        if not isinstance(examples, (tuple, list)):
+            raise TypeError("examples must be a sequence")
+        accepted: list[dict] = []
+        rejected = 0
+        for raw in examples:
+            if not isinstance(raw, dict):
+                rejected += 1; continue
+            maturity = str(raw.get("maturity", "")).strip().lower()
+            confidence = float(raw.get("confidence", 0.0) or 0.0)
+            expression = str(raw.get("expression", "")).strip()
+            concept = self._normalize_concept(raw.get("concept"))
+            claim_id = str(raw.get("claim_id", "")).strip()
+            if maturity not in {"validated", "canonical"} or confidence < 0.85 or not expression or not concept or not claim_id:
+                rejected += 1; continue
+            accepted.append({"claim_id": claim_id, "concept": concept, "expression": expression, "confidence": confidence})
+
+        groups: dict[str, list[dict]] = {}
+        for item in accepted:
+            groups.setdefault(item["expression"], []).append(item)
+
+        rules: list[GeneralizationRule] = []
+        for expression, rows in sorted(groups.items(), key=lambda pair: pair[0]):
+            concepts = tuple(dict.fromkeys(row["concept"] for row in rows))
+            claim_ids = tuple(dict.fromkeys(row["claim_id"] for row in rows))
+            if len(concepts) < 2 or len(claim_ids) < 2:
+                continue
+            confidence = sum(float(row["confidence"]) for row in rows) / len(rows)
+            rule_id = "shared-expression:" + str(abs(hash((expression, concepts))))
+            rules.append(GeneralizationRule(rule_id, expression, concepts, claim_ids, confidence))
+        return GeneralizationReport(tuple(rules), rejected)
+
+    def process(self, text: str) -> str:
+        return "✅🧬" if text == "🧬" else "🟡🧬❓"
+
+    def render_el_status(self) -> str:
+        return "✅🧬"
