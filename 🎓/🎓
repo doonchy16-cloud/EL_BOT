@@ -1,0 +1,102 @@
+"""N06: deterministic knowledge maturity and graduation authority."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+_MATURITY = ("unknown", "discovered", "provisional", "validated", "canonical")
+
+
+@dataclass(frozen=True, slots=True)
+class GraduationDecision:
+    claim_id: str
+    previous: str
+    target: str
+    reasons: tuple[str, ...]
+
+    @property
+    def changed(self) -> bool:
+        return self.previous != self.target
+
+    @property
+    def canonical(self) -> bool:
+        return self.target == "canonical"
+
+    def render_el(self) -> str:
+        marker = "✅" if self.target == "canonical" else "🟢" if self.target == "validated" else "🟡" if self.target in {"provisional", "discovered"} else "⚪"
+        return marker + "🎓"
+
+
+class KnowledgeGraduationEngine:
+    """Decide maturity from supplied evidence; never fabricates evidence or writes vocabulary."""
+
+    @staticmethod
+    def _normalize_maturity(value: object) -> str:
+        text = str(value or "unknown").strip().lower()
+        return text if text in _MATURITY else "unknown"
+
+    def evaluate(
+        self,
+        claim: dict,
+        *,
+        confidence,
+        integrity,
+        provenance: tuple | list = (),
+        experiment_passed: bool = False,
+        counterexample_passed: bool = False,
+        revalidation_status: str = "unknown",
+    ) -> GraduationDecision:
+        if not isinstance(claim, dict):
+            raise TypeError("claim must be a dict")
+        claim_id = str(claim.get("claim_id", "")).strip()
+        if not claim_id:
+            raise ValueError("claim_id is required")
+        previous = self._normalize_maturity(claim.get("maturity"))
+        evidence_count = int(getattr(confidence, "evidence_count", 0) or 0)
+        score = float(getattr(confidence, "confidence", 0.0) or 0.0)
+        support = float(getattr(confidence, "support", 0.0) or 0.0)
+        opposition = float(getattr(confidence, "opposition", 0.0) or 0.0)
+        integrity_status = str(getattr(integrity, "status", "fail") or "fail")
+        source_kinds = {str(getattr(item, "source_kind", "")).strip() for item in provenance if str(getattr(item, "source_kind", "")).strip()}
+        reasons: list[str] = []
+
+        # Demotion safety wins over promotion thresholds.
+        if integrity_status == "fail" or (evidence_count and opposition > support):
+            target = "discovered" if evidence_count else "unknown"
+            reasons.append("integrity-or-negative-evidence-demotion")
+            return GraduationDecision(claim_id, previous, target, tuple(reasons))
+        if revalidation_status == "fail" and previous in {"validated", "canonical"}:
+            reasons.append("failed-revalidation")
+            return GraduationDecision(claim_id, previous, "provisional", tuple(reasons))
+
+        target = "unknown"
+        if evidence_count >= 1:
+            target = "discovered"; reasons.append("evidence-present")
+        if evidence_count >= 2 and score >= 0.72 and support > opposition:
+            target = "provisional"; reasons.append("repeat-support")
+        strong_cross_source = len(source_kinds) >= 2
+        validation_evidence = experiment_passed or counterexample_passed or revalidation_status == "pass"
+        if evidence_count >= 3 and score >= 0.86 and strong_cross_source and integrity_status == "pass" and validation_evidence:
+            target = "validated"; reasons.append("cross-source-validation")
+        canonical_ready = (
+            evidence_count >= 5
+            and score >= 0.95
+            and len(source_kinds) >= 3
+            and integrity_status == "pass"
+            and experiment_passed
+            and counterexample_passed
+            and revalidation_status == "pass"
+            and source_kinds != {"provider"}
+        )
+        if canonical_ready:
+            target = "canonical"; reasons.append("full-graduation-contract")
+
+        # A single provider family can never jump to canonical authority.
+        if target == "canonical" and source_kinds <= {"provider"}:
+            target = "validated"; reasons.append("provider-only-canonical-block")
+        return GraduationDecision(claim_id, previous, target, tuple(reasons))
+
+    def process(self, text: str) -> str:
+        return "✅🎓" if text == "🎓" else "🟡🎓❓"
+
+    def render_el_status(self) -> str:
+        return "✅🎓"
