@@ -87,7 +87,8 @@ foreach ($path in $required) {
     Invoke-RestMethod -Method Delete -Uri "$api/repos/$repo/releases/assets/$($asset.id)" -Headers $headers | Out-Null
   }
   $encodedName = [Uri]::EscapeDataString($name)
-  Invoke-RestMethod -Method Post -Uri "$uploadBase?name=$encodedName" -Headers $headers -ContentType 'application/octet-stream' -InFile $item.FullName | Out-Null
+  $uploadUri = "${uploadBase}?name=$encodedName"
+  Invoke-RestMethod -Method Post -Uri $uploadUri -Headers $headers -ContentType 'application/octet-stream' -InFile $item.FullName | Out-Null
 }
 
 $verified = @(Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases/$($release.id)/assets?per_page=100" -Headers $headers)
