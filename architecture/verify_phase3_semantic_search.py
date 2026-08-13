@@ -7,6 +7,7 @@ from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import json
 import sys
+import unicodedata
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "architecture" / "phase3_semantic_search_manifest.json"
@@ -60,6 +61,7 @@ def main() -> None:
     experiment = load("_p3_experiment", ROOT / "🧫" / "🧫")
     counter = load("_p3_counter", ROOT / "🪤" / "🪤")
     abc = load("_p3_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
+    emoji = load("_p3_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
 
     require(len(vocab.CANONICAL_SYMBOLS) == 501 and len(set(vocab.CANONICAL_SYMBOLS)) == 501, "canonical 501 invariant changed")
 
@@ -103,7 +105,6 @@ def main() -> None:
     rest, toy_done, toy_proof = complete.search_to_exhaustion(resumed, lambda candidate, index: {"score": float(index), "valid": True})
     require(rest.evaluated_count == 8 and toy_done.cursor == 12 and toy_proof.exhausted and toy_proof.visited_candidates == 12, "toy frontier exhaustion proof failed")
 
-    # Full loaded Emoji Universe, depth 1: every unit is actually evaluated.
     u = universe.EmojiUniverseEngine()
     full = frontiers.define(units=u.units, min_length=1, max_length=1, frontier_id="full-universe-depth1-gate")
     full_result, full_done, full_proof = complete.search_to_exhaustion(
@@ -113,6 +114,13 @@ def main() -> None:
     require(full.total_candidates == u.snapshot.count, "full depth-1 frontier must equal loaded universe count")
     require(full_result.evaluated_count == u.snapshot.count and full_done.cursor == u.snapshot.count and full_proof.exhausted, "full depth-1 universe was not exhausted")
     require(len(full_result.survivors) == 501, "full-universe canonical survivor count must preserve 501")
+
+    outside_501 = next((unit for unit in u.units if unit not in vocab.CANONICAL_SYMBOLS and any(unicodedata.category(ch) == "So" and unicodedata.name(ch, "") for ch in unit)), None)
+    require(outside_501 is not None, "no investigable non-501 emoji available for reverse test")
+    reverse = emoji.EmojiToABCEngine().translate(outside_501, cross_verify=False, emit=False)
+    require(reverse.winner.startswith("The emoji represents "), f"non-501 reverse identity not selected: {outside_501} -> {reverse.winner}")
+    require(reverse.metrics.get("investigable_noncanonical") == 1 and reverse.metrics.get("unknown") == 0, "non-501 reverse classification failed")
+    require(reverse.metrics.get("quality_status") == "hold", "noncanonical identity must remain HOLD until canonical graduation")
 
     ranked = competition.CandidateCompetitionEngine.compete((
         search.CandidateEvaluation(0, "🔥", 2.0, True, ("low",), (), True),
@@ -149,7 +157,7 @@ def main() -> None:
     combined = engine.translate("Use the converter for words with ChatGPT.", cross_verify=False, emit=False)
     require(combined.metrics.get("quality_status") != "fail" and int(combined.metrics.get("phase3_resolved_unknowns", 0)) >= 3, "combined Phase-3 semantic rescue failed")
 
-    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐" + str(u.snapshot.count) + "/" + str(u.snapshot.count) + "✅ 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 🤖❌")
+    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐" + str(u.snapshot.count) + "/" + str(u.snapshot.count) + "✅ 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 😀🌐✅ 🤖❌")
 
 
 if __name__ == "__main__":
