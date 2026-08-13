@@ -54,7 +54,7 @@ icon_bytes=b64decode((ROOT/"🪪"/"🎨").read_text(encoding="utf-8").strip(),va
 animation_engine=animation.AnimationEngine();assert animation_engine.processing_symbol=="⏳" and animation_engine.flip_degrees==180 and animation_engine.process("⏳")=="🎞️⏳↪️180"
 identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.app_name=="EL Bot" and identity_snapshot.app_user_model_id=="com.thespark.elbot"
 
-normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","🔤➡️😀/🧠","😀➡️🔤/😀➡️🔤","🧠/🧬","🧭/🧭","🧩/🧩","🗺️/🗺️","🧱/🧱","♾️/♾️","🔍/🔍","🏆/🏆","🧫/🧫","🪤/🪤"))
+normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","🔤➡️😀/🧠","😀➡️🔤/😀➡️🔤","🧠/🧬","🧭/🧭","🧩/🧩","🗺️/🗺️","🧱/🧱","♾️/♾️","🔍/🔍","🏆/🏆","🧫/🧫","🪤/🪤","🎓/🎓","🧬/🧬","♻️/♻️","📈/📈","🧺/🧺"))
 for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
 for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_internal","sensor_calls","structured-vision-retry","Load Vision Model","valid-empty-observation"):
@@ -122,13 +122,13 @@ assert candidates and _load("_el_lang_self",ROOT/"🧠"/"🧬").valid_el(candida
 assert set(vision._VISION_SCHEMA["required"])==set(vision._FACT_FIELDS) and vision._VISION_SCHEMA["additionalProperties"] is False
 
 with tempfile.TemporaryDirectory() as folder:
-    store=_load("_el_rank_self",ROOT/"🧠"/"🔀").SelectionStore(Path(folder)/"🏆");facade=bidi.TranslationEngine(store=store);assert facade.provider_call_count==0
+    store=_load("_el_rank_self",ROOT/"🧠"/"🔀").SelectionStore(Path(folder)/"🏆");learning=_load("_el_learning_self",ROOT/"🧑‍🏫"/"🧠").LearningCoordinator(Path(folder)/"learn.json");facade=bidi.TranslationEngine(store=store,learning=learning);assert facade.provider_call_count==0
     assert facade.process(2,"hi")=="👋";assert facade.process(2,"Restart the local server after 30 seconds.");assert facade.process(1,"📥➡️🧪➡️🧾➡️✅➡️🚀");assert facade.provider_call_count==0
 
 start=perf_counter()
 for index in range(120):abc_engine.translate(f"Restart the local server after {30+index} seconds and verify success.",cross_verify=False,emit=False)
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
-report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==39
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("📚2️⃣✅");print("🧠🔍3️⃣✅");print("⚡🔤"+str(rate)+"/min✅")
+report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==44
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️PASS/HOLD🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("📚2️⃣✅");print("🧠🔍3️⃣✅");print("✦🧠4️⃣✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
