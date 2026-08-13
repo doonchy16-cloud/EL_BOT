@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-**Phase 3 — 🧠🔍 Semantic Search & Full Translation Intelligence: ✅ COMPLETE**
+**Phase 4 — ✦🦙🧑‍🏫 AI Fallback & Forever-Learning Loop: ✅ COMPLETE**
 
-Phases 1, 2, and 3 are implemented and CI-gated. Phase 4 has **not** started and requires a new explicit Owner GO.
+Phases 1, 2, 3, and 4 are implemented and CI-gated. The reconciled 44-engine target is now **44 / 44 source-present**. Phase 5 remains unauthorized.
 
 Read in this order:
 
@@ -12,31 +12,22 @@ Read in this order:
 2. `PHASE_1_44_ENGINE_CONTRACTS.md` — reconciled 44-engine target architecture and dependency boundaries.
 3. `phase1_44_engine_registry.json` — immutable Phase-1 target registry snapshot.
 4. `verify_phase1_architecture.py` — Phase-1 architecture gate.
-5. `PHASE_2_KNOWLEDGE_FOUNDATION.md` — completed Phase-2 scope, boundaries, and PASS contract.
-6. `phase2_knowledge_foundation_manifest.json` — machine-readable Phase-2 PASS manifest.
-7. `verify_phase2_knowledge_foundation.py` — deterministic Phase-2 foundation gate.
-8. `PHASE_3_SEMANTIC_SEARCH_AND_TRANSLATION_INTELLIGENCE.md` — completed Phase-3 semantic/search scope and truthfulness contract.
-9. `phase3_semantic_search_manifest.json` — machine-readable Phase-3 PASS manifest.
-10. `verify_phase3_semantic_search.py` — deterministic Phase-3 semantic/search gate.
+5. `PHASE_2_KNOWLEDGE_FOUNDATION.md` — completed Phase-2 knowledge foundation.
+6. `phase2_knowledge_foundation_manifest.json` — Phase-2 PASS manifest.
+7. `verify_phase2_knowledge_foundation.py` — Phase-2 gate.
+8. `PHASE_3_SEMANTIC_SEARCH_AND_TRANSLATION_INTELLIGENCE.md` — completed Phase-3 semantic/search layer.
+9. `phase3_semantic_search_manifest.json` — Phase-3 PASS manifest.
+10. `verify_phase3_semantic_search.py` — Phase-3 gate.
+11. `PHASE_4_AI_FALLBACK_AND_FOREVER_LEARNING.md` — completed Phase-4 FAIL-only fallback and learning contract.
+12. `phase4_ai_learning_manifest.json` — Phase-4 PASS manifest.
+13. `verify_phase4_ai_learning.py` — Phase-4 fallback/learning gate.
 
-## Source-present target engines after Phase 3
+## Source-present target architecture
 
-Source-present target count: **39 / 44**.
-Remaining planned-only target count: **5 / 44**.
+Source-present target count: **44 / 44**.
+Remaining planned-only target count: **0 / 44**.
 
-Phase-3 additions:
-
-- 🔍 Complete Candidate Search;
-- 🧩 Concept Decomposition;
-- 🗺️ Semantic Graph;
-- 🧫 Experiment;
-- 🏆 Candidate Competition;
-- 🧭 Context & Sense Disambiguation;
-- 🧱 EL Grammar & Composition;
-- ♾️ Search Frontier & Exhaustion;
-- 🪤 Counterexample & Adversarial Semantics.
-
-The remaining five planned-only engines are:
+Phase-4 additions complete the target:
 
 - 🎓 Knowledge Graduation;
 - 🧬 Generalization;
@@ -44,32 +35,55 @@ The remaining five planned-only engines are:
 - 📈 Learning Analytics;
 - 🧺 Knowledge Consolidation.
 
-## CI Enforcement
+Phase-4 integration code also includes:
 
-The established `.github/workflows/🧪.yml` workflow runs `🧪/🚀` as its release smoke gate. `🧪/🚀` executes Phase-1, Phase-2, and Phase-3 verifiers, while the normal Diagnostics Engine owns **39 engine checks**.
+- `🔌/🧠` — temporary semantic-provider adapter behind the connector boundary;
+- `🧑‍🏫/🧠` — persistent/versioned learning coordinator.
 
-Phase-3 search truthfulness is explicitly gated: a 3-unit length-1..2 frontier must evaluate 12/12 coordinates, and the built-in loaded 🌐 depth-1 inventory currently evaluates 3,525/3,525 units. This does not claim arbitrary deeper Cartesian spaces are already exhausted.
+## Runtime authority
 
-## Locked boundaries after Phase 3
+ABC → Emoji is permanently deterministic-first:
 
-Still disabled / not implemented:
+```text
+PASS → release, no provider
+HOLD → hold, no provider
+FAIL → validated/canonical learned mapping lookup
+       → if none: ✦ → 🔌 → temporary 🦙 qwen2.5vl:7b semantic resolver
+       → deterministic EL construction + 🧾 validation + reverse verification
+       → release only on assisted PASS
+```
 
-- AI fallback from ABC → Emoji;
-- Qwen/Ollama semantic fallback;
-- Forgey semantic fallback;
-- automatic knowledge writes;
-- 🎓 graduation/canonical promotion;
-- 🧬 generalization;
-- ♻️ revalidation;
-- 📈 learning analytics;
-- 🧺 consolidation;
-- hourglass/UI polish implementation;
-- Windows packaging.
+`🔤➡️😀` does not import a provider. `✦` owns escalation policy but no provider implementation. `🔌/🧠` is the current temporary-provider adapter. Raw provider prose is never released as EL.
 
-`📚501` remains unchanged and locked as the current canonical vocabulary count. 🌐 remains broader investigable authority, not canonical authority. Non-501 reverse identity can be described deterministically but remains HOLD until later graduation.
+Validated/canonical learned mappings are revalidated before reuse and can eliminate later provider calls.
+
+## Learning authority
+
+Learning is evidence-backed and reversible:
+
+- accepted provider assistance → positive evidence/provenance;
+- rejected assistance → negative evidence/provenance episode;
+- user selection, experiments, counterexample testing, and revalidation provide independent evidence;
+- 🎓 alone controls maturity;
+- one provider success cannot become canonical;
+- 🧿 can block/demote;
+- 🗃️ versions every mutation and rollback;
+- 🧬 produces hypotheses only;
+- 🧺 preserves evidence/provenance while merging compatible duplicates;
+- 📈 measures deterministic success, provider use, acceptance, and learned avoidance.
+
+The static **📚501** canonical base remains unchanged. The broader 🌐 inventory and learned overlay do not silently rewrite it.
+
+## CI enforcement
+
+`.github/workflows/🧪.yml` runs the release smoke gate `🧪/🚀`, which executes Phase 1 through Phase 4 verifiers. The normal Diagnostics Engine owns **44 / 44 functional checks**.
+
+Existing Phase-3 search truthfulness remains enforced: the 3-unit length-1..2 frontier evaluates 12/12 coordinates, and the loaded 🌐 depth-1 inventory evaluates 3,525/3,525 units without pretending deeper combinatorial spaces were already exhausted.
+
+The real Windows runner also verifies the temporary local Qwen provider. Its semantic text fallback is currently slow, so only that adapter has a bounded **300-second** timeout below the Electron host's existing **350-second** process ceiling.
 
 ## Next phase
 
-**Phase 4 — ✦🦙🧑‍🏫 AI Fallback & Forever-Learning Loop**.
+**Phase 5 — Visual Polish & Windows Packaging**.
 
-Phase 4 requires a new explicit Owner GO.
+Phase 5 remains **NOT AUTHORIZED**. Hourglass visual polish and Windows packaging are still locked.
