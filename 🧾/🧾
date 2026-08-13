@@ -1,4 +1,4 @@
-"""Evidence-backed EL release gate."""
+"""Evidence-backed EL release gates for deterministic and assisted translation."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
+import re
 import sys
 
 
@@ -26,12 +27,15 @@ _ROOT = Path(__file__).resolve().parent.parent
 _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
 _vocab = _load("_el_vocab", _ROOT / "📚" / "📚")
 _intel = _load("_el_intel", _ROOT / "🧠" / "🧠")
+_lang = _load("_el_validation_language", _ROOT / "🧠" / "🧬")
 CoreEngine = _core.CoreEngine
 ParseResult = _core.ParseResult
 ValidationStatus = _core.ValidationStatus
 VocabularyEngine = _vocab.VocabularyEngine
 VocabularyResult = _vocab.VocabularyResult
 InterpretationResult = _intel.InterpretationResult
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+_CRITICAL = frozenset({"🔴", "❌", "⚠️", "📴", "💥", "🔄", "‼️", "❗", "🧪", "🧾", "🔐", "🔒", "🔓", "🛂", "✅", "🟢", "⛔", "❤️‍🩹", "🧯"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +63,33 @@ class ValidationReport:
         return self.render_el_status()
 
 
+@dataclass(frozen=True, slots=True)
+class AssistedValidationReport:
+    source_text: str
+    semantic_definition: str
+    proposed_output: str
+    reverse_text: str
+    output_surface: ParseResult
+    output_vocabulary: VocabularyResult
+    status: ValidationStatus
+    reasons: tuple[str, ...]
+    metrics: dict[str, float | int | str]
+
+    @property
+    def releasable(self) -> bool:
+        return self.status is ValidationStatus.PASS
+
+    def safe_output(self) -> str:
+        return self.proposed_output if self.releasable else self.render_el_status()
+
+    def render_el_status(self) -> str:
+        if self.status is ValidationStatus.PASS:
+            return "✅🧾✦"
+        if self.status is ValidationStatus.HOLD:
+            return "🟡🧾✦"
+        return "❌🧾✦"
+
+
 class ValidationEngine:
     def validate(self, source: InterpretationResult, proposed_output: str) -> ValidationReport:
         if not isinstance(source, InterpretationResult):
@@ -82,4 +113,155 @@ class ValidationEngine:
             output_surface=output_surface,
             output_vocabulary=output_vocabulary,
             status=status,
+        )
+
+    @staticmethod
+    def _relation_retention(source_text: str, proposed_output: str) -> float:
+        document = _lang.parse_abc_document(source_text)
+        expected = [relation for clause in document.clauses for relation in clause.relations if relation.kind != "and"]
+        if not expected:
+            return 1.0
+        matched = 0.0
+        for relation in expected:
+            marker = relation.marker
+            if marker in proposed_output:
+                matched += 1.0
+            elif marker == "🚦➡️" and "🚦" in proposed_output and "➡️" in proposed_output:
+                matched += 0.6
+            elif marker == "🚦⬅️" and "🚦" in proposed_output and "⬅️" in proposed_output:
+                matched += 0.6
+            elif marker == "🚦❌" and "🚦" in proposed_output and "❌" in proposed_output:
+                matched += 0.6
+            elif marker == "🔗➡️" and "🔗" in proposed_output and "➡️" in proposed_output:
+                matched += 0.6
+        return matched / len(expected)
+
+    @staticmethod
+    def _critical_retention(source_text: str, proposed_output: str) -> float:
+        expected = [item for item in _lang.concept_signature_from_abc(source_text) if item in _CRITICAL]
+        document = _lang.parse_abc_document(source_text)
+        if any(relation.kind in {"negation", "unless"} for clause in document.clauses for relation in clause.relations):
+            expected.append("❌")
+        if not expected:
+            return 1.0
+        actual = list(_lang.concept_signature_from_el(proposed_output))
+        used: set[int] = set(); retained = 0
+        for symbol in expected:
+            try:
+                index = next(i for i, value in enumerate(actual) if i not in used and value == symbol)
+            except StopIteration:
+                continue
+            used.add(index); retained += 1
+        return retained / len(expected)
+
+    @staticmethod
+    def _numbers_retained(source_text: str, proposed_output: str) -> float:
+        numbers = _NUMBER_RE.findall(source_text)
+        if not numbers:
+            return 1.0
+        return sum(1 for number in numbers if number in proposed_output) / len(numbers)
+
+    def validate_assisted(
+        self,
+        source_text: str,
+        semantic_definition: str,
+        proposed_output: str,
+        *,
+        reverse_text: str,
+        deterministic_metrics: dict,
+    ) -> AssistedValidationReport:
+        """Strict independent release gate for provider-assisted semantics.
+
+        The failed original deterministic EngineResult is intentionally not used as
+        a source status. Instead the assisted meaning must independently prove a
+        canonical, reversible, meaning-preserving EL candidate.
+        """
+        for label, value in (("source_text", source_text), ("semantic_definition", semantic_definition), ("proposed_output", proposed_output), ("reverse_text", reverse_text)):
+            if not isinstance(value, str):
+                raise TypeError(label + " must be a string")
+        if not isinstance(deterministic_metrics, dict):
+            raise TypeError("deterministic_metrics must be a dict")
+
+        output_surface = CoreEngine().parse(proposed_output, el_mode=True)
+        output_vocabulary = VocabularyEngine().resolve(output_surface)
+        reasons: list[str] = []
+
+        source_signature = _lang.concept_signature_from_abc(source_text)
+        output_signature = _lang.concept_signature_from_el(proposed_output)
+        definition_signature = _lang.concept_signature_from_abc(semantic_definition)
+        reverse_signature = _lang.concept_signature_from_abc(reverse_text)
+        known_coverage = 1.0 if not source_signature else _lang.multiset_similarity(source_signature, output_signature)
+        semantic_alignment = 0.0 if not definition_signature else _lang.multiset_similarity(definition_signature, reverse_signature)
+        numbers = self._numbers_retained(source_text, proposed_output)
+        relations = self._relation_retention(source_text, proposed_output)
+        critical = self._critical_retention(source_text, proposed_output)
+        roundtrip = float(deterministic_metrics.get("roundtrip", 0.0) or 0.0)
+        coverage = float(deterministic_metrics.get("coverage", 0.0) or 0.0)
+        quality = str(deterministic_metrics.get("quality_status", "fail") or "fail")
+        unknown_count = int(deterministic_metrics.get("unknown_count", 0) or 0)
+
+        metrics = {
+            "known_source_coverage": round(known_coverage, 4),
+            "semantic_alignment": round(semantic_alignment, 4),
+            "number_integrity": round(numbers, 4),
+            "relation_integrity": round(relations, 4),
+            "critical_integrity": round(critical, 4),
+            "deterministic_coverage": round(coverage, 4),
+            "deterministic_roundtrip": round(roundtrip, 4),
+            "deterministic_quality": quality,
+            "deterministic_unknown_count": unknown_count,
+        }
+
+        if output_surface.status is ValidationStatus.FAIL:
+            reasons.append("invalid-el-surface")
+        if output_vocabulary.status is not ValidationStatus.PASS:
+            reasons.append("noncanonical-output")
+        if "❓" in proposed_output:
+            reasons.append("unknown-marker-in-assisted-output")
+        if not definition_signature:
+            reasons.append("definition-not-grounded-in-known-semantics")
+        if semantic_alignment < 0.45:
+            reasons.append("semantic-definition-mismatch")
+        if known_coverage < 0.75:
+            reasons.append("recognized-source-meaning-loss")
+        if numbers < 1.0:
+            reasons.append("number-loss")
+        if relations < 0.70:
+            reasons.append("relationship-loss")
+        if critical < 0.75:
+            reasons.append("critical-or-negation-loss")
+
+        fatal = bool(reasons)
+        strict = (
+            quality == "pass"
+            and unknown_count == 0
+            and coverage >= 0.86
+            and roundtrip >= 0.78
+            and known_coverage >= 0.90
+            and semantic_alignment >= 0.65
+            and numbers == 1.0
+            and relations >= 0.90
+            and critical >= 0.90
+            and output_surface.status is ValidationStatus.PASS
+            and output_vocabulary.status is ValidationStatus.PASS
+            and "❓" not in proposed_output
+        )
+        if fatal:
+            status = ValidationStatus.FAIL
+        elif strict:
+            status = ValidationStatus.PASS
+        else:
+            status = ValidationStatus.HOLD
+            reasons.append("strict-assisted-threshold-not-met")
+
+        return AssistedValidationReport(
+            source_text=source_text,
+            semantic_definition=semantic_definition,
+            proposed_output=proposed_output,
+            reverse_text=reverse_text,
+            output_surface=output_surface,
+            output_vocabulary=output_vocabulary,
+            status=status,
+            reasons=tuple(reasons),
+            metrics=metrics,
         )
