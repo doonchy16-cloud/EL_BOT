@@ -228,9 +228,9 @@ def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int,bool]:
             _debug_exception(exc);return _sanitize_facts(None),"model-load-failed",0,"model-load-error",0,False
     else:_lang.emit_stage(3,7,"Screenshot Vision — Vision Model Ready")
 
-    # Keep the expanded Phase-5 evidence schema inside the previously proven
-    # sensor compute budget. Capacity is a ceiling, not a request to fill it.
-    answers=[];sensor_calls=0;connector.generation_timeout=90.0
+    # Phase-5 evidence capacity is larger, while the sensor stays bounded below
+    # the 350-second host ceiling and 360-second CI screenshot boundary.
+    answers=[];sensor_calls=0;connector.generation_timeout=140.0
     _lang.emit_stage(4,7,"Screenshot Vision — Observe Visible Facts")
     try:
         sensor_calls+=1
