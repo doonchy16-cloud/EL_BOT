@@ -7,6 +7,7 @@ from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import re
 import sys
+import unicodedata
 
 
 def _load(name:str,path:Path):
@@ -19,6 +20,7 @@ def _load(name:str,path:Path):
 _ROOT=Path(__file__).resolve().parent.parent
 _lang=_load("_el_language_foundation",_ROOT/"🧠"/"🧬")
 _compounds=_load("_el_emoji_compounds",_ROOT/"📚"/"🧩")
+_canon=_load("_el_emoji_canonicalization_reverse",_ROOT/"🧷"/"🧷")
 TOTAL_STAGES=24
 STAGES=(
     "Input Integrity","Grapheme Segmentation","Canonical Membership Check","Compound Boundary Detection","Canonical Compound Resolution","Canonical Individual Resolution","Literal Unicode Suppression","Sequence Structure Detection","Relationship Detection","Semantic Role Reconstruction","Negation Reconstruction","Severity Reconstruction","Quantity Binding","Temporal Reconstruction","Direction Reconstruction","Ambiguity Mapping","Interpretation Tree Generation","Sentence-Structure Generation","Natural-Language Realization","Glossary-Output Rejection","Meaning Coverage Audit","Hallucination Audit","Round-Trip Verification","Final Ranking + Winner Selection",
@@ -29,8 +31,39 @@ _CONVERSATION={"👋":"Hello.","🙏":"Thank you.","🙆":"Yes.","🙅":"No.","�
 _CRITICAL={"🔴","❌","⚠️","📴","💥","🔄","‼️","❗","🧪","🧾","🔐","🔒","🔓","🛂","✅","🟢","⛔","❤️‍🩹","🧯","⏱️","🚦","🔗"}
 
 
+def _looks_investigable_emoji(value:str)->bool:
+    if not value:return False
+    if "\u200d" in value or "\u20e3" in value:return True
+    for char in value:
+        if char in {"\ufe0e","\ufe0f"}:continue
+        if unicodedata.category(char) in {"So","Sk","Sm"}:return True
+    return False
+
+
+def _unicode_gloss(value:str)->str:
+    names=[]
+    for char in value:
+        if char in {"\ufe0e","\ufe0f","\u200d","\u20e3"}:continue
+        name=unicodedata.name(char,"").lower()
+        if not name or name.startswith("variation selector") or name=="zero width joiner":continue
+        name=name.replace("emoji modifier fitzpatrick type-1-2","light skin tone")
+        name=name.replace("emoji modifier fitzpatrick type-3","medium-light skin tone")
+        name=name.replace("emoji modifier fitzpatrick type-4","medium skin tone")
+        name=name.replace("emoji modifier fitzpatrick type-5","medium-dark skin tone")
+        name=name.replace("emoji modifier fitzpatrick type-6","dark skin tone")
+        if name not in names:names.append(name)
+    return " + ".join(names)
+
+
+def _unicode_sentence(rows:tuple[tuple[str,str],...])->str:
+    glosses=[gloss for _unit,gloss in rows if gloss]
+    if not glosses:return ""
+    if len(glosses)==1:return "The emoji represents "+glosses[0]+"."
+    return "The emoji sequence contains "+", ".join(glosses[:-1])+", and "+glosses[-1]+"."
+
+
 class EmojiToABCEngine:
-    """Translate canonical EL to natural language with zero provider/model calls."""
+    """Translate canonical EL and investigable non-501 emoji with zero provider calls."""
     def __init__(self)->None:self.stage_names=STAGES
 
     @staticmethod
@@ -115,7 +148,6 @@ class EmojiToABCEngine:
 
     @classmethod
     def _relationship_sentence(cls,clause:str)->str|None:
-        # Specific relationship compounds are decoded before generic arrows.
         for marker,joiner in (("🚦➡️"," only after "),("🚦⬅️"," only before "),("🚦❌"," unless "),("🔗➡️"," because ")):
             if marker in clause:
                 left,right=clause.split(marker,1);a=cls._render_flow(left);b=cls._render_flow(right)
@@ -131,7 +163,6 @@ class EmojiToABCEngine:
     @classmethod
     def _event_sentence(cls,clause:str)->str|None:
         symbols=cls._symbols(clause);s=set(symbols);timer=cls._timer(clause)
-        # General failure/recovery frame. This intentionally does not require 🔴.
         if "❌" in s and s.intersection({"📡","🗃️","⚙️"}) and s.intersection({"🔄","🧪","🧾","🟢","❤️‍🩹","🧯"}):
             if "🗃️" in s and "🔌" in s:subject="database connection"
             elif "📡" in s:subject="local server" if "🏠" in s else "server"
@@ -236,10 +267,21 @@ class EmojiToABCEngine:
         if not isinstance(source,str) or not source.strip():
             c=_lang.Candidate("Unable to translate empty input.",0.0,("empty-input",),0.0,0.0);return _lang.EngineResult(1,source if isinstance(source,str) else "",(c,),tuple(stages),{"status":"hold","quality_status":"fail"})
         normalized=source.strip();stages.append(self._emit(2,emit));graphemes=_lang._core.split_graphemes(normalized);metrics["graphemes"]=len(graphemes)
-        stages.append(self._emit(3,emit));canonical=tuple(v for v in graphemes if v in _lang.MEANING_BY_SYMBOL);unknown=tuple(v for v in graphemes if any(ord(ch)>127 for ch in v) and v not in _lang.MEANING_BY_SYMBOL and not v.isspace());metrics["canonical"]=len(canonical);metrics["unknown"]=len(unknown)
+        stages.append(self._emit(3,emit));canonical=tuple(v for v in graphemes if v in _lang.MEANING_BY_SYMBOL)
+        investigable_rows=[];unknown_rows=[]
+        for value in graphemes:
+            if value in _lang.MEANING_BY_SYMBOL or value.isspace() or value in {".",",",";",":"}:continue
+            if not any(ord(ch)>127 for ch in value):continue
+            normalized_unit=_canon.EmojiCanonicalizationEngine().canonicalize_unit(value)
+            if normalized_unit.valid and _looks_investigable_emoji(normalized_unit.canonical):
+                investigable_rows.append((normalized_unit.canonical,_unicode_gloss(normalized_unit.canonical)))
+            else:unknown_rows.append(value)
+        investigable=tuple(investigable_rows);unknown=tuple(unknown_rows)
+        metrics["canonical"]=len(canonical);metrics["investigable_noncanonical"]=len(investigable);metrics["unknown"]=len(unknown)
         stages.append(self._emit(4,emit));compound=_compounds.lookup_compound(normalized);metrics["compound_boundaries"]=1 if compound else 0
         stages.append(self._emit(5,emit));compound_sentence=_lang.sentence_case(compound) if compound else ""
-        stages.append(self._emit(6,emit));metrics["resolved"]=len(canonical);stages.append(self._emit(7,emit));metrics["literal_unicode_used"]=0
+        stages.append(self._emit(6,emit));metrics["resolved"]=len(canonical)+len(investigable)
+        stages.append(self._emit(7,emit));metrics["literal_unicode_used"]=len(investigable)
         stages.append(self._emit(8,emit));clauses=self._split_clauses(normalized);metrics["clauses"]=len(clauses)
         stages.append(self._emit(9,emit));metrics["relations"]=sum(1 for marker in ("➡️","⬅️","↔️","➕","🔀","🚦","🔗") for _ in [0] if marker in normalized)
         stages.append(self._emit(10,emit));metrics["actions"]=sum(1 for s in canonical if _lang.is_action(s));metrics["entities"]=sum(1 for s in canonical if s in _lang.ENTITY_PHRASES)
@@ -248,16 +290,19 @@ class EmojiToABCEngine:
         stages.append(self._emit(13,emit));numbers=tuple(NUMBER_RE.findall(normalized));metrics["numbers"]=len(numbers)
         stages.append(self._emit(14,emit));metrics["temporal"]=sum(1 for c in clauses if "⏱️" in c or "⏳" in c or "⌛" in c)
         stages.append(self._emit(15,emit));metrics["directional"]=sum(1 for s in canonical if s in {"➡️","⬅️","↔️","↕️","🚦","🔗"})
-        stages.append(self._emit(16,emit));metrics["branches"]=1+(0 if compound_sentence else 2)
-        stages.append(self._emit(17,emit));metrics["interpretations"]=2
+        stages.append(self._emit(16,emit));metrics["branches"]=1+(0 if compound_sentence else 2)+(1 if investigable else 0)
+        stages.append(self._emit(17,emit));metrics["interpretations"]=2+(1 if investigable else 0)
         stages.append(self._emit(18,emit));structures=[]
         if compound_sentence:structures.append((compound_sentence,"authority-compound"))
         faithful=self._realize_document(normalized,concise=False);structures.extend(((faithful,"faithful-semantic"),(faithful,"relationship-preserving")))
+        unicode_sentence=_unicode_sentence(investigable)
+        if unicode_sentence:structures.append((unicode_sentence,"unicode-investigable-identity"))
         stages.append(self._emit(19,emit));realized=[(v,r) for v,r in structures if v and len(v.split())>=1]
         stages.append(self._emit(20,emit));filtered=[(v,r) for v,r in realized if not self._glossary_like(v)] or [("Unable to reconstruct a grammatical sentence from the available canonical EL concepts.","hold")]
         stages.append(self._emit(21,emit));source_signature=_lang.concept_signature_from_el(normalized);candidates=[]
         for order,(value,reason) in enumerate(filtered):
             sig=_lang.concept_signature_from_abc(value);score,coverage,order_score=_lang.score_candidate(source_signature,sig,base=max(0.0,20.0-order));critical=self._critical_retention(source_signature,value,normalized);relation=self._relation_retention(normalized,value);score+=55*critical+42*relation
+            if reason=="unicode-investigable-identity":score+=30.0
             if critical<.75:score-=90
             if relation<.75:score-=80
             candidates.append(_lang.Candidate(value,score,(reason,"meaning-coverage",f"order:{order_score:.3f}",f"critical-retention:{critical:.3f}",f"relationship:{relation:.3f}"),coverage,0.0))
@@ -279,7 +324,7 @@ class EmojiToABCEngine:
         ranked=_lang.sort_candidates(final);metrics["candidates"]=len(ranked);metrics["coverage"]=ranked[0].coverage if ranked else 0.0;metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0
         winner=ranked[0].value if ranked else "";critical=self._critical_retention(source_signature,winner,normalized) if ranked else 0.0;relation=self._relation_retention(normalized,winner) if ranked else 0.0;metrics["critical_retention"]=round(critical,4);metrics["relation_integrity"]=round(relation,4)
         if unknown or not ranked or metrics["coverage"]<.55 or critical<.72 or relation<.72:metrics["quality_status"]="fail"
-        elif metrics["coverage"]<.86 or metrics["roundtrip"]<.78 or critical<.90 or relation<.90:metrics["quality_status"]="hold"
+        elif investigable or metrics["coverage"]<.86 or metrics["roundtrip"]<.78 or critical<.90 or relation<.90:metrics["quality_status"]="hold"
         else:metrics["quality_status"]="pass"
         return _lang.EngineResult(1,normalized,ranked,tuple(stages),metrics)
 
