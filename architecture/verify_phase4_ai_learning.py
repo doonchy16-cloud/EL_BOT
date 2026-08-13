@@ -74,7 +74,6 @@ def main() -> None:
     orch = orchestration_mod.OrchestrationEngine()
     require(not orch.should_escalate("pass") and not orch.should_escalate("hold") and orch.should_escalate("fail"), "FAIL-only escalation policy broken")
 
-    # Internal provider data must never be reachable through the public EL connector invocation.
     internal_calls = {"count": 0}
     connectors = connector_mod.ConnectorEngine()
     def internal_handler(payload):
@@ -85,16 +84,17 @@ def main() -> None:
     internal_result = connectors.invoke_internal("🦙", {"source": "x"})
     require(internal_result.ok and internal_result.called and internal_calls["count"] == 1 and internal_result.payload["secret_raw"] == "provider prose", "internal connector path failed")
 
-    # Direct assisted validator: canonical/reversible candidate can pass; malformed EL cannot.
+    # Lossless fixture: provider resolves an otherwise unknown token to an exact known semantic concept.
     validator = validation_mod.ValidationEngine()
     abc_engine = abc_mod.ABCToEmojiEngine(); emoji_engine = emoji_mod.EmojiToABCEngine()
-    candidate = "📥➡️🔄➡️📤"
-    definition = "input restart output"
+    candidate = "👋"
+    definition = "hello"
+    assisted_source = "salutationoid"
     reverse = emoji_engine.translate(candidate, verifier=abc_engine, cross_verify=True, emit=False)
     forward = abc_engine.translate(reverse.winner, verifier=emoji_engine, cross_verify=True, emit=False)
-    valid_report = validator.validate_assisted("transmuter", definition, candidate, reverse_text=reverse.winner, deterministic_metrics=dict(forward.metrics))
+    valid_report = validator.validate_assisted(assisted_source, definition, candidate, reverse_text=reverse.winner, deterministic_metrics=dict(forward.metrics))
     require(valid_report.releasable, "strict assisted fixture did not pass: " + repr(valid_report.metrics) + " " + repr(valid_report.reasons))
-    invalid_report = validator.validate_assisted("transmuter", definition, "abc", reverse_text="", deterministic_metrics={"quality_status":"fail","coverage":0,"roundtrip":0,"unknown_count":1})
+    invalid_report = validator.validate_assisted(assisted_source, definition, "abc", reverse_text="", deterministic_metrics={"quality_status":"fail","coverage":0,"roundtrip":0,"unknown_count":1})
     require(not invalid_report.releasable and invalid_report.status.value == "fail", "malformed assisted candidate was releasable")
 
     class StubConnector:
@@ -109,11 +109,9 @@ def main() -> None:
         good_connector = StubConnector({"resolvable": True, "definition": definition, "candidate_el": candidate, "confidence": 0.97})
         engine = bidi_mod.TranslationEngine(learning=learning, connector=good_connector)
 
-        # PASS source: zero provider calls.
         passed = engine.ranked_to_el("hi", emit=False)
         require(passed.metrics.get("quality_status") == "pass" and good_connector.calls == 0 and engine.provider_call_count == 0, "PASS path called provider")
 
-        # Find a real deterministic HOLD and prove it also does not call provider.
         hold_source = None
         for sample in ("restart server zorb", "restart the local server zorb", "server warning zorb", "deploy package zorb"):
             probe = abc_engine.translate(sample, verifier=emoji_engine, cross_verify=True, emit=False)
@@ -124,10 +122,9 @@ def main() -> None:
         held = engine.ranked_to_el(hold_source, emit=False)
         require(held.metrics.get("quality_status") == "hold" and good_connector.calls == before, "HOLD path called provider")
 
-        # Genuine FAIL: exactly one provider call; only validated candidate is released.
-        failed = abc_engine.translate("transmuter", verifier=emoji_engine, cross_verify=True, emit=False)
+        failed = abc_engine.translate(assisted_source, verifier=emoji_engine, cross_verify=True, emit=False)
         require(failed.metrics.get("quality_status") == "fail", "FAIL fixture no longer fails deterministically")
-        assisted = engine.ranked_to_el("transmuter", emit=False)
+        assisted = engine.ranked_to_el(assisted_source, emit=False)
         require(good_connector.calls == before + 1 and engine.provider_call_count == 1, "FAIL did not trigger exactly one provider call")
         require(assisted.winner == candidate and assisted.metrics.get("quality_status") == "pass" and assisted.metrics.get("ai_assisted") is True, "validated assisted candidate not released")
         require(assisted.metrics.get("raw_provider_exposed") is False, "raw-provider exposure flag broken")
@@ -138,18 +135,17 @@ def main() -> None:
         require(len(claims) == 1 and claims[0]["maturity"] == "discovered", "single provider success advanced too far")
         require(all("definition" not in key for claim in claims for key in claim.keys()), "raw provider definition stored in claim")
 
-        # Malformed/unverifiable help is rejected, original deterministic failure remains safe.
         bad_connector = StubConnector({"resolvable": True, "definition": "flibbertigibbet", "candidate_el": "abc", "confidence": 0.99})
         bad_learning = learning_mod.LearningCoordinator(Path(folder) / "bad.json")
         bad_engine = bidi_mod.TranslationEngine(learning=bad_learning, connector=bad_connector)
         rejected = bad_engine.ranked_to_el("gobbledygook", emit=False)
         require(bad_connector.calls == 1 and rejected.metrics.get("quality_status") == "fail" and rejected.winner != "abc", "invalid provider assistance escaped")
         require(len(bad_learning.episodes) == 1 and bad_learning.episodes[0]["accepted"] is False, "rejected provider attempt was not retained")
+        require(bad_learning.episodes[0].get("evidence",{}).get("polarity") == "negative" and bad_learning.episodes[0].get("provenance",{}).get("source_kind") == "provider", "rejection lacks negative evidence/provenance")
         require("flibbertigibbet" not in json.dumps(bad_learning.episodes, ensure_ascii=False), "raw provider definition leaked into negative episode")
 
-        # Full graduation requires provider + user + experiment + counterexample + revalidation evidence.
         claim_id = claims[0]["claim_id"]
-        two = learning.record_user_selection("transmuter", candidate)
+        two = learning.record_user_selection(assisted_source, candidate)
         require(two is not None and two.maturity == "provisional", "user evidence did not move to provisional")
         three = learning.record_experiment(claim_id, passed=True, counterexample=False)
         require(three.maturity == "validated", "cross-source experiment did not validate")
@@ -159,25 +155,21 @@ def main() -> None:
         require(five.maturity == "canonical", "full graduation contract did not reach canonical")
         require(len(learning.claims[0]["evidence"]) >= 5 and len(learning.claims[0]["provenance"]) >= 5, "graduation lost evidence/provenance")
 
-        # Mature learned knowledge eliminates the next provider call.
         never_connector = StubConnector({"resolvable": False, "definition": "", "candidate_el": "", "confidence": 0.0})
         learned_engine = bidi_mod.TranslationEngine(learning=learning, connector=never_connector)
-        learned_result = learned_engine.ranked_to_el("transmuter", emit=False)
+        learned_result = learned_engine.ranked_to_el(assisted_source, emit=False)
         require(learned_result.winner == candidate and learned_result.metrics.get("learned_assisted") is True, "mature learned mapping not reused")
         require(never_connector.calls == 0 and learned_engine.provider_call_count == 0, "learned mapping failed to eliminate provider call")
 
-        # Failed revalidation can move strong knowledge backward.
         demoted = learning.record_revalidation(claim_id, status="fail", reasons=("adversarial-regression",))
         require(demoted.maturity in {"provisional", "discovered"}, "failed revalidation did not demote knowledge")
 
-        # Versioning is real and rollback creates a new version instead of deleting history.
         version_count = len(learning.versioner.versions)
         require(version_count >= 6, "learning mutations were not versioned")
         target_version = learning.versioner.versions[0].version_id
         learning.rollback(target_version)
         require(len(learning.versioner.versions) == version_count + 1, "rollback did not create reversible lineage")
 
-    # Individual Phase-4 engines: no hidden promotion authority.
     grad = graduation_mod.KnowledgeGraduationEngine()
     require(grad.process("🎓") == "✅🎓", "graduation engine status failed")
 
@@ -205,7 +197,6 @@ def main() -> None:
     merged = next(item for item in consolidation.consolidated if item.get("expression") == "🔥")
     require(set(merged["evidence_ids"]) == {"e1","e2"} and set(merged["provenance_ids"]) == {"p1","p2"}, "consolidation lost history")
 
-    # Real local provider adapter sanity. Existing CI separately proves the model is installed.
     real_adapter = provider_mod.CurrentSemanticProviderAdapter()
     require(real_adapter.available(), "current qwen provider is unavailable")
     live = real_adapter.resolve({"source": "compiler"})
