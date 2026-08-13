@@ -323,9 +323,14 @@ class EmojiToABCEngine:
             final.append(c)
         ranked=_lang.sort_candidates(final);metrics["candidates"]=len(ranked);metrics["coverage"]=ranked[0].coverage if ranked else 0.0;metrics["roundtrip"]=ranked[0].roundtrip if ranked else 0.0
         winner=ranked[0].value if ranked else "";critical=self._critical_retention(source_signature,winner,normalized) if ranked else 0.0;relation=self._relation_retention(normalized,winner) if ranked else 0.0;metrics["critical_retention"]=round(critical,4);metrics["relation_integrity"]=round(relation,4)
-        if unknown or not ranked or metrics["coverage"]<.55 or critical<.72 or relation<.72:metrics["quality_status"]="fail"
-        elif investigable or metrics["coverage"]<.86 or metrics["roundtrip"]<.78 or critical<.90 or relation<.90:metrics["quality_status"]="hold"
-        else:metrics["quality_status"]="pass"
+        if investigable and not unknown and ranked:
+            metrics["quality_status"]="hold"
+        elif unknown or not ranked or metrics["coverage"]<.55 or critical<.72 or relation<.72:
+            metrics["quality_status"]="fail"
+        elif metrics["coverage"]<.86 or metrics["roundtrip"]<.78 or critical<.90 or relation<.90:
+            metrics["quality_status"]="hold"
+        else:
+            metrics["quality_status"]="pass"
         return _lang.EngineResult(1,normalized,ranked,tuple(stages),metrics)
 
     def process(self,source:str)->str:return self.translate(source,cross_verify=False,emit=False).winner
