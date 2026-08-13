@@ -67,7 +67,7 @@ if (-not $release) {
   $body = @{
     tag_name = $tag
     target_commitish = $sha
-    name = "EL Bot v$Version — Phase 5 ($short)"
+    name = "EL Bot v$Version - Phase 5 ($short)"
     body = "Phase 5 Windows release for exact commit $sha. Includes NSIS installer, portable EXE, packaged-runtime smoke evidence, and real rendered 30 FPS visual proof."
     draft = $false
     prerelease = $false
@@ -106,4 +106,4 @@ $evidence = [ordered]@{
   verified_assets = $names
 }
 $evidence | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath 'dist\release-evidence.json' -Encoding UTF8
-Write-Output "✅📤9️⃣📦🪟 $($release.html_url)"
+Write-Output "PHASE5_RELEASE_OK $($release.html_url)"
