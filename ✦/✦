@@ -1,8 +1,9 @@
-"""Deterministic local orchestration registry for EL Bot."""
+"""Provider-neutral Forgey Orchestration policy for EL Bot."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,8 +14,39 @@ class OrchestrationSnapshot:
         return "✅✦" + str(len(self.stages)) + " " + "➡️".join(self.stages)
 
 
+@dataclass(frozen=True, slots=True)
+class AssistRequest:
+    source: str
+    deterministic_quality: str
+    deterministic_winner: str
+    deterministic_metrics: dict
+
+
+@dataclass(frozen=True, slots=True)
+class AssistDecision:
+    escalated: bool
+    provider_called: bool
+    accepted: bool
+    candidate: str
+    path: str
+    provider: str
+    model: str
+    provider_confidence: float
+    semantic_definition: str
+    validation_status: str
+    validation_metrics: dict
+    reasons: tuple[str, ...]
+
+    def render_el(self) -> str:
+        if self.accepted:
+            return "✅✦🧾"
+        if self.escalated:
+            return "🟡✦🧾"
+        return "⚪✦"
+
+
 class OrchestrationEngine:
-    """Describe the actual local engine path without claiming external Forgey state."""
+    """Own FAIL-only intelligence escalation policy without provider-specific implementation."""
 
     def __init__(self, stages: tuple[str, ...] | None = None) -> None:
         self._stages = stages or (
@@ -27,6 +59,108 @@ class OrchestrationEngine:
 
     def snapshot(self) -> OrchestrationSnapshot:
         return OrchestrationSnapshot(self._stages)
+
+    @staticmethod
+    def should_escalate(quality_status: str) -> bool:
+        """Permanent rule: PASS/HOLD never escalate; only an exact deterministic FAIL may."""
+        return str(quality_status or "").strip().lower() == "fail"
+
+    @staticmethod
+    def _status_name(report) -> str:
+        status = getattr(report, "status", None)
+        return str(getattr(status, "value", status) or "unknown").lower()
+
+    def assist(
+        self,
+        request: AssistRequest,
+        *,
+        connector,
+        provider_marker: str,
+        translate_definition: Callable[[str], object],
+        reverse_translate: Callable[[str], object],
+        validate_assisted: Callable[..., object],
+    ) -> AssistDecision:
+        if not isinstance(request, AssistRequest):
+            raise TypeError("request must be AssistRequest")
+        if not self.should_escalate(request.deterministic_quality):
+            return AssistDecision(False, False, False, "", "deterministic-no-escalation", "", "", 0.0, "", "not-run", {}, ("quality-not-fail",))
+        if not request.source.strip():
+            return AssistDecision(True, False, False, "", "invalid-source", "", "", 0.0, "", "fail", {}, ("empty-source",))
+
+        internal = connector.invoke_internal(provider_marker, {
+            "source": request.source,
+            "deterministic_quality": request.deterministic_quality,
+            "deterministic_winner": request.deterministic_winner,
+        })
+        if not internal.ok or not isinstance(internal.payload, dict):
+            return AssistDecision(True, bool(internal.called), False, "", "provider-unavailable-or-invalid", internal.provider, internal.model, 0.0, "", "fail", {}, (internal.error_code or "provider-failure",))
+
+        payload = internal.payload
+        resolvable = payload.get("resolvable") is True
+        definition = str(payload.get("definition", "")).strip()
+        proposed = str(payload.get("candidate_el", "")).strip()
+        try:
+            confidence = float(payload.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        if not resolvable or not definition:
+            return AssistDecision(True, bool(internal.called), False, "", "semantic-unresolved", internal.provider, internal.model, confidence, definition, "fail", {}, ("provider-declared-unresolved",))
+
+        reports: list[tuple[str, object, str]] = []
+
+        # Preferred path: AI resolves the meaning; EL Bot itself constructs the EL.
+        try:
+            definition_result = translate_definition(definition)
+            definition_candidate = str(getattr(definition_result, "winner", ""))
+            reverse_result = reverse_translate(definition_candidate)
+            reverse_text = str(getattr(reverse_result, "winner", ""))
+            report = validate_assisted(
+                request.source,
+                definition,
+                definition_candidate,
+                reverse_text=reverse_text,
+                deterministic_metrics=dict(getattr(definition_result, "metrics", {}) or {}),
+            )
+            reports.append(("semantic-definition", report, definition_candidate))
+            if getattr(report, "releasable", False):
+                return AssistDecision(True, bool(internal.called), True, definition_candidate, "semantic-definition", internal.provider, internal.model, confidence, definition, "pass", dict(getattr(report, "metrics", {}) or {}), tuple(getattr(report, "reasons", ()) or ()))
+        except Exception:
+            reports.append(("semantic-definition", None, ""))
+
+        # Secondary path: provider may suggest EL, but it still must survive EL Bot's
+        # canonical parsing, deterministic reverse translation, retranslation and release gate.
+        if proposed:
+            try:
+                reverse_result = reverse_translate(proposed)
+                reverse_text = str(getattr(reverse_result, "winner", ""))
+                forward_result = translate_definition(reverse_text)
+                report = validate_assisted(
+                    request.source,
+                    definition,
+                    proposed,
+                    reverse_text=reverse_text,
+                    deterministic_metrics=dict(getattr(forward_result, "metrics", {}) or {}),
+                )
+                reports.append(("provider-candidate-validated", report, proposed))
+                if getattr(report, "releasable", False):
+                    return AssistDecision(True, bool(internal.called), True, proposed, "provider-candidate-validated", internal.provider, internal.model, confidence, definition, "pass", dict(getattr(report, "metrics", {}) or {}), tuple(getattr(report, "reasons", ()) or ()))
+            except Exception:
+                reports.append(("provider-candidate-validated", None, ""))
+
+        reasons: list[str] = []
+        validation_metrics: dict = {}
+        validation_status = "fail"
+        for path, report, _candidate in reports:
+            if report is None:
+                reasons.append(path + ":exception")
+                continue
+            validation_status = self._status_name(report)
+            validation_metrics.update(dict(getattr(report, "metrics", {}) or {}))
+            report_reasons = tuple(getattr(report, "reasons", ()) or ())
+            reasons.extend(path + ":" + str(reason) for reason in report_reasons)
+        if not reasons:
+            reasons.append("no-releasable-assisted-candidate")
+        return AssistDecision(True, bool(internal.called), False, "", "assisted-rejected", internal.provider, internal.model, confidence, definition, validation_status, validation_metrics, tuple(reasons))
 
     def process(self, text: str) -> str:
         if text == "✦":
