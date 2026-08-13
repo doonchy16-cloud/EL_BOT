@@ -28,6 +28,8 @@ Source inspection is not enough. The Phase-5 proof harness must render the actua
 - idle UI, warning-state UI, and enlarged screenshot-preview stills;
 - a machine-readable proof record that includes expected frame count, FPS, cycle duration, rendered frame count, and 0°/180° rotation contract.
 
+`⚡/🖥️` is intentionally an extensionless HTML authority file. Production does not ask Chromium to interpret that extensionless path directly: the Electron host validates it and materializes the exact bytes into a runtime `.html` file before loading it. The proof harness must mirror that boundary. It must copy the exact production UI bytes to a temporary `.html`, verify the materialized bytes are identical, then render that file in Electron before injecting the same production Phase-5 CSS/behavior layer. Directly rendering a different fixture or treating the extensionless source as a webpage is not acceptable proof.
+
 Packaging status remains locked until this proof harness succeeds.
 
 ## Windows package contract
