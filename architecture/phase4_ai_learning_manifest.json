@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "phase": 4,
+  "name": "AI Fallback & Forever-Learning Loop",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "source_present_target_engines": 44,
+  "planned_only_target_engines": 0,
+  "canonical_base_vocabulary_count": 501,
+  "implemented": [
+    {"id":"N06","runtime_marker":"🎓","name":"Knowledge Graduation Engine","source_path":"🎓/🎓"},
+    {"id":"N09","runtime_marker":"🧬","name":"Generalization Engine","source_path":"🧬/🧬"},
+    {"id":"N11","runtime_marker":"♻️","name":"Revalidation Engine","source_path":"♻️/♻️"},
+    {"id":"N12","runtime_marker":"📈","name":"Learning Analytics Engine","source_path":"📈/📈"},
+    {"id":"N20","runtime_marker":"🧺","name":"Knowledge Consolidation Engine","source_path":"🧺/🧺"}
+  ],
+  "locked": {
+    "deterministic_first_permanent": true,
+    "ai_escalation_only_on_fail": true,
+    "hold_does_not_escalate": true,
+    "forgey_orchestration_owns_escalation": true,
+    "abc_engine_direct_provider_dependency_forbidden": true,
+    "provider_connector_boundary_required": true,
+    "temporary_provider": "ollama:qwen2.5vl:7b",
+    "future_provider": "forgey",
+    "raw_ai_release_forbidden": true,
+    "ai_derived_release_requires_deterministic_validation": true,
+    "failed_ai_becomes_negative_evidence": true,
+    "passed_ai_becomes_positive_evidence_not_automatic_truth": true,
+    "single_ai_guess_cannot_be_canonical": true,
+    "learning_requires_provenance": true,
+    "knowledge_is_reversible": true,
+    "base_501_remains_unchanged": true
+  },
+  "phase5": {
+    "name": "Visual Polish & Windows Packaging",
+    "authorized": false
+  }
+}
