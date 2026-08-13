@@ -2,7 +2,7 @@
   "schema_version": 1,
   "phase": 5,
   "name": "Visual Polish & Windows Packaging",
-  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "status": "PASS",
   "phase4_required_status": "PASS",
   "source_present_target_engines": 44,
   "canonical_base_vocabulary_count": 501,
@@ -28,8 +28,15 @@
     "exact_final_sha_ci_success_required": true
   },
   "visual_proof": {
-    "status": "PENDING",
-    "artifact_name": "phase5-visual-proof",
+    "status": "PASS",
+    "fps": 30,
+    "rendered_frames": 168,
+    "cycle_seconds": 5.6,
+    "rotation": "0-180-0",
+    "sand_pause_resume_verified": true,
+    "warning_state_verified": true,
+    "preview_zoom_verified": true,
+    "delivery": "github-release",
     "required_files": [
       "hourglass-30fps.mp4",
       "hourglass-contact-sheet.png",
@@ -40,10 +47,19 @@
     ]
   },
   "packaging": {
-    "status": "LOCKED_UNTIL_VISUAL_PROOF",
+    "status": "PASS",
     "product_name": "EL Bot",
     "app_id": "com.thespark.elbot",
     "targets": ["nsis-x64", "portable-x64"],
-    "artifact_name": "phase5-windows-package"
+    "embedded_python": "3.12.10",
+    "packaged_runtime_smoke": "PASS",
+    "delivery": "github-release"
+  },
+  "evidence": {
+    "authority_lock_basis_sha": "5faa4a93eb8f5a9e126544a130e0ada1f3750edf",
+    "authority_lock_basis_run": 218,
+    "authority_lock_basis_release_tag": "el-bot-v0.5.0-5faa4a93eb8f",
+    "exact_final_sha_ci_required": true,
+    "release_assets_include_sha256_manifest": true
   }
 }
