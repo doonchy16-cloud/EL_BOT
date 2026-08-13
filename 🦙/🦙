@@ -97,14 +97,16 @@ class OllamaConnector:
         payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":keep_alive,"options":{"temperature":0,"num_ctx":num_ctx,"num_predict":num_predict}}
         return self._chat_content(self._request_json("/api/chat",payload,timeout=self.generation_timeout))
 
-    def chat_json_internal(self,prompt:str,images:Iterable[str]=(),*,schema:dict|None=None,num_predict:int=768)->str:
-        """Optional structured provider mode; screenshot runtime need not depend on it."""
+    def chat_json_internal(self,prompt:str,images:Iterable[str]=(),*,schema:dict|None=None,num_predict:int=768,num_ctx:int=4096,keep_alive:str="30m")->str:
+        """Structured internal provider mode for validated sensors/resolvers."""
         if not isinstance(prompt,str) or not prompt.strip():raise ValueError("prompt must be a non-empty string")
         if not isinstance(num_predict,int) or num_predict<64 or num_predict>1536:raise ValueError("num_predict out of range")
+        if not isinstance(num_ctx,int) or num_ctx<1024 or num_ctx>16384:raise ValueError("num_ctx out of range")
+        if not isinstance(keep_alive,str) or not keep_alive:raise ValueError("keep_alive must be a non-empty string")
         if schema is not None and not isinstance(schema,dict):raise ValueError("schema must be a JSON schema object")
         image_list=self._validate_images(images);message={"role":"user","content":prompt}
         if image_list:message["images"]=list(image_list)
-        payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":"30m","format":schema if schema is not None else "json","options":{"temperature":0,"num_ctx":4096,"num_predict":num_predict}}
+        payload={"model":self.model,"messages":[message],"stream":False,"keep_alive":keep_alive,"format":schema if schema is not None else "json","options":{"temperature":0,"num_ctx":num_ctx,"num_predict":num_predict}}
         return self._chat_content(self._request_json("/api/chat",payload,timeout=self.generation_timeout))
 
     def process(self,text:str)->str:
