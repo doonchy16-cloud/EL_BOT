@@ -1,0 +1,238 @@
+"""Provider-free Phase-3 semantic bridge for ABC -> Emoji.
+
+This is translation integration code, not an additional engine. It coordinates the
+approved Phase-3 engines while keeping the ABC engine itself provider-free.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import re
+import sys
+import unicodedata
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_lang = _load("_el_language_foundation", _ROOT / "🧠" / "🧬")
+_decomp = _load("_el_phase3_decomp_bridge", _ROOT / "🧩" / "🧩")
+_grammar = _load("_el_phase3_grammar_bridge", _ROOT / "🧱" / "🧱")
+_search = _load("_el_phase3_search_bridge", _ROOT / "🔍" / "🔍")
+_competition = _load("_el_phase3_competition_bridge", _ROOT / "🏆" / "🏆")
+_WORD = re.compile(r"[a-z0-9]+", re.I)
+_HOLD_SUFFIX = "➡️🟡➡️❓"
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3BridgeResult:
+    candidates: tuple[tuple[str, str], ...]
+    expected_signature: tuple[str, ...]
+    effective_unknown_count: int
+    effective_unknown_density: float
+    effective_unresolved_clauses: int
+    metrics: dict[str, object]
+
+
+def _stem(word: str) -> str:
+    value = word.lower().strip()
+    if len(value) > 4 and value.endswith("ies"):
+        return value[:-3] + "y"
+    if len(value) > 4 and value.endswith("ing"):
+        return value[:-3]
+    if len(value) > 3 and value.endswith("ed"):
+        return value[:-2]
+    if len(value) > 3 and value.endswith("s") and not value.endswith("ss"):
+        return value[:-1]
+    return value
+
+
+def _words(text: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(_stem(match.group(0)) for match in _WORD.finditer(str(text)) if match.group(0)))
+
+
+class Phase3SemanticBridge:
+    """Coordinate deterministic semantic rescue and full depth-1 universe search."""
+
+    def __init__(self) -> None:
+        self.decomposition = _decomp.ConceptDecompositionEngine()
+        self.grammar = _grammar.ELGrammarCompositionEngine()
+        self.search = _search.CompleteCandidateSearchEngine()
+        self.competition = _competition.CandidateCompetitionEngine()
+        self._search_cache: dict[tuple[str, tuple[str, ...]], tuple[object, dict[str, object]]] = {}
+
+    @staticmethod
+    def _semantic_labels(candidate: str) -> tuple[str, ...]:
+        labels: list[str] = []
+        for grapheme in _lang._core.split_graphemes(candidate):
+            meaning = _lang.MEANING_BY_SYMBOL.get(grapheme)
+            if meaning:
+                labels.extend(_words(meaning))
+            for char in grapheme:
+                name = unicodedata.name(char, "").lower()
+                if not name or "variation selector" in name or "zero width joiner" in name:
+                    continue
+                labels.extend(_words(name.replace("emoji modifier", "skin tone")))
+        return tuple(dict.fromkeys(labels))
+
+    @staticmethod
+    def _is_canonical(candidate: str) -> bool:
+        meaningful = [g for g in _lang._core.split_graphemes(candidate) if not g.isspace()]
+        return bool(meaningful) and all(g in _lang.MEANING_BY_SYMBOL for g in meaningful)
+
+    def _search_decomposition(self, decomposition):
+        semantic_terms = tuple(dict.fromkeys((_stem(decomposition.normalized),) + tuple(_stem(term) for term in self.decomposition.semantic_terms(decomposition))))
+        key = (decomposition.sense_id, semantic_terms)
+        cached = self._search_cache.get(key)
+        if cached is not None:
+            return cached
+
+        target = frozenset(term for term in semantic_terms if term)
+        frontier = self.search.frontiers.define(min_length=1, max_length=1, frontier_id="full-universe-depth1:" + decomposition.sense_id)
+
+        def evaluator(candidate: str, index: int):
+            labels = self._semantic_labels(candidate)
+            label_set = frozenset(labels)
+            overlap = target.intersection(label_set)
+            exact = _stem(decomposition.normalized) in label_set
+            score = float(len(overlap) * 22 + (55 if exact else 0))
+            if decomposition.sense_id in {"conversion-tool", "transform-action"} and label_set.intersection({"arrow", "change", "convert", "repeat", "counterclockwise", "clockwise"}):
+                score += 18.0
+            if decomposition.sense_id == "chatgpt-assistant" and label_set.intersection({"robot", "speech", "balloon", "brain", "computer"}):
+                score += 18.0
+            if decomposition.sense_id == "language-word" and label_set.intersection({"letter", "input", "latin", "text", "memo"}):
+                score += 18.0
+            valid = score > 0.0
+            return {
+                "score": score,
+                "valid": valid,
+                "reasons": ("semantic-overlap:" + str(len(overlap)), "exact-label" if exact else "semantic-label"),
+                "labels": labels,
+                "canonical": self._is_canonical(candidate),
+            }
+
+        result, _updated, proof = self.search.search_to_exhaustion(frontier, evaluator)
+        competition = self.competition.compete(result.evaluations, canonical_preference=0.0, limit=8)
+        metrics = {
+            "frontier_id": result.frontier_id,
+            "frontier_total": result.total_candidates,
+            "evaluated": result.evaluated_count,
+            "exhausted": proof.exhausted,
+            "survivors": len(result.survivors),
+            "top_candidate": competition.winner.candidate if competition.winner else "",
+            "top_score": competition.winner.score if competition.winner else 0.0,
+            "top_canonical": competition.winner.canonical if competition.winner else False,
+        }
+        value = (competition, metrics)
+        self._search_cache[key] = value
+        return value
+
+    @staticmethod
+    def _strip_hold_suffix(value: str) -> str:
+        if value.endswith(_HOLD_SUFFIX):
+            return value[: -len(_HOLD_SUFFIX)].rstrip("➡️")
+        if value == "🟡❓":
+            return ""
+        return value
+
+    def resolve_document(self, document, normalized: str, *, render_clause) -> Phase3BridgeResult:
+        all_candidates: list[tuple[str, str]] = []
+        expected: list[str] = []
+        clause_values: list[str] = []
+        original_unknown = sum(len(clause.unknown_words) for clause in document.clauses)
+        resolved_unknown = 0
+        unresolved_clauses = 0
+        search_evaluated = 0
+        search_frontier_total = 0
+        search_runs = 0
+        search_exhausted = True
+        universe_top: list[str] = []
+        resolved_senses: list[str] = []
+
+        for clause in document.clauses:
+            resolved_rows = []
+            unresolved_words = []
+            seen_terms: set[str] = set()
+            for word in clause.unknown_words:
+                normalized_word = str(word).lower()
+                if normalized_word in seen_terms:
+                    continue
+                seen_terms.add(normalized_word)
+                decomposition = self.decomposition.decompose(word, clause.source)
+                if not decomposition.resolved:
+                    unresolved_words.append(word)
+                    continue
+                resolved_rows.append(decomposition)
+                resolved_unknown += 1
+                resolved_senses.append(decomposition.sense_id)
+                primary = self.grammar.compose_primary(decomposition)
+                if primary is not None and primary.canonical:
+                    expected.extend(_lang.concept_signature_from_el(primary.expression))
+                    all_candidates.append((primary.expression, "phase3-grammar:" + decomposition.sense_id))
+
+                competition, search_metrics = self._search_decomposition(decomposition)
+                search_runs += 1
+                search_evaluated += int(search_metrics["evaluated"])
+                search_frontier_total += int(search_metrics["frontier_total"])
+                search_exhausted = search_exhausted and bool(search_metrics["exhausted"])
+                winner = competition.winner
+                if winner is not None:
+                    universe_top.append(winner.candidate)
+                    if winner.canonical and winner.score >= 20.0:
+                        all_candidates.append((winner.candidate, "phase3-full-universe-depth1:" + decomposition.sense_id))
+
+            legacy = render_clause(clause, compact=False)
+            if resolved_rows and not unresolved_words:
+                legacy = self._strip_hold_suffix(legacy)
+            chunks = []
+            for decomposition in resolved_rows:
+                primary = self.grammar.compose_primary(decomposition)
+                if primary is not None and primary.canonical:
+                    chunks.append(primary.expression)
+            chunks = list(dict.fromkeys(chunks))
+            if chunks:
+                if legacy:
+                    clause_value = legacy + "➡️" + "➡️".join(chunks)
+                else:
+                    clause_value = "➡️".join(chunks)
+            else:
+                clause_value = legacy or "🟡❓"
+            clause_values.append(clause_value)
+            if not clause.concepts and unresolved_words and not resolved_rows:
+                unresolved_clauses += 1
+
+        if clause_values:
+            document_candidate = ". ".join(clause_values)
+            if _lang.valid_el(document_candidate):
+                all_candidates.append((document_candidate, "phase3-document-composition"))
+
+        # Preserve insertion order while removing duplicate candidate/reason pairs.
+        candidates = tuple(dict.fromkeys(all_candidates))
+        effective_unknown = max(0, original_unknown - resolved_unknown)
+        word_count = max(1, _lang.content_word_count(normalized))
+        effective_density = effective_unknown / word_count
+        metrics = {
+            "phase3_resolved_unknowns": resolved_unknown,
+            "phase3_remaining_unknowns": effective_unknown,
+            "phase3_resolved_senses": tuple(dict.fromkeys(resolved_senses)),
+            "phase3_search_runs": search_runs,
+            "phase3_search_evaluated": search_evaluated,
+            "phase3_search_frontier_total": search_frontier_total,
+            "phase3_search_exhausted": search_exhausted if search_runs else True,
+            "phase3_universe_top": tuple(universe_top),
+            "phase3_candidates": len(candidates),
+        }
+        return Phase3BridgeResult(candidates, tuple(expected), effective_unknown, effective_density, unresolved_clauses, metrics)
