@@ -1,0 +1,83 @@
+"""N11: deterministic retesting of learned knowledge without silent mutation."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+_ALLOWED = frozenset({"pass", "hold", "fail"})
+
+
+@dataclass(frozen=True, slots=True)
+class RevalidationOutcome:
+    claim_id: str
+    status: str
+    previous_maturity: str
+    recommended_maturity: str
+    reasons: tuple[str, ...]
+
+    def render_el(self) -> str:
+        marker = "✅" if self.status == "pass" else "🟡" if self.status == "hold" else "❌"
+        return marker + "♻️"
+
+
+@dataclass(frozen=True, slots=True)
+class RevalidationReport:
+    outcomes: tuple[RevalidationOutcome, ...]
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.outcomes) and all(item.status == "pass" for item in self.outcomes)
+
+    def render_el(self) -> str:
+        passed = sum(1 for item in self.outcomes if item.status == "pass")
+        return ("✅" if passed == len(self.outcomes) else "🟡") + "♻️" + str(passed) + "/" + str(len(self.outcomes))
+
+
+class RevalidationEngine:
+    """Retest claims and issue recommendations; the caller owns any actual knowledge write."""
+
+    @staticmethod
+    def _recommend(previous: str, status: str) -> str:
+        previous = previous if previous in {"unknown", "discovered", "provisional", "validated", "canonical"} else "discovered"
+        if status == "pass":
+            return previous
+        if status == "hold":
+            return "provisional" if previous in {"validated", "canonical"} else previous
+        return "discovered" if previous != "unknown" else "unknown"
+
+    def revalidate(self, claims: tuple[dict, ...] | list[dict], validator: Callable[[dict], object]) -> RevalidationReport:
+        if not isinstance(claims, (tuple, list)):
+            raise TypeError("claims must be a sequence")
+        if not callable(validator):
+            raise TypeError("validator must be callable")
+        outcomes: list[RevalidationOutcome] = []
+        for claim in claims:
+            if not isinstance(claim, dict):
+                raise TypeError("each claim must be a dict")
+            claim_id = str(claim.get("claim_id", "")).strip()
+            if not claim_id:
+                raise ValueError("claim_id is required")
+            previous = str(claim.get("maturity", "discovered")).strip().lower() or "discovered"
+            try:
+                raw = validator(claim)
+            except Exception:
+                status = "fail"; reasons = ("validator-exception",)
+            else:
+                if isinstance(raw, bool):
+                    status = "pass" if raw else "fail"; reasons = ("boolean-validator",)
+                elif isinstance(raw, str):
+                    status = raw.strip().lower(); reasons = ("status-validator",)
+                elif isinstance(raw, dict):
+                    status = str(raw.get("status", "fail")).strip().lower(); reasons = tuple(str(item) for item in raw.get("reasons", ()) if str(item))
+                else:
+                    status = str(getattr(raw, "status", "fail")).strip().lower(); reasons = tuple(str(item) for item in getattr(raw, "reasons", ()) if str(item))
+                if status not in _ALLOWED:
+                    status = "fail"; reasons = reasons + ("invalid-validator-status",)
+            outcomes.append(RevalidationOutcome(claim_id, status, previous, self._recommend(previous, status), reasons))
+        return RevalidationReport(tuple(outcomes))
+
+    def process(self, text: str) -> str:
+        return "✅♻️" if text == "♻️" else "🟡♻️❓"
+
+    def render_el_status(self) -> str:
+        return "✅♻️"
