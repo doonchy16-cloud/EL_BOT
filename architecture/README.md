@@ -2,88 +2,87 @@
 
 ## Current Phase
 
-**Phase 4 — ✦🦙🧑‍🏫 AI Fallback & Forever-Learning Loop: ✅ COMPLETE**
+**Phase 5 — 🎞️📸🪟 Visual Polish & Windows Packaging: 🟡 IMPLEMENTATION IN PROGRESS**
 
-Phases 1, 2, 3, and 4 are implemented and CI-gated. The reconciled 44-engine target is now **44 / 44 source-present**. Phase 5 remains unauthorized.
+Phases 1, 2, 3, and 4 remain implemented and CI-gated. The reconciled target remains **44 / 44 source-present engines**. Phase 5 was explicitly authorized and may change the rendered processing presentation, screenshot evidence capacity, and Windows distribution boundary, but it may not weaken the Phase-1–4 semantic/learning authority.
 
 Read in this order:
 
 1. `../PLANNING_EL_FOREVER_EXPANDING_LANGUAGE_ARCHITECTURE_2026-08-12.md` — Owner-locked product direction and 20-engine expansion planning.
-2. `PHASE_1_44_ENGINE_CONTRACTS.md` — reconciled 44-engine target architecture and dependency boundaries.
-3. `phase1_44_engine_registry.json` — immutable Phase-1 target registry snapshot.
-4. `verify_phase1_architecture.py` — Phase-1 architecture gate.
-5. `PHASE_2_KNOWLEDGE_FOUNDATION.md` — completed Phase-2 knowledge foundation.
-6. `phase2_knowledge_foundation_manifest.json` — Phase-2 PASS manifest.
-7. `verify_phase2_knowledge_foundation.py` — Phase-2 gate.
-8. `PHASE_3_SEMANTIC_SEARCH_AND_TRANSLATION_INTELLIGENCE.md` — completed Phase-3 semantic/search layer.
-9. `phase3_semantic_search_manifest.json` — Phase-3 PASS manifest.
-10. `verify_phase3_semantic_search.py` — Phase-3 gate.
-11. `PHASE_4_AI_FALLBACK_AND_FOREVER_LEARNING.md` — completed Phase-4 FAIL-only fallback and learning contract.
-12. `phase4_ai_learning_manifest.json` — Phase-4 PASS manifest.
-13. `verify_phase4_ai_learning.py` — Phase-4 fallback/learning gate.
+2. `PHASE_1_44_ENGINE_CONTRACTS.md` + `phase1_44_engine_registry.json` + `verify_phase1_architecture.py`.
+3. `PHASE_2_KNOWLEDGE_FOUNDATION.md` + `phase2_knowledge_foundation_manifest.json` + `verify_phase2_knowledge_foundation.py`.
+4. `PHASE_3_SEMANTIC_SEARCH_AND_TRANSLATION_INTELLIGENCE.md` + `phase3_semantic_search_manifest.json` + `verify_phase3_semantic_search.py`.
+5. `PHASE_4_AI_FALLBACK_AND_FOREVER_LEARNING.md` + `phase4_ai_learning_manifest.json` + `verify_phase4_ai_learning.py`.
+6. `PHASE_5_VISUAL_POLISH_AND_WINDOWS_PACKAGING.md` + `phase5_visual_packaging_manifest.json` + `verify_phase5_visual_packaging.py`.
 
-## Source-present target architecture
+## Engine and language authority
 
-Source-present target count: **44 / 44**.
-Remaining planned-only target count: **0 / 44**.
+Source-present target count remains **44 / 44**. Planned-only target count remains **0 / 44**. The static canonical base remains **📚501**. The broader 🌐 inventory and learned overlay do not silently rewrite that base.
 
-Phase-4 additions complete the target:
-
-- 🎓 Knowledge Graduation;
-- 🧬 Generalization;
-- ♻️ Revalidation;
-- 📈 Learning Analytics;
-- 🧺 Knowledge Consolidation.
-
-Phase-4 integration code also includes:
-
-- `🔌/🧠` — temporary semantic-provider adapter behind the connector boundary;
-- `🧑‍🏫/🧠` — persistent/versioned learning coordinator.
-
-## Runtime authority
-
-ABC → Emoji is permanently deterministic-first:
+ABC → Emoji remains permanently deterministic-first:
 
 ```text
 PASS → release, no provider
-HOLD → hold, no provider
+HOLD → preserve HOLD, no provider
 FAIL → validated/canonical learned mapping lookup
        → if none: ✦ → 🔌 → temporary 🦙 qwen2.5vl:7b semantic resolver
        → deterministic EL construction + 🧾 validation + reverse verification
        → release only on assisted PASS
 ```
 
-`🔤➡️😀` does not import a provider. `✦` owns escalation policy but no provider implementation. `🔌/🧠` is the current temporary-provider adapter. Raw provider prose is never released as EL.
+Phase 5 does not move Ollama into `🔤➡️😀`, does not make Qwen a translator, and does not change 🎓 graduation authority.
 
-Validated/canonical learned mappings are revalidated before reuse and can eliminate later provider calls.
+## Phase-5 visual authority
 
-## Learning authority
+The production Electron host loads the base `⚡/🖥️` interface and then the Phase-5 visual layer:
 
-Learning is evidence-backed and reversible:
+- `⚡/✨` — authoritative processing/hourglass/warning/preview CSS;
+- `⚡/🎞️` — warning-state and screenshot-preview interaction behavior.
 
-- accepted provider assistance → positive evidence/provenance;
-- rejected assistance → negative evidence/provenance episode;
-- user selection, experiments, counterexample testing, and revalidation provide independent evidence;
-- 🎓 alone controls maturity;
-- one provider success cannot become canonical;
-- 🧿 can block/demote;
-- 🗃️ versions every mutation and rollback;
-- 🧬 produces hypotheses only;
-- 🧺 preserves evidence/provenance while merging compatible duplicates;
-- 📈 measures deterministic success, provider use, acceptance, and learned avoidance.
+Locked visual requirements:
 
-The static **📚501** canonical base remains unchanged. The broader 🌐 inventory and learned overlay do not silently rewrite it.
+- hourglass is **0° ↔ 180° only**; 360° is forbidden;
+- sand visibly drains/fills;
+- stream stops before the flip, remains off through the turn/settle window, and resumes afterward;
+- stage timer remains per-stage while total timer persists;
+- slow-stage warning changes the rendered overlay, not only one glyph;
+- screenshot preview can be enlarged and remains source evidence;
+- screenshot vision may preserve more visible facts, while Ollama remains a vision sensor only.
+
+No source-only inspection is sufficient for visual PASS. `scripts/phase5-visual-proof.js` must render the production UI in Electron and sample one full 5.6-second hourglass cycle at exactly **30 positions per second / 168 rendered frames**, then generate MP4, contact-sheet, warning, idle, zoom, and machine-readable proof artifacts.
+
+## Phase-5 Windows packaging authority
+
+Phase 5 targets:
+
+- x64 **NSIS installer**;
+- x64 **portable executable**.
+
+The package embeds Python 3.12 so deterministic EL Bot does not depend on a separately installed Python interpreter or the source checkout. Ollama and `qwen2.5vl:7b` remain external temporary providers and are intentionally not bundled.
+
+The packaged `win-unpacked/EL-Bot.exe` must pass a real launch smoke test proving:
+
+- Electron considers the app packaged;
+- the real interface rendered;
+- the Phase-5 polish layer loaded;
+- bundled `python/python.exe` was selected;
+- that bundled Python executes successfully.
+
+`▶️.cmd` remains supported for source/development use and is pinned to the same Electron major/minor used by the package when a local install is not present.
 
 ## CI enforcement
 
-`.github/workflows/🧪.yml` runs the release smoke gate `🧪/🚀`, which executes Phase 1 through Phase 4 verifiers. The normal Diagnostics Engine owns **44 / 44 functional checks**.
+`.github/workflows/🧪.yml` remains the single Windows release workflow. Phase 5 extends it rather than creating an optional side gate. The required order is:
 
-Existing Phase-3 search truthfulness remains enforced: the 3-unit length-1..2 frontier evaluates 12/12 coordinates, and the loaded 🌐 depth-1 inventory evaluates 3,525/3,525 units without pretending deeper combinatorial spaces were already exhausted.
+1. existing deterministic/regression checks;
+2. real local Qwen screenshot boundary check;
+3. Diagnostics **44 / 44**;
+4. Phase 1–5 `🧪/🚀` authority gates;
+5. install pinned Electron build dependencies;
+6. real rendered **30-FPS** visual proof + artifact upload;
+7. embedded Python materialization;
+8. NSIS + portable Windows build;
+9. packaged executable launch smoke;
+10. Windows package artifact upload.
 
-The real Windows runner also verifies the temporary local Qwen provider. Its semantic text fallback is currently slow, so only that adapter has a bounded **300-second** timeout below the Electron host's existing **350-second** process ceiling.
-
-## Next phase
-
-**Phase 5 — Visual Polish & Windows Packaging**.
-
-Phase 5 remains **NOT AUTHORIZED**. Hourglass visual polish and Windows packaging are still locked.
+Phase 5 remains **HOLD / IN PROGRESS** until the visual artifact has been inspected, packaging evidence succeeds, authority is updated to PASS, and a new exact-final-`main` SHA succeeds in CI.
