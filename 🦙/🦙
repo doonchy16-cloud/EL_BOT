@@ -117,4 +117,4 @@ class OllamaConnector:
         if text in {"🦙","🦙🔍"}:return self.probe().render_el()
         return "🟡🦙❓"
     def render_el_status(self)->str:
-        return "⚪🦙" if self._last_evidence is None else self._last_evidence.render_el_status()
+        return "⚪🦙" if self._last_evidence is None else self._last_evidence.render_el()
