@@ -38,6 +38,7 @@ _versioning = _load("_el_learning_versioning", _ROOT / "🗃️" / "🗃️")
 _analytics = _load("_el_learning_analytics", _ROOT / "📈" / "📈")
 _generalization = _load("_el_learning_generalization", _ROOT / "🧬" / "🧬")
 _consolidation = _load("_el_learning_consolidation", _ROOT / "🧺" / "🧺")
+_MATURITY = ("unknown", "discovered", "provisional", "validated", "canonical")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +114,7 @@ class LearningCoordinator:
         status = str(quality_status or "fail").lower()
         self.analytics.record("deterministic_attempt")
         self.analytics.record("deterministic_" + status if status in {"pass", "hold", "fail"} else "deterministic_fail")
+        self._persist()
 
     def _build_confidence(self, claim: dict):
         engine = _evidence.EvidenceConfidenceEngine()
@@ -152,6 +154,43 @@ class LearningCoordinator:
         claim["provenance_ids"] = list(dict.fromkeys(list(claim.get("provenance_ids", [])) + [provenance_id]))
         claim["evidence_ids"] = list(dict.fromkeys(list(claim.get("evidence_ids", [])) + [evidence_id]))
 
+    def _negative_episode(self, *, source: str, provider: str, model: str, validation_status: str, reasons: tuple[str, ...]) -> dict:
+        episode_id = self._next_id("x:")
+        provenance_id = self._next_id("p:")
+        evidence_id = self._next_id("e:")
+        provenance_engine = _provenance.ProvenanceLedgerEngine()
+        provenance = provenance_engine.append(
+            record_id=provenance_id,
+            claim_id=episode_id,
+            source_kind="provider",
+            source_ref="phase4-rejected-assist",
+            provider=provider or "unknown-provider",
+            model=model or "unknown-model",
+            validation_status=validation_status if validation_status in {"pass","hold","fail","unknown"} else "fail",
+            evidence_ids=(evidence_id,),
+        )
+        evidence_engine = _evidence.EvidenceConfidenceEngine()
+        evidence = evidence_engine.record(
+            evidence_id=evidence_id,
+            claim_id=episode_id,
+            polarity="negative",
+            weight=0.95,
+            source="provider",
+            reason=";".join(str(item) for item in reasons if str(item)) or "assisted-candidate-rejected",
+            provenance_id=provenance_id,
+        )
+        return {
+            "episode_id": episode_id,
+            "source": self._normalize_source(source),
+            "accepted": False,
+            "provider": provider,
+            "model": model,
+            "validation_status": validation_status,
+            "reason_codes": list(dict.fromkeys(str(item) for item in reasons if str(item))),
+            "provenance": asdict(provenance),
+            "evidence": asdict(evidence),
+        }
+
     def _reevaluate(self, claim: dict) -> dict:
         confidence = self._build_confidence(claim)
         provenance_engine = self._build_provenance(claim)
@@ -171,24 +210,22 @@ class LearningCoordinator:
         claim["confidence"] = confidence.confidence
         claim["integrity_status"] = integrity.status
         claim["maturity"] = decision.target
-        if decision.target != previous:
-            if _graduation._MATURITY.index(decision.target) > _graduation._MATURITY.index(previous if previous in _graduation._MATURITY else "unknown"):
-                self.analytics.record("promotion")
-                if decision.target == "canonical": self.analytics.record("canonicalized")
-            else:
-                self.analytics.record("demotion")
+        previous_index = _MATURITY.index(previous) if previous in _MATURITY else 0
+        target_index = _MATURITY.index(decision.target)
+        if target_index > previous_index:
+            self.analytics.record("promotion")
+            if decision.target == "canonical":
+                self.analytics.record("canonicalized")
+        elif target_index < previous_index:
+            self.analytics.record("demotion")
         return claim
 
     def record_provider_decision(self, *, source: str, candidate: str, accepted: bool, provider: str, model: str, validation_status: str, reasons: tuple[str, ...] = (), provider_called: bool = True) -> LearnedMapping | None:
         if provider_called:
             self.analytics.record("ai_attempt")
-        self.analytics.record("ai_accept" if accepted else "ai_reject")
+            self.analytics.record("ai_accept" if accepted else "ai_reject")
         if not accepted or not candidate:
-            episode = {
-                "episode_id": self._next_id("x:"), "source": self._normalize_source(source), "accepted": False,
-                "provider": provider, "model": model, "validation_status": validation_status,
-                "reason_codes": list(dict.fromkeys(str(item) for item in reasons if str(item))),
-            }
+            episode = self._negative_episode(source=source, provider=provider, model=model, validation_status=validation_status, reasons=reasons)
             self._state["episodes"].append(episode)
             self._version(episode["episode_id"], label="provider-rejection")
             self._persist()
