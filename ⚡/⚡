@@ -223,10 +223,42 @@ async function createWindow() {
   return win;
 }
 
+async function writePackageSmoke(win, target) {
+  const rendered = await verifyRenderedView(win);
+  const polished = Boolean(await win.webContents.executeJavaScript(`(() => {
+    const preview = document.getElementById('preview');
+    const meta = document.getElementById('stageMeta');
+    return preview && preview.getAttribute('aria-label') === 'Enlarge screenshot preview' && meta && getComputedStyle(meta).fontFamily.toLowerCase().includes('mono');
+  })()`, true));
+  const python = pythonCandidate();
+  const bundledPath = path.resolve(path.join(ROOT, 'python', 'python.exe'));
+  const selectedPath = python ? path.resolve(python.command) : '';
+  const bundledPython = Boolean(python && selectedPath.toLowerCase() === bundledPath.toLowerCase());
+  let pythonExec = false;
+  if (python) {
+    try { pythonExec = spawnSync(python.command, [...python.prefix, '-c', 'import sys; assert sys.version_info[:2] == (3, 12)'], { cwd: ROOT, windowsHide: true, stdio: 'ignore', timeout: 10000 }).status === 0; }
+    catch (_) { pythonExec = false; }
+  }
+  const evidence = { schema_version:1, app_is_packaged:app.isPackaged, rendered, polished, bundled_python:bundledPython, python_exec:pythonExec, python_path:selectedPath, root:ROOT };
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify(evidence, null, 2));
+  if (!app.isPackaged || !rendered || !polished || !bundledPython || !pythonExec) throw new Error('packaged runtime smoke failed: '+JSON.stringify(evidence));
+}
+
 ipcMain.handle('😀➡️🤖', async (_event, source) => runPython(BOT, source, 30000));
 ipcMain.handle('↔️', async (event, mode, source) => runTranslation(event, mode, source));
 ipcMain.handle('🏆', async (_event, mode, source, value) => recordSelection(mode, source, value));
 ipcMain.handle('📸➡️🦙', async (event, mode, imageDataUrl) => runVision(event, mode, imageDataUrl));
 
-app.whenReady().then(async()=>{await createWindow();app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)void createWindow();});}).catch(()=>{app.quit();});
+app.whenReady().then(async()=>{
+  const win = await createWindow();
+  const smokeFile = String(process.env.EL_PACKAGE_SMOKE_FILE || '').trim();
+  if (smokeFile) {
+    await writePackageSmoke(win, smokeFile);
+    if (!win.isDestroyed()) win.destroy();
+    app.quit();
+    return;
+  }
+  app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)void createWindow();});
+}).catch((error)=>{console.error(error && error.stack ? error.stack : error);app.exit(1);});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
