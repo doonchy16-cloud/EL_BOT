@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 5 visual-polish and Windows-packaging authority gate."""
+"""Phase 5 visual-polish and Windows-packaging final authority gate."""
 from __future__ import annotations
 
 import json
@@ -17,17 +17,41 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     require(manifest.get("phase") == 5, "wrong Phase-5 manifest")
-    require(manifest.get("status") in {"IMPLEMENTATION_IN_PROGRESS", "PASS"}, "invalid Phase-5 authority state")
+    require(manifest.get("status") == "PASS", "Phase 5 authority is not PASS")
     require(manifest.get("source_present_target_engines") == 44, "Phase 5 changed 44-engine authority")
     require(manifest.get("canonical_base_vocabulary_count") == 501, "Phase 5 changed base vocabulary authority")
     phase4 = json.loads((ROOT / "architecture" / "phase4_ai_learning_manifest.json").read_text(encoding="utf-8"))
     require(phase4.get("status") == "PASS", "Phase 4 is no longer PASS")
+
+    visual = manifest.get("visual_proof") or {}
+    packaging = manifest.get("packaging") or {}
+    evidence = manifest.get("evidence") or {}
+    require(visual.get("status") == "PASS", "PASS requires visual proof PASS")
+    require(visual.get("fps") == 30 and visual.get("rendered_frames") == 168, "visual proof frame contract missing")
+    require(visual.get("cycle_seconds") == 5.6 and visual.get("rotation") == "0-180-0", "visual proof rotation contract missing")
+    require(bool(visual.get("sand_pause_resume_verified")), "sand pause/resume proof missing")
+    require(bool(visual.get("warning_state_verified")), "warning-state proof missing")
+    require(bool(visual.get("preview_zoom_verified")), "preview-zoom proof missing")
+    require(visual.get("delivery") == "github-release", "visual proof delivery is not GitHub Release")
+
+    require(packaging.get("status") == "PASS", "PASS requires packaging PASS")
+    require(packaging.get("embedded_python") == "3.12.10", "embedded Python authority mismatch")
+    require(packaging.get("packaged_runtime_smoke") == "PASS", "packaged runtime smoke authority missing")
+    require(packaging.get("delivery") == "github-release", "package delivery is not GitHub Release")
+
+    require(bool(evidence.get("authority_lock_basis_sha")), "authority lock basis SHA missing")
+    require(int(evidence.get("authority_lock_basis_run", 0)) > 0, "authority lock basis run missing")
+    require(bool(evidence.get("authority_lock_basis_release_tag")), "authority lock basis release tag missing")
+    require(evidence.get("exact_final_sha_ci_required") is True, "exact-final-SHA CI requirement missing")
+    require(evidence.get("release_assets_include_sha256_manifest") is True, "release SHA-256 manifest requirement missing")
 
     css = (ROOT / "⚡" / "✨").read_text(encoding="utf-8")
     enhancement = (ROOT / "⚡" / "🎞️").read_text(encoding="utf-8")
     host = (ROOT / "⚡" / "⚡").read_text(encoding="utf-8")
     vision = (ROOT / "📸" / "📸").read_text(encoding="utf-8")
     proof = (ROOT / "scripts" / "phase5-visual-proof.js").read_text(encoding="utf-8")
+    publisher = (ROOT / "scripts" / "publish-phase5-release.ps1").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "🧪.yml").read_text(encoding="utf-8")
 
     require("rotate(180deg)" in css and "rotate(360deg)" not in css, "hourglass must remain 0↔180 only")
     require("5.6s" in css and "sandStreamFlow" in css and "flowDownWindow" in css and "flowUpWindow" in css, "Phase-5 sand timing contract missing")
@@ -60,12 +84,11 @@ def main() -> None:
     require("sampledAngles" in proof and "streamOpacity" in proof and "hourglass-30fps.mp4" in proof and "hourglass-contact-sheet.png" in proof, "rendered proof outputs missing")
     require("capturePage" in proof and "document.getAnimations" in proof, "proof is not based on real rendered animation frames")
 
-    if manifest.get("status") == "PASS":
-        require(manifest.get("visual_proof", {}).get("status") == "PASS", "PASS requires visual proof PASS")
-        require(manifest.get("packaging", {}).get("status") == "PASS", "PASS requires packaging PASS")
-        require(bool(manifest.get("evidence", {}).get("final_sha")), "PASS requires final SHA evidence")
+    require("phase5-release-manifest.json" in publisher and "Get-FileHash" in publisher and "releases" in publisher, "GitHub Release publisher evidence contract missing")
+    require("publish-phase5-release.ps1" in workflow, "workflow does not enforce GitHub Release publication")
+    require("actions/upload-artifact" not in workflow, "Phase 5 still depends on Actions artifact quota")
 
-    print("✅5️⃣ 🎞️30FPS✅ ⏳0↔180✅ 🏖️⏸️✅ ⚠️✅ 📸🔍✅ 📸📋⬆️✅ 🐍📦✅ 🪟NSIS+PORTABLE✅")
+    print("✅5️⃣PASS 🎞️30FPS✅ ⏳0↔180✅ 🏖️⏸️✅ ⚠️✅ 📸🔍✅ 🐍📦✅ 🪟NSIS+PORTABLE✅ 📤RELEASE✅")
 
 
 if __name__ == "__main__":
