@@ -241,7 +241,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           npm run proof:visual
           $proof = Get-Content -LiteralPath 'proof\phase5\proof.json' -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ($proof.fps -ne 30 -or $proof.rendered_frames -ne 168 -or $proof.rotation_contract -ne '0↔180 only') { throw 'visual proof contract failed' }
+          $angles = $proof.sampled_angles_degrees
+          if ($proof.fps -ne 30 -or $proof.rendered_frames -ne 168 -or [math]::Abs([double]$angles.start) -gt 1.5 -or [math]::Abs([double]$angles.inverted - 180.0) -gt 2.0 -or [math]::Abs([double]$angles.returned) -gt 2.0) { throw 'visual proof contract failed' }
           if (-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered) { throw 'visual proof warning/zoom evidence failed' }
           if ($proof.sand_stream_opacity.flowing -lt 0.8 -or $proof.sand_stream_opacity.pausedForFlip -gt 0.15 -or $proof.sand_stream_opacity.resumedAfterSettle -lt 0.8) { throw 'sand stream proof failed' }
           Write-Output '✅📸🎞️30FPS'
