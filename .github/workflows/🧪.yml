@@ -1,0 +1,210 @@
+name: "🧪"
+
+on:
+  push:
+    branches:
+      - main
+      - "⏩🏁"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "🧪-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: "🧪🏃🪟"
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+    timeout-minutes: 40
+    steps:
+      - name: "📥"
+        uses: actions/checkout@v4
+
+      - name: "🟩📥"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: "🐍📥"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10'
+          $exe = Join-Path $dir 'python.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'python.zip'
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          }
+          & $exe -c "import sys; assert sys.version_info[:2] == (3, 12)"
+
+      - name: "🤖❌↔️"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          $script = Join-Path $env:RUNNER_TEMP 'el_no_ai_translation.py'
+          @'
+          import importlib.machinery, importlib.util, os, pathlib, socket, sys, tempfile, urllib.request
+          def blocked(*args, **kwargs):
+              raise AssertionError('network access attempted during normal translation')
+          socket.create_connection = blocked
+          urllib.request.urlopen = blocked
+          os.environ['EL_RANK_DB'] = str(pathlib.Path(tempfile.gettempdir()) / 'el-rank-no-ai.json')
+          bidi = chr(0x2194) + chr(0xFE0F)
+          path = next(p for p in pathlib.Path('.').rglob('*') if p.is_file() and p.name == bidi and p.parent.name == bidi)
+          loader = importlib.machinery.SourceFileLoader('_el_no_ai_bidi', str(path))
+          spec = importlib.util.spec_from_loader('_el_no_ai_bidi', loader)
+          module = importlib.util.module_from_spec(spec)
+          sys.modules['_el_no_ai_bidi'] = module
+          loader.exec_module(module)
+          engine = module.TranslationEngine()
+          a = engine.process(2, 'Critical server error after 30 seconds. Restart the service immediately and verify success.')
+          b = engine.process(1, '\U0001F4E5\u27A1\uFE0F\U0001F9EA\u27A1\uFE0F\U0001F9FE\u27A1\uFE0F\u2705\u27A1\uFE0F\U0001F680')
+          assert a and not a.startswith(chr(0x274C))
+          assert b and not b.startswith(chr(0x274C))
+          assert engine.provider_call_count == 0
+          source = path.read_text(encoding='utf-8')
+          assert 'OllamaConnector' not in source and '_ollama' not in source
+          print(chr(0x2705) + chr(0x2194) + chr(0xFE0F) + chr(0x1F916) + chr(0x274C))
+          '@ | Set-Content -LiteralPath $script -Encoding UTF8
+          & $exe $script
+
+      - name: "🧪🔀"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F500); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪🔤"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F524); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪⚡"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x26A1); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪⚡🖥️"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $spark = [char]::ConvertFromUtf32(0x26A1)
+          $plug = [char]::ConvertFromUtf32(0x1F50C)
+          $screen = [char]::ConvertFromUtf32(0x1F5A5) + [char]0xFE0F
+          $dir = Join-Path (Get-Location) $spark
+          node --check (Join-Path $dir $spark)
+          node --check (Join-Path $dir $plug)
+          $html = Get-Content -LiteralPath (Join-Path $dir $screen) -Raw -Encoding UTF8
+          $polish = Get-Content -LiteralPath (Join-Path $dir ([char]::ConvertFromUtf32(0x2728))) -Raw -Encoding UTF8
+          if (-not $html.Contains('id="mode1"') -or -not $html.Contains('id="mode2"') -or -not $html.Contains('id="image"')) { throw 'UI controls missing' }
+          if ($polish.Contains('rotate(360deg)') -or -not $polish.Contains('rotate(180deg)')) { throw 'Phase-5 0↔180 contract broken' }
+          if (-not $polish.Contains('.processing.warn') -or -not $polish.Contains('.preview.zoom')) { throw 'Phase-5 warning/zoom polish missing' }
+          Write-Output '✅⚡🖥️✨'
+
+      - name: "🦙🔍"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags',timeout=5)); names=[m.get('name','') for m in d.get('models',[])]; assert 'qwen2.5vl:7b' in names; print(chr(0x2705)+chr(0x1F999)+chr(0x1F441)+chr(0xFE0F)+'7')"
+
+      - name: "🧪🦙"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; a=chr(0x1F9EA); b=chr(0x1F999); p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==b and x.parent.name==a); runpy.run_path(str(p),run_name='__main__')"
+
+      - name: "🧪📸"
+        shell: powershell
+        run: |
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\ci-screenshot-vision.ps1' -PythonExe $exe
+
+      - name: "🧪"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x2705)); runpy.run_path(str(p), run_name='__main__')"
+
+      - name: "🚀"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x1F680)); runpy.run_path(str(p), run_name='__main__')"
+
+      - name: "📦🟩"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm install --no-audit --no-fund
+
+      - name: "📸🎞️30️⃣"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run proof:visual
+          $proof = Get-Content -LiteralPath 'proof\phase5\proof.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+          $angles = $proof.sampled_angles_degrees
+          if ($proof.fps -ne 30 -or $proof.rendered_frames -ne 168 -or [math]::Abs([double]$angles.start) -gt 1.5 -or [math]::Abs([double]$angles.inverted - 180.0) -gt 2.0 -or [math]::Abs([double]$angles.returned) -gt 2.0) { throw 'visual proof contract failed' }
+          if (-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered) { throw 'visual proof warning/zoom evidence failed' }
+          if ($proof.sand_stream_opacity.flowing -lt 0.8 -or $proof.sand_stream_opacity.pausedForFlip -gt 0.15 -or $proof.sand_stream_opacity.resumedAfterSettle -lt 0.8) { throw 'sand stream proof failed' }
+          Write-Output '✅📸🎞️30FPS'
+
+      - name: "🐍📦"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-python.ps1'
+          if (-not (Test-Path -LiteralPath 'python\python.exe')) { throw 'embedded Python missing' }
+
+      - name: "9️⃣📦🪟"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run build:windows
+          if (-not (Test-Path -LiteralPath 'dist\win-unpacked\EL-Bot.exe')) { throw 'unpacked packaged executable missing' }
+          if (-not (Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.5.0-x64.exe')) { throw 'NSIS installer missing' }
+          if (-not (Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.5.0-x64.exe')) { throw 'portable executable missing' }
+
+      - name: "🧪📦🖥️"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smoke = Join-Path $env:RUNNER_TEMP 'el-bot-package-smoke.json'
+          Remove-Item -LiteralPath $smoke -Force -ErrorAction SilentlyContinue
+          $env:EL_PACKAGE_SMOKE_FILE = $smoke
+          Remove-Item Env:EL_PYTHON -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath (Resolve-Path 'dist\win-unpacked\EL-Bot.exe') -PassThru
+          if (-not $process.WaitForExit(90000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; throw 'packaged smoke timed out' }
+          if ($process.ExitCode -ne 0) { throw "packaged smoke exit $($process.ExitCode)" }
+          if (-not (Test-Path -LiteralPath $smoke)) { throw 'packaged smoke evidence missing' }
+          $evidence = Get-Content -LiteralPath $smoke -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $evidence.app_is_packaged -or -not $evidence.rendered -or -not $evidence.polished -or -not $evidence.bundled_python -or -not $evidence.python_exec) { throw 'packaged runtime evidence failed' }
+          Copy-Item -LiteralPath $smoke -Destination 'dist\package-smoke.json' -Force
+          Write-Output '✅🧪📦🖥️🐍'
+
+      - name: "📤9️⃣📦🪟"
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\publish-phase5-release.ps1'
