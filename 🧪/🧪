@@ -1,4 +1,4 @@
-"""Deterministic full-stack diagnostics for the 30 source-present EL Bot engines."""
+"""Deterministic full-stack diagnostics for the 39 source-present EL Bot engines."""
 
 from __future__ import annotations
 
@@ -53,6 +53,15 @@ _provenance = _load("_el_provenance_diag", _ROOT / "📜" / "📜")
 _evidence = _load("_el_evidence_diag", _ROOT / "📊" / "📊")
 _versioning = _load("_el_versioning_diag", _ROOT / "🗃️" / "🗃️")
 _integrity = _load("_el_integrity_diag", _ROOT / "🧿" / "🧿")
+_context = _load("_el_context_diag", _ROOT / "🧭" / "🧭")
+_decomposition = _load("_el_decomposition_diag", _ROOT / "🧩" / "🧩")
+_semantic_graph = _load("_el_semantic_graph_diag", _ROOT / "🗺️" / "🗺️")
+_grammar = _load("_el_grammar_diag", _ROOT / "🧱" / "🧱")
+_frontier = _load("_el_frontier_diag", _ROOT / "♾️" / "♾️")
+_search = _load("_el_search_diag", _ROOT / "🔍" / "🔍")
+_competition = _load("_el_competition_diag", _ROOT / "🏆" / "🏆")
+_experiment = _load("_el_experiment_diag", _ROOT / "🧫" / "🧫")
+_counterexample = _load("_el_counterexample_diag", _ROOT / "🪤" / "🪤")
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +224,38 @@ class DiagnosticsEngine:
         bad = integrity.assess({"claim_id":"c2","concept":"converter","expression":"🔄","maturity":"discovered"})
         checks.append(DiagnosticCheck("3️⃣0️⃣🧿", good.passed and bad.status == "fail"))
 
-        if len(checks) != 30:
+        context = _context.ContextSenseDisambiguationEngine()
+        word_product = context.resolve("word", "Microsoft Word edits a DOCX document.")
+        checks.append(DiagnosticCheck("3️⃣1️⃣🧭", context.resolve("converter", "Use the converter.").sense_id == "conversion-tool" and word_product.sense_id == "microsoft-word-product"))
+
+        decomposition = _decomposition.ConceptDecompositionEngine().decompose("converter", "Use the converter.")
+        checks.append(DiagnosticCheck("3️⃣2️⃣🧩", decomposition.resolved and {"input","transform-action","output"}.issubset(set(decomposition.concept_keys))))
+
+        graph = _semantic_graph.SemanticGraphEngine()
+        checks.append(DiagnosticCheck("3️⃣3️⃣🗺️", "transform-action" in graph.expand("conversion-tool", depth=1) and "conversation" in graph.expand("chatgpt-assistant", depth=1)))
+
+        template = _grammar.ELGrammarCompositionEngine().compose_primary(decomposition)
+        checks.append(DiagnosticCheck("3️⃣4️⃣🧱", template is not None and template.expression == "📥➡️🔄➡️📤" and template.canonical))
+
+        frontiers = _frontier.SearchFrontierExhaustionEngine()
+        toy = frontiers.define(units=("🔥","🚀"), min_length=1, max_length=2, frontier_id="diag-2x2")
+        checks.append(DiagnosticCheck("3️⃣5️⃣♾️", toy.total_candidates == 6 and frontiers.candidate_at(toy,0) == "🔥" and frontiers.candidate_at(toy,5) == "🚀🚀"))
+
+        search = _search.CompleteCandidateSearchEngine()
+        search_result, toy_done, proof = search.search_to_exhaustion(toy, lambda candidate,index: {"score":float(index),"valid":True,"canonical":True})
+        checks.append(DiagnosticCheck("3️⃣6️⃣🔍", search_result.evaluated_count == 6 and toy_done.cursor == 6 and proof.exhausted and proof.visited_candidates == 6))
+
+        competition = _competition.CandidateCompetitionEngine.compete(search_result.evaluations)
+        checks.append(DiagnosticCheck("3️⃣7️⃣🏆", competition.winner is not None and competition.winner.candidate == "🚀🚀" and len(competition.ranked) == 6))
+
+        experiments = _experiment.ExperimentEngine().run("word", (("These words form a sentence.","language-word"),("Microsoft Word opened a document.","microsoft-word-product")))
+        checks.append(DiagnosticCheck("3️⃣8️⃣🧫", experiments.passed and experiments.pass_rate == 1.0))
+
+        traps = _counterexample.CounterexampleAdversarialSemanticsEngine()
+        word_trap = traps.challenge("word", "language-word")
+        converter_trap = traps.challenge("converter", "conversion-tool")
+        checks.append(DiagnosticCheck("3️⃣9️⃣🪤", word_trap.tested == 2 and len(word_trap.counterexamples) == 1 and not word_trap.passed and converter_trap.passed))
+
+        if len(checks) != 39:
             raise RuntimeError("diagnostic check count invariant violated")
         return DiagnosticReport(tuple(checks))
