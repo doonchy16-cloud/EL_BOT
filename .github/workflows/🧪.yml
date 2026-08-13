@@ -18,10 +18,15 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: "📥"
         uses: actions/checkout@v4
+
+      - name: "🟩📥"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: "🐍📥"
         shell: powershell
@@ -110,25 +115,22 @@ jobs:
           $main = Join-Path $dir $spark
           $preload = Join-Path $dir $plug
           $view = Join-Path $dir $screen
-          $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-          if ($nodeCommand) { $node = $nodeCommand.Source } else {
-            $runnerRoot = Split-Path (Split-Path $env:RUNNER_TEMP -Parent) -Parent
-            $node = Join-Path $runnerRoot 'externals\node24\bin\node.exe'
-            if (-not (Test-Path -LiteralPath $node)) { $node = Join-Path $runnerRoot 'externals\node20\bin\node.exe' }
-          }
-          if (-not (Test-Path -LiteralPath $node)) { throw 'node missing' }
-          & $node --check $main
-          & $node --check $preload
+          node --check $main
+          node --check $preload
           $mainText = Get-Content -LiteralPath $main -Raw -Encoding UTF8
           $preloadText = Get-Content -LiteralPath $preload -Raw -Encoding UTF8
           if (-not $mainText.Contains('event.sender.send')) { throw 'live stage IPC missing' }
+          if (-not $mainText.Contains('applyPhase5Enhancements')) { throw 'Phase-5 production visual layer missing' }
           if (-not $preloadText.Contains('ipcRenderer.on')) { throw 'stage preload listener missing' }
           $html = Get-Content -LiteralPath $view -Raw -Encoding UTF8
           if (-not $html.Contains('id="mode1"') -or -not $html.Contains('id="mode2"') -or -not $html.Contains('id="image"')) { throw 'UI controls missing' }
-          if (-not $html.Contains('rotate(180deg)')) { throw '180 degree hourglass flip missing' }
+          if (-not $html.Contains('rotate(180deg)')) { throw 'base 180 degree hourglass flip missing' }
           if (-not $html.Contains('@media(max-width:1100px)')) { throw 'responsive control layout missing' }
           if (-not $html.Contains('id="quality"')) { throw 'translation quality badge missing' }
-          Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen)
+          $polish = Get-Content -LiteralPath (Join-Path $dir ([char]::ConvertFromUtf32(0x2728))) -Raw -Encoding UTF8
+          if ($polish.Contains('rotate(360deg)') -or -not $polish.Contains('rotate(180deg)')) { throw 'Phase-5 0↔180 contract broken' }
+          if (-not $polish.Contains('.processing.warn') -or -not $polish.Contains('.preview.zoom')) { throw 'Phase-5 warning/zoom polish missing' }
+          Write-Output ([char]::ConvertFromUtf32(0x2705) + $spark + $screen + [char]::ConvertFromUtf32(0x2728))
 
       - name: "🦙🔍"
         shell: powershell
@@ -192,6 +194,7 @@ jobs:
           assert 'vision sensor, not a translator' in source
           assert 'OllamaConnector' in source and 'ABCToEmojiEngine' in source
           assert 'Do not translate into Emoji Language' in source
+          assert '"visible_text":12' in source and 'vision_evidence' in source
           value = os.environ['EL_TEST_IMAGE']
           result = subprocess.run([sys.executable, str(vision), chr(0x1F500)], input='2\n' + value, text=True, capture_output=True, encoding='utf-8', timeout=360)
           raw = result.stdout.strip()
@@ -205,6 +208,7 @@ jobs:
           assert not any(unicodedata.category(ch).startswith('L') for ch in winner)
           assert int(metrics.get('sensor_calls',0)) in (1,2)
           assert int(metrics.get('vision_facts',0)) >= 1, metrics
+          assert isinstance(metrics.get('vision_evidence'), dict), metrics
           assert str(metrics.get('sensor_state','')) in {'structured-vision','structured-vision-retry','deterministic-structure-repair'}, metrics
           assert str(metrics.get('quality_status','')) in {'pass','hold'}, metrics
           print(chr(0x2705)+chr(0x1F4F8)+chr(0x1F441)+chr(0xFE0F)+str(metrics.get('vision_facts',0)))
@@ -224,3 +228,72 @@ jobs:
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import pathlib,runpy; p=next(x for x in pathlib.Path('.').rglob('*') if x.name==chr(0x1F680)); runpy.run_path(str(p), run_name='__main__')"
+
+      - name: "📦🟩"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm install --no-audit --no-fund
+
+      - name: "📸🎞️30️⃣"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run proof:visual
+          $proof = Get-Content -LiteralPath 'proof\phase5\proof.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($proof.fps -ne 30 -or $proof.rendered_frames -ne 168 -or $proof.rotation_contract -ne '0↔180 only') { throw 'visual proof contract failed' }
+          if (-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered) { throw 'visual proof warning/zoom evidence failed' }
+          if ($proof.sand_stream_opacity.flowing -lt 0.8 -or $proof.sand_stream_opacity.pausedForFlip -gt 0.15 -or $proof.sand_stream_opacity.resumedAfterSettle -lt 0.8) { throw 'sand stream proof failed' }
+          Write-Output '✅📸🎞️30FPS'
+
+      - name: "📤📸🎞️"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5-visual-proof
+          path: proof/phase5
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: "🐍📦"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-python.ps1'
+          if (-not (Test-Path -LiteralPath 'python\python.exe')) { throw 'embedded Python missing' }
+
+      - name: "9️⃣📦🪟"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run build:windows
+          if (-not (Test-Path -LiteralPath 'dist\win-unpacked\EL-Bot.exe')) { throw 'unpacked packaged executable missing' }
+          if (-not (Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.5.0-x64.exe')) { throw 'NSIS installer missing' }
+          if (-not (Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.5.0-x64.exe')) { throw 'portable executable missing' }
+
+      - name: "🧪📦🖥️"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smoke = Join-Path $env:RUNNER_TEMP 'el-bot-package-smoke.json'
+          Remove-Item -LiteralPath $smoke -Force -ErrorAction SilentlyContinue
+          $env:EL_PACKAGE_SMOKE_FILE = $smoke
+          Remove-Item Env:EL_PYTHON -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath (Resolve-Path 'dist\win-unpacked\EL-Bot.exe') -PassThru
+          if (-not $process.WaitForExit(90000)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; throw 'packaged smoke timed out' }
+          if ($process.ExitCode -ne 0) { throw "packaged smoke exit $($process.ExitCode)" }
+          if (-not (Test-Path -LiteralPath $smoke)) { throw 'packaged smoke evidence missing' }
+          $evidence = Get-Content -LiteralPath $smoke -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $evidence.app_is_packaged -or -not $evidence.rendered -or -not $evidence.polished -or -not $evidence.bundled_python -or -not $evidence.python_exec) { throw 'packaged runtime evidence failed' }
+          Copy-Item -LiteralPath $smoke -Destination 'dist\package-smoke.json' -Force
+          Write-Output '✅🧪📦🖥️🐍'
+
+      - name: "📤9️⃣📦🪟"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5-windows-package
+          path: |
+            dist/EL-Bot-Setup-0.5.0-x64.exe
+            dist/EL-Bot-Portable-0.5.0-x64.exe
+            dist/package-smoke.json
+          if-no-files-found: error
+          retention-days: 30
