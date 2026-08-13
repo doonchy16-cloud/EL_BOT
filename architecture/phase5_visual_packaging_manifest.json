@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "phase": 5,
+  "name": "Visual Polish & Windows Packaging",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "phase4_required_status": "PASS",
+  "source_present_target_engines": 44,
+  "canonical_base_vocabulary_count": 501,
+  "locked": {
+    "hourglass_rotation_degrees": 180,
+    "hourglass_360_forbidden": true,
+    "sand_stream_pauses_before_flip": true,
+    "sand_resumes_after_settle": true,
+    "stage_timer_resets_per_stage": true,
+    "total_timer_persists": true,
+    "slow_warning_visually_prominent": true,
+    "screenshot_preview_zoom_required": true,
+    "screenshot_visible_fact_capacity_expands": true,
+    "real_rendered_visual_proof_required_before_packaging_pass": true,
+    "visual_proof_fps": 30,
+    "windows_x64_package_required": true,
+    "portable_exe_required": true,
+    "installer_exe_required": true,
+    "embedded_python_required": true,
+    "ollama_not_bundled": true,
+    "qwen_model_not_bundled": true,
+    "phase1_through_phase4_must_remain_green": true,
+    "exact_final_sha_ci_success_required": true
+  },
+  "visual_proof": {
+    "status": "PENDING",
+    "artifact_name": "phase5-visual-proof",
+    "required_files": [
+      "hourglass-30fps.mp4",
+      "hourglass-contact-sheet.png",
+      "ui-idle.png",
+      "ui-warning.png",
+      "preview-zoom.png",
+      "proof.json"
+    ]
+  },
+  "packaging": {
+    "status": "LOCKED_UNTIL_VISUAL_PROOF",
+    "product_name": "EL Bot",
+    "app_id": "com.thespark.elbot",
+    "targets": ["nsis-x64", "portable-x64"],
+    "artifact_name": "phase5-windows-package"
+  }
+}
