@@ -50,6 +50,12 @@ async function streamOpacityAt(win, ms) {
 async function main() {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(FRAMES, { recursive: true });
+  const viewSource = fs.readFileSync(VIEW, 'utf8');
+  if (!/^\s*<!doctype html>/i.test(viewSource) || !viewSource.includes('id="hourglass"')) throw new Error('production UI authority is not valid HTML');
+  const proofView = path.join(OUT, 'production-ui-proof.html');
+  fs.writeFileSync(proofView, viewSource, 'utf8');
+  if (fs.readFileSync(proofView, 'utf8') !== viewSource) throw new Error('proof HTML materialization changed production UI bytes');
+
   const css = fs.readFileSync(CSS, 'utf8');
   if (!css.includes('@keyframes hourglassFlip')) throw new Error('Phase-5 hourglass keyframes missing');
   if (css.includes('rotate(360deg)')) throw new Error('360-degree hourglass rotation is forbidden');
@@ -62,11 +68,14 @@ async function main() {
     backgroundColor: '#080b12',
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
   });
-  await win.loadFile(VIEW);
+  await win.loadFile(proofView);
+  const renderedAuthority = await win.webContents.executeJavaScript(`(() => {
+    const required = ['mode1','mode2','run','image','clear','diag','ollama','input','output','state','hourglass','stageMeta','preview'];
+    return required.every((id) => Boolean(document.getElementById(id))) && document.documentElement.tagName === 'HTML';
+  })()`, true);
+  if (!renderedAuthority) throw new Error('production UI did not render required Phase-5 nodes after HTML materialization');
   await win.webContents.insertCSS(css);
   await win.webContents.executeJavaScript(fs.readFileSync(ENHANCE, 'utf8'), true);
-  const ready = await win.webContents.executeJavaScript(`Boolean(document.getElementById('hourglass') && document.getElementById('stageMeta') && document.getElementById('preview'))`, true);
-  if (!ready) throw new Error('production UI did not render required Phase-5 nodes');
 
   const sampleSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700"><rect width="100%" height="100%" fill="#101827"/><rect x="60" y="60" width="1080" height="580" rx="30" fill="#17243a" stroke="#76b7ff" stroke-width="5"/><text x="100" y="160" font-family="Segoe UI" font-size="54" fill="white">PHASE 5 SCREENSHOT PREVIEW</text><text x="100" y="250" font-family="Segoe UI" font-size="38" fill="#ffd166">Visible evidence remains inspectable while processing.</text><text x="100" y="335" font-family="Segoe UI" font-size="34" fill="#72f2a6">Click preview to enlarge • Escape to close</text><text x="100" y="430" font-family="Segoe UI" font-size="34" fill="#ffb347">Slow-stage warning proof</text></svg>`;
   const dataUrl = 'data:image/svg+xml;base64,' + Buffer.from(sampleSvg, 'utf8').toString('base64');
@@ -140,6 +149,8 @@ async function main() {
     sand_stream_opacity: streamOpacity,
     warning_state_rendered: Boolean(warningOn),
     preview_zoom_rendered: Boolean(zoomed),
+    production_ui_sha256: sha(Buffer.from(viewSource, 'utf8')),
+    materialized_ui_sha256: sha(Buffer.from(fs.readFileSync(proofView, 'utf8'), 'utf8')),
     visual_css_sha256: sha(Buffer.from(css, 'utf8')),
     visual_js_sha256: sha(Buffer.from(fs.readFileSync(ENHANCE, 'utf8'), 'utf8'))
   };
