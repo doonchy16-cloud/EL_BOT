@@ -54,7 +54,7 @@ icon_bytes=b64decode((ROOT/"🪪"/"🎨").read_text(encoding="utf-8").strip(),va
 animation_engine=animation.AnimationEngine();assert animation_engine.processing_symbol=="⏳" and animation_engine.flip_degrees==180 and animation_engine.process("⏳")=="🎞️⏳↪️180"
 identity_snapshot=identity.IdentityEngine().snapshot();assert identity_snapshot.app_name=="EL Bot" and identity_snapshot.app_user_model_id=="com.thespark.elbot"
 
-normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","😀➡️🔤/😀➡️🔤","🧠/🧬"))
+normal_sources="\n".join((ROOT/path).read_text(encoding="utf-8") for path in ("↔️/↔️","🔤➡️😀/🔤➡️😀","🔤➡️😀/🧠","😀➡️🔤/😀➡️🔤","🧠/🧬","🧭/🧭","🧩/🧩","🗺️/🗺️","🧱/🧱","♾️/♾️","🔍/🔍","🏆/🏆","🧫/🧫","🪤/🪤"))
 for forbidden in ("OllamaConnector","_ollama","urllib.request","chat_internal","chat_json_internal","generate_internal"):assert forbidden not in normal_sources
 vision_source=(ROOT/"📸"/"📸").read_text(encoding="utf-8")
 for marker in ("OllamaConnector","vision sensor","ABCToEmojiEngine","Do not translate into Emoji Language","ast.literal_eval","_parse_observation","_VISION_SCHEMA","_extract_partial_arrays","chat_internal","sensor_calls","structured-vision-retry","Load Vision Model","valid-empty-observation"):
@@ -101,6 +101,11 @@ assert long_result.winner.count("❓")<24
 unknown=abc_engine.translate("flibbertigibbet",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "❓" in unknown.winner and unknown.metrics.get("quality_status")=="fail"
 
+for target in ("converter","ChatGPT","words"):
+    translated=abc_engine.translate(target,cross_verify=False,emit=False)
+    assert translated.winner and "❓" not in translated.winner and translated.metrics.get("quality_status")!="fail",(target,translated.winner,translated.metrics)
+    assert translated.metrics.get("phase3_search_exhausted") is True and translated.metrics.get("phase3_search_evaluated")==translated.metrics.get("phase3_search_frontier_total"),(target,translated.metrics)
+
 parsed,strategy=vision._parse_observation('{"visible_text":["Error"],"objects":["window"],"controls":["Retry"],"states":["error"],"relationships":["Retry is below Error"]}')
 assert strategy=="json" and parsed is not None and parsed["visible_text"]==("Error",) and parsed["controls"]==("Retry",)
 truncated='{"visible_text":["Error","Retry"],"objects":["application window"],"controls":["Retry button"],"states":["error"],"relationships":['
@@ -124,6 +129,6 @@ start=perf_counter()
 for index in range(120):abc_engine.translate(f"Restart the local server after {30+index} seconds and verify success.",cross_verify=False,emit=False)
 elapsed=max(.001,perf_counter()-start);rate=int(120*60/elapsed);assert rate>=1000
 
-report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==30
-print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("📚2️⃣✅");print("⚡🔤"+str(rate)+"/min✅")
+report=diagnostics.DiagnosticsEngine().run();assert len(report.checks)==39
+print(report.render_el());print("🎨✅");print("🖥️🌐✅");print("⏳🏖️⬇️0↔180✅");print("⏱️🪜Σ✅");print("👋🔤✅");print("🚦🔗✅");print("⏱️🔗✅");print("📸📋🧬✅");print("📸💬👁️✅");print("📸⬜👁️⚪✅");print("📸2️⃣🤖🧯✅");print("🤖➡️📸🔒✅");print("↔️🤖❌✅");print("🔤➡️😀24✅");print("😀➡️🔤24✅");print("📚2️⃣✅");print("🧠🔍3️⃣✅");print("⚡🔤"+str(rate)+"/min✅")
 raise SystemExit(0 if report.passed else 1)
