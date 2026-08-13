@@ -1,0 +1,77 @@
+"""N20: deterministic knowledge deduplication/consolidation planning."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from copy import deepcopy
+
+
+@dataclass(frozen=True, slots=True)
+class ConsolidationConflict:
+    concept: str
+    claim_ids: tuple[str, ...]
+    expressions: tuple[str, ...]
+
+    def render_el(self) -> str:
+        return "🟡🧺"
+
+
+@dataclass(frozen=True, slots=True)
+class ConsolidationReport:
+    consolidated: tuple[dict, ...]
+    merged_groups: int
+    conflicts: tuple[ConsolidationConflict, ...]
+
+    def render_el(self) -> str:
+        marker = "✅" if not self.conflicts else "🟡"
+        return marker + "🧺" + str(self.merged_groups)
+
+
+class KnowledgeConsolidationEngine:
+    """Plan compatible merges while preserving evidence/provenance and distinct senses."""
+
+    @staticmethod
+    def _norm(value: object) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def consolidate(self, claims: tuple[dict, ...] | list[dict]) -> ConsolidationReport:
+        if not isinstance(claims, (tuple, list)):
+            raise TypeError("claims must be a sequence")
+        rows = [deepcopy(item) for item in claims if isinstance(item, dict)]
+        by_key: dict[tuple[str, str, str], list[dict]] = {}
+        by_concept: dict[tuple[str, str], list[dict]] = {}
+        for row in rows:
+            concept = self._norm(row.get("concept"))
+            expression = str(row.get("expression", "")).strip()
+            sense = self._norm(row.get("sense_id"))
+            by_key.setdefault((concept, expression, sense), []).append(row)
+            by_concept.setdefault((concept, sense), []).append(row)
+
+        consolidated: list[dict] = []
+        merged_groups = 0
+        for (_concept, _expression, _sense), group in sorted(by_key.items(), key=lambda pair: pair[0]):
+            base = deepcopy(group[0])
+            if len(group) > 1:
+                merged_groups += 1
+            base["merged_claim_ids"] = tuple(dict.fromkeys(str(item.get("claim_id", "")) for item in group if str(item.get("claim_id", ""))))
+            evidence_ids = []
+            provenance_ids = []
+            for item in group:
+                evidence_ids.extend(str(value) for value in item.get("evidence_ids", ()) if str(value))
+                provenance_ids.extend(str(value) for value in item.get("provenance_ids", ()) if str(value))
+            base["evidence_ids"] = tuple(dict.fromkeys(evidence_ids))
+            base["provenance_ids"] = tuple(dict.fromkeys(provenance_ids))
+            consolidated.append(base)
+
+        conflicts: list[ConsolidationConflict] = []
+        for (concept, _sense), group in sorted(by_concept.items(), key=lambda pair: pair[0]):
+            expressions = tuple(dict.fromkeys(str(item.get("expression", "")).strip() for item in group if str(item.get("expression", "")).strip()))
+            if concept and len(expressions) > 1:
+                claim_ids = tuple(dict.fromkeys(str(item.get("claim_id", "")) for item in group if str(item.get("claim_id", ""))))
+                conflicts.append(ConsolidationConflict(concept, claim_ids, expressions))
+        return ConsolidationReport(tuple(consolidated), merged_groups, tuple(conflicts))
+
+    def process(self, text: str) -> str:
+        return "✅🧺" if text == "🧺" else "🟡🧺❓"
+
+    def render_el_status(self) -> str:
+        return "✅🧺"
