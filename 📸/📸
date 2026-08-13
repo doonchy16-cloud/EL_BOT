@@ -34,7 +34,10 @@ _emoji=_load("_el_vision_emoji",_ROOT/"😀➡️🔤"/"😀➡️🔤")
 OllamaConnector=_ollama.OllamaConnector;ABCToEmojiEngine=_abc.ABCToEmojiEngine;EmojiToABCEngine=_emoji.EmojiToABCEngine
 
 _FACT_FIELDS=("visible_text","objects","controls","states","relationships")
-_FIELD_LIMITS={"visible_text":6,"objects":5,"controls":5,"states":4,"relationships":4}
+# Phase 5: preserve substantially more visible evidence. These are capacity ceilings,
+# not targets; the model must still report only facts that are actually readable/visible.
+_FIELD_LIMITS={"visible_text":12,"objects":8,"controls":8,"states":6,"relationships":6}
+_ITEM_LENGTHS={"visible_text":180,"objects":140,"controls":140,"states":140,"relationships":160}
 _KEY_ALIASES={
     "visibletext":"visible_text","text":"visible_text","readable_text":"visible_text","readabletext":"visible_text",
     "object":"objects","visible_objects":"objects","visibleobjects":"objects",
@@ -45,7 +48,7 @@ _KEY_ALIASES={
 _CATEGORY_PREFIX={"visible_text":"👁️➡️🔤","objects":"👁️➡️🖼️","controls":"👁️➡️🔘","states":"👁️","relationships":"👁️➡️🔗"}
 _VISION_SCHEMA={
     "type":"object","additionalProperties":False,
-    "properties":{field:{"type":"array","items":{"type":"string","maxLength":120},"maxItems":_FIELD_LIMITS[field]} for field in _FACT_FIELDS},
+    "properties":{field:{"type":"array","items":{"type":"string","maxLength":_ITEM_LENGTHS[field]},"maxItems":_FIELD_LIMITS[field]} for field in _FACT_FIELDS},
     "required":list(_FACT_FIELDS),
 }
 
@@ -67,14 +70,14 @@ def _debug_exception(exc:Exception)->None:
 
 
 def _vision_prompt(*,compact:bool=False)->str:
-    limits="3/2/2/2/1" if compact else "6/5/5/4/4"
+    limits="5/3/3/3/2" if compact else "12/8/8/6/6"
     return f"""You are EL Bot's screenshot vision sensor, not a translator and not a decision-maker.
 Inspect only facts visibly supported by the supplied image.
 Return one JSON object only with exactly these keys:
 {{"visible_text":[],"objects":[],"controls":[],"states":[],"relationships":[]}}
 Limits visible_text/objects/controls/states/relationships: {limits}.
-Every item must be a short factual string under 120 characters.
-visible_text: only text you can actually read; never guess unreadable text.
+Every item must be a short factual string.
+visible_text: transcribe readable text in natural visual reading order. Preserve separate visible lines/blocks instead of summarizing them. Never guess unreadable text.
 objects: visible apps, windows, files, icons, images, devices, or other visible objects.
 controls: visible buttons, fields, menus, tabs, toggles, or interactive controls.
 states: directly visible states only.
@@ -147,9 +150,9 @@ def _extract_json_object(raw:str)->tuple[dict|None,str]:
     if labeled is not None:return labeled,"labeled-repair"
     return None,"unparsed"
 
-def _sanitize_item(value:object)->str:
+def _sanitize_item(value:object,field:str)->str:
     if not isinstance(value,str):return ""
-    text=re.sub(r"\s+"," ",value).strip();return text[:120] if text else ""
+    text=re.sub(r"\s+"," ",value).strip();return text[:_ITEM_LENGTHS[field]] if text else ""
 def _coerce_values(value:object)->list[object]:
     if isinstance(value,(list,tuple)):return list(value)
     if isinstance(value,str):return [v.strip() for v in re.split(r"\s*(?:\n|\||;)\s*",value.strip()) if v.strip()]
@@ -159,7 +162,7 @@ def _sanitize_facts(payload:dict|None)->dict[str,tuple[str,...]]:
     for field in _FACT_FIELDS:
         values=[]
         for item in _coerce_values(payload.get(field,[]))[:_FIELD_LIMITS[field]]:
-            text=_sanitize_item(item)
+            text=_sanitize_item(item,field)
             if text and text not in values:values.append(text)
         clean[field]=tuple(values)
     return clean
@@ -170,7 +173,7 @@ def _parse_observation(answer:str)->tuple[dict[str,tuple[str,...]]|None,str]:
     return _sanitize_facts(parsed),strategy
 
 
-def _join_readable(items:tuple[str,...],limit:int=12)->str:
+def _join_readable(items:tuple[str,...],limit:int=16)->str:
     values=list(items[:limit])
     if not values:return ""
     if len(values)==1:return values[0]
@@ -178,11 +181,11 @@ def _join_readable(items:tuple[str,...],limit:int=12)->str:
     return ", ".join(values[:-1])+", and "+values[-1]
 def _facts_to_text(facts:dict[str,tuple[str,...]],*,concise:bool=False)->str:
     sentences=[]
-    if facts["states"]:sentences.append("Visible state: "+_join_readable(facts["states"],4)+".")
-    if facts["visible_text"]:sentences.append("Visible text: "+_join_readable(facts["visible_text"],4 if concise else 6)+".")
-    if facts["controls"]:sentences.append("Visible controls: "+_join_readable(facts["controls"],3 if concise else 5)+".")
-    if facts["objects"]:sentences.append("Visible objects: "+_join_readable(facts["objects"],3 if concise else 5)+".")
-    if facts["relationships"] and not concise:sentences.append("Visible relationships: "+_join_readable(facts["relationships"],4)+".")
+    if facts["states"]:sentences.append("Visible state: "+_join_readable(facts["states"],3 if concise else 6)+".")
+    if facts["visible_text"]:sentences.append("Visible text: "+_join_readable(facts["visible_text"],5 if concise else 12)+".")
+    if facts["controls"]:sentences.append("Visible controls: "+_join_readable(facts["controls"],3 if concise else 8)+".")
+    if facts["objects"]:sentences.append("Visible objects: "+_join_readable(facts["objects"],3 if concise else 8)+".")
+    if facts["relationships"] and not concise:sentences.append("Visible relationships: "+_join_readable(facts["relationships"],6)+".")
     return " ".join(sentences) if sentences else "No reliable visible facts were detected in the screenshot."
 def _text_candidates(facts:dict[str,tuple[str,...]])->tuple[_lang.Candidate,...]:
     detailed=_facts_to_text(facts,concise=False);concise=_facts_to_text(facts,concise=True);total=_facts_count(facts);coverage=1.0 if total else 0.0
@@ -225,11 +228,11 @@ def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int,bool]:
             _debug_exception(exc);return _sanitize_facts(None),"model-load-failed",0,"model-load-error",0,False
     else:_lang.emit_stage(3,7,"Screenshot Vision — Vision Model Ready")
 
-    answers=[];sensor_calls=0;connector.generation_timeout=90.0
+    answers=[];sensor_calls=0;connector.generation_timeout=100.0
     _lang.emit_stage(4,7,"Screenshot Vision — Observe Visible Facts")
     try:
         sensor_calls+=1
-        answer=connector.chat_internal(_vision_prompt(compact=False),images=(raw,),num_predict=384,num_ctx=4096,keep_alive="30m").strip();answers.append(answer)
+        answer=connector.chat_internal(_vision_prompt(compact=False),images=(raw,),num_predict=512,num_ctx=5120,keep_alive="30m").strip();answers.append(answer)
     except TimeoutError as exc:
         _debug_exception(exc);return _sanitize_facts(None),"vision-timeout",sensor_calls,"provider-timeout",0,was_running
     except Exception as exc:
@@ -243,7 +246,7 @@ def _observe(raw:str)->tuple[dict[str,tuple[str,...]],str,int,str,int,bool]:
     connector.generation_timeout=45.0
     try:
         sensor_calls+=1
-        answer=connector.chat_internal(_vision_prompt(compact=True),images=(raw,),num_predict=192,num_ctx=3072,keep_alive="30m").strip();answers.append(answer)
+        answer=connector.chat_internal(_vision_prompt(compact=True),images=(raw,),num_predict=224,num_ctx=3072,keep_alive="30m").strip();answers.append(answer)
     except TimeoutError as exc:
         _debug_exception(exc);return _sanitize_facts(None),"vision-timeout",sensor_calls,"retry-timeout",sum(len(v) for v in answers),was_running
     except Exception as exc:
@@ -281,7 +284,8 @@ def ranked_analyze(mode:int,image_value:str):
     _lang.emit_stage(5,7,"Screenshot Vision — Validate and Repair Observation")
     count=_facts_count(facts)
     _lang.emit_stage(6,7,"Screenshot Vision — Sanitize Structured Facts")
-    metrics={"vision_facts":count,"sensor_state":evidence_state,"sensor_calls":sensor_calls,"parse_strategy":parse_strategy,"vision_raw_chars":raw_chars,"vision_model_was_running":model_was_running}
+    evidence={field:list(facts[field]) for field in _FACT_FIELDS}
+    metrics={"vision_facts":count,"vision_text_items":len(facts["visible_text"]),"sensor_state":evidence_state,"sensor_calls":sensor_calls,"parse_strategy":parse_strategy,"vision_raw_chars":raw_chars,"vision_model_was_running":model_was_running,"vision_evidence":evidence}
     failure=evidence_state in {"provider-unreachable","model-unavailable","model-load-timeout","model-load-failed","vision-timeout","vision-provider-error","structured-observation-hold"}
     if failure:
         _lang.emit_stage(7,7,"Screenshot Vision — Render Failure Evidence")
