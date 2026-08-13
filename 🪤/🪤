@@ -1,0 +1,95 @@
+"""N18: deterministic counterexample and adversarial semantics engine."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_experiment = _load("_el_phase3_experiment_counter", _ROOT / "🧫" / "🧫")
+
+
+@dataclass(frozen=True, slots=True)
+class Counterexample:
+    context: str
+    expected_sense: str
+    proposed_sense: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class CounterexampleReport:
+    term: str
+    proposed_sense: str
+    counterexamples: tuple[Counterexample, ...]
+    tested: int
+
+    @property
+    def passed(self) -> bool:
+        return not self.counterexamples and self.tested > 0
+
+    def render_el(self) -> str:
+        return ("✅" if self.passed else "🟡") + "🪤" + str(self.tested - len(self.counterexamples)) + "/" + str(self.tested)
+
+
+_DEFAULT_CASES = {
+    "word": (
+        ("These words are useful in a sentence.", "language-word"),
+        ("Microsoft Word opened the document editor.", "microsoft-word-product"),
+    ),
+    "words": (
+        ("The words in this sentence are short.", "language-word"),
+        ("Microsoft Word edits DOCX documents.", "microsoft-word-product"),
+    ),
+    "converter": (
+        ("The image converter changes one format into another.", "conversion-tool"),
+        ("This converter accepts input and produces output.", "conversion-tool"),
+    ),
+    "chatgpt": (
+        ("ChatGPT answered in a conversation.", "chatgpt-assistant"),
+        ("I asked ChatGPT for help.", "chatgpt-assistant"),
+    ),
+}
+
+
+class CounterexampleAdversarialSemanticsEngine:
+    """Seek contexts that falsify a proposed sense; never promotes knowledge."""
+
+    def __init__(self) -> None:
+        self.experiments = _experiment.ExperimentEngine()
+
+    def challenge(self, term: str, proposed_sense: str, cases=None) -> CounterexampleReport:
+        normalized = str(term).strip().lower()
+        selected = tuple(cases) if cases is not None else _DEFAULT_CASES.get(normalized, ())
+        if not selected:
+            # No fabricated PASS when we have no adversarial cases.
+            return CounterexampleReport(str(term), str(proposed_sense), (), 0)
+        report = self.experiments.run(term, selected)
+        failures: list[Counterexample] = []
+        for outcome in report.outcomes:
+            # A proposal fails when the context requires a different sense, even
+            # if the disambiguator itself correctly detects that different sense.
+            if outcome.expected_sense != proposed_sense:
+                failures.append(Counterexample(outcome.context, outcome.expected_sense, proposed_sense, "context-requires-different-sense"))
+            elif not outcome.passed:
+                failures.append(Counterexample(outcome.context, outcome.expected_sense, proposed_sense, "resolver-disagrees-with-expected-sense"))
+        return CounterexampleReport(str(term), str(proposed_sense), tuple(failures), len(report.outcomes))
+
+    def render_el_status(self) -> str:
+        return "✅🪤"
