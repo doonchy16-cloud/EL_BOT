@@ -1,0 +1,286 @@
+"""Phase-4 learning coordinator for EL Bot.
+
+Integration code, not a new engine. It coordinates existing knowledge engines while
+preserving their authority boundaries. Raw provider prose is intentionally not stored.
+"""
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import os
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_evidence = _load("_el_learning_evidence", _ROOT / "📊" / "📊")
+_provenance = _load("_el_learning_provenance", _ROOT / "📜" / "📜")
+_integrity = _load("_el_learning_integrity", _ROOT / "🧿" / "🧿")
+_graduation = _load("_el_learning_graduation", _ROOT / "🎓" / "🎓")
+_versioning = _load("_el_learning_versioning", _ROOT / "🗃️" / "🗃️")
+_analytics = _load("_el_learning_analytics", _ROOT / "📈" / "📈")
+_generalization = _load("_el_learning_generalization", _ROOT / "🧬" / "🧬")
+_consolidation = _load("_el_learning_consolidation", _ROOT / "🧺" / "🧺")
+
+
+@dataclass(frozen=True, slots=True)
+class LearnedMapping:
+    claim_id: str
+    concept: str
+    expression: str
+    maturity: str
+    confidence: float
+
+    def render_el(self) -> str:
+        marker = "✅" if self.maturity == "canonical" else "🟢"
+        return marker + "🧑‍🏫🧠"
+
+
+class LearningCoordinator:
+    """Persist learning evidence and coordinate maturity without bypassing engine authority."""
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        default = Path(os.environ.get("EL_LEARNING_DB", "")).expanduser() if os.environ.get("EL_LEARNING_DB") else Path.home() / ".el-bot" / "learning-v1.json"
+        self.path = Path(path).expanduser() if path is not None else default
+        self.versioner = _versioning.KnowledgeVersioningRollbackEngine(self.path.with_suffix(self.path.suffix + ".versions"))
+        self.analytics = _analytics.LearningAnalyticsEngine()
+        self._state = {"schema": 1, "sequence": 0, "claims": {}, "episodes": [], "analytics": {}}
+        if self.path.is_file():
+            self._load()
+
+    @staticmethod
+    def _normalize_source(source: str) -> str:
+        return " ".join(str(source or "").strip().lower().split())
+
+    def _load(self) -> None:
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        if payload.get("schema") != 1 or not isinstance(payload.get("claims"), dict) or not isinstance(payload.get("episodes"), list):
+            raise ValueError("unsupported learning store")
+        self._state = payload
+        for event, count in dict(payload.get("analytics", {})).items():
+            if int(count) > 0:
+                try:
+                    self.analytics.record(str(event), int(count))
+                except ValueError:
+                    continue
+
+    def _persist(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._state["analytics"] = self.analytics.counts
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        temporary.write_text(json.dumps(self._state, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        os.replace(temporary, self.path)
+
+    def _version(self, *change_ids: str, label: str) -> None:
+        snapshot = {"claims": deepcopy(self._state["claims"]), "episodes": deepcopy(self._state["episodes"]), "analytics": self.analytics.counts}
+        self.versioner.commit(snapshot, change_ids=tuple(value for value in change_ids if value), label=label)
+
+    def _next_id(self, prefix: str) -> str:
+        self._state["sequence"] = int(self._state.get("sequence", 0)) + 1
+        return prefix + str(self._state["sequence"])
+
+    @staticmethod
+    def _claim_id(source: str, expression: str) -> str:
+        raw = (LearningCoordinator._normalize_source(source) + "\0" + str(expression).strip()).encode("utf-8")
+        return "c:" + sha256(raw).hexdigest()[:20]
+
+    @property
+    def claims(self) -> tuple[dict, ...]:
+        return tuple(deepcopy(item) for item in self._state["claims"].values())
+
+    @property
+    def episodes(self) -> tuple[dict, ...]:
+        return tuple(deepcopy(item) for item in self._state["episodes"])
+
+    def record_deterministic(self, quality_status: str) -> None:
+        status = str(quality_status or "fail").lower()
+        self.analytics.record("deterministic_attempt")
+        self.analytics.record("deterministic_" + status if status in {"pass", "hold", "fail"} else "deterministic_fail")
+
+    def _build_confidence(self, claim: dict):
+        engine = _evidence.EvidenceConfidenceEngine()
+        for raw in claim.get("evidence", []):
+            engine.record(
+                evidence_id=str(raw["evidence_id"]), claim_id=str(raw["claim_id"]), polarity=str(raw["polarity"]),
+                weight=float(raw["weight"]), source=str(raw["source"]), reason=str(raw["reason"]), provenance_id=str(raw["provenance_id"]),
+            )
+        return engine.confidence(str(claim["claim_id"]))
+
+    def _build_provenance(self, claim: dict):
+        engine = _provenance.ProvenanceLedgerEngine()
+        for raw in claim.get("provenance", []):
+            engine.append(
+                record_id=str(raw["record_id"]), claim_id=str(raw["claim_id"]), source_kind=str(raw["source_kind"]),
+                source_ref=str(raw["source_ref"]), provider=str(raw.get("provider", "")), model=str(raw.get("model", "")),
+                validation_status=str(raw.get("validation_status", "unknown")), knowledge_version=str(raw.get("knowledge_version", "")),
+                evidence_ids=tuple(raw.get("evidence_ids", ())), created_at=str(raw["created_at"]),
+            )
+        return engine
+
+    def _append_evidence(self, claim: dict, *, source_kind: str, source_ref: str, polarity: str, weight: float, reason: str, provider: str = "", model: str = "", validation_status: str) -> None:
+        provenance_id = self._next_id("p:")
+        evidence_id = self._next_id("e:")
+        provenance_engine = _provenance.ProvenanceLedgerEngine()
+        record = provenance_engine.append(
+            record_id=provenance_id, claim_id=claim["claim_id"], source_kind=source_kind, source_ref=source_ref,
+            provider=provider, model=model, validation_status=validation_status, evidence_ids=(evidence_id,),
+        )
+        evidence_engine = _evidence.EvidenceConfidenceEngine()
+        evidence = evidence_engine.record(
+            evidence_id=evidence_id, claim_id=claim["claim_id"], polarity=polarity, weight=weight,
+            source=source_kind, reason=reason, provenance_id=provenance_id,
+        )
+        claim.setdefault("provenance", []).append(asdict(record))
+        claim.setdefault("evidence", []).append(asdict(evidence))
+        claim["provenance_ids"] = list(dict.fromkeys(list(claim.get("provenance_ids", [])) + [provenance_id]))
+        claim["evidence_ids"] = list(dict.fromkeys(list(claim.get("evidence_ids", [])) + [evidence_id]))
+
+    def _reevaluate(self, claim: dict) -> dict:
+        confidence = self._build_confidence(claim)
+        provenance_engine = self._build_provenance(claim)
+        provenance = provenance_engine.for_claim(claim["claim_id"])
+        existing = [item for item in self._state["claims"].values() if item.get("claim_id") != claim.get("claim_id")]
+        integrity = _integrity.KnowledgeIntegrityEngine().assess(claim, confidence=confidence, provenance=provenance, existing_claims=tuple(existing))
+        decision = _graduation.KnowledgeGraduationEngine().evaluate(
+            claim,
+            confidence=confidence,
+            integrity=integrity,
+            provenance=provenance,
+            experiment_passed=bool(claim.get("experiment_passed")),
+            counterexample_passed=bool(claim.get("counterexample_passed")),
+            revalidation_status=str(claim.get("revalidation_status", "unknown")),
+        )
+        previous = str(claim.get("maturity", "unknown"))
+        claim["confidence"] = confidence.confidence
+        claim["integrity_status"] = integrity.status
+        claim["maturity"] = decision.target
+        if decision.target != previous:
+            if _graduation._MATURITY.index(decision.target) > _graduation._MATURITY.index(previous if previous in _graduation._MATURITY else "unknown"):
+                self.analytics.record("promotion")
+                if decision.target == "canonical": self.analytics.record("canonicalized")
+            else:
+                self.analytics.record("demotion")
+        return claim
+
+    def record_provider_decision(self, *, source: str, candidate: str, accepted: bool, provider: str, model: str, validation_status: str, reasons: tuple[str, ...] = (), provider_called: bool = True) -> LearnedMapping | None:
+        if provider_called:
+            self.analytics.record("ai_attempt")
+        self.analytics.record("ai_accept" if accepted else "ai_reject")
+        if not accepted or not candidate:
+            episode = {
+                "episode_id": self._next_id("x:"), "source": self._normalize_source(source), "accepted": False,
+                "provider": provider, "model": model, "validation_status": validation_status,
+                "reason_codes": list(dict.fromkeys(str(item) for item in reasons if str(item))),
+            }
+            self._state["episodes"].append(episode)
+            self._version(episode["episode_id"], label="provider-rejection")
+            self._persist()
+            return None
+
+        claim_id = self._claim_id(source, candidate)
+        claim = self._state["claims"].get(claim_id)
+        if claim is None:
+            claim = {
+                "claim_id": claim_id, "concept": self._normalize_source(source), "expression": candidate.strip(), "sense_id": "",
+                "maturity": "unknown", "confidence": 0.0, "integrity_status": "hold", "evidence": [], "provenance": [],
+                "evidence_ids": [], "provenance_ids": [], "experiment_passed": False, "counterexample_passed": False,
+                "revalidation_status": "unknown",
+            }
+            self._state["claims"][claim_id] = claim
+            self.analytics.record("discovery")
+        self._append_evidence(
+            claim, source_kind="provider", source_ref="phase4-semantic-assist", polarity="positive", weight=0.86,
+            reason="deterministically-validated-assisted-candidate", provider=provider, model=model, validation_status="pass",
+        )
+        self._reevaluate(claim)
+        self._version(claim_id, label="provider-accepted")
+        self._persist()
+        return LearnedMapping(claim_id, claim["concept"], claim["expression"], claim["maturity"], float(claim["confidence"]))
+
+    def record_user_selection(self, source: str, expression: str) -> LearnedMapping | None:
+        claim_id = self._claim_id(source, expression)
+        claim = self._state["claims"].get(claim_id)
+        if claim is None:
+            return None
+        self._append_evidence(
+            claim, source_kind="user", source_ref="explicit-user-selection", polarity="positive", weight=1.0,
+            reason="user-selected-validated-candidate", validation_status="pass",
+        )
+        self._reevaluate(claim); self._version(claim_id, label="user-selection"); self._persist()
+        return LearnedMapping(claim_id, claim["concept"], claim["expression"], claim["maturity"], float(claim["confidence"]))
+
+    def record_experiment(self, claim_id: str, *, passed: bool, counterexample: bool = False) -> LearnedMapping:
+        claim = self._state["claims"].get(str(claim_id))
+        if claim is None:
+            raise KeyError(claim_id)
+        reason = "counterexample-suite-pass" if counterexample and passed else "counterexample-found" if counterexample else "experiment-pass" if passed else "experiment-fail"
+        self._append_evidence(
+            claim, source_kind="experiment", source_ref=reason, polarity="positive" if passed else "negative", weight=0.92,
+            reason=reason, validation_status="pass" if passed else "fail",
+        )
+        if counterexample: claim["counterexample_passed"] = bool(passed)
+        else: claim["experiment_passed"] = bool(passed)
+        self._reevaluate(claim); self._version(claim_id, label=reason); self._persist()
+        return LearnedMapping(claim_id, claim["concept"], claim["expression"], claim["maturity"], float(claim["confidence"]))
+
+    def record_revalidation(self, claim_id: str, *, status: str, reasons: tuple[str, ...] = ()) -> LearnedMapping:
+        claim = self._state["claims"].get(str(claim_id))
+        if claim is None:
+            raise KeyError(claim_id)
+        normalized = str(status).lower()
+        if normalized not in {"pass", "hold", "fail"}:
+            raise ValueError("invalid revalidation status")
+        polarity = "positive" if normalized == "pass" else "ambiguous" if normalized == "hold" else "negative"
+        self._append_evidence(
+            claim, source_kind="revalidation", source_ref="phase4-revalidation", polarity=polarity, weight=0.94,
+            reason=";".join(str(item) for item in reasons if str(item)) or ("revalidation-" + normalized), validation_status=normalized,
+        )
+        claim["revalidation_status"] = normalized
+        self.analytics.record("revalidation_" + normalized)
+        self._reevaluate(claim); self._version(claim_id, label="revalidation-" + normalized); self._persist()
+        return LearnedMapping(claim_id, claim["concept"], claim["expression"], claim["maturity"], float(claim["confidence"]))
+
+    def lookup_releasable(self, source: str) -> LearnedMapping | None:
+        concept = self._normalize_source(source)
+        eligible = [item for item in self._state["claims"].values() if item.get("concept") == concept and item.get("maturity") in {"validated", "canonical"} and item.get("expression")]
+        if not eligible:
+            return None
+        eligible.sort(key=lambda item: (0 if item.get("maturity") == "canonical" else 1, -float(item.get("confidence", 0.0)), str(item.get("claim_id"))))
+        row = eligible[0]
+        self.analytics.record("learned_hit")
+        self._persist()
+        return LearnedMapping(str(row["claim_id"]), str(row["concept"]), str(row["expression"]), str(row["maturity"]), float(row.get("confidence", 0.0)))
+
+    def generalize(self):
+        examples = [{"claim_id": item["claim_id"], "concept": item["concept"], "expression": item["expression"], "maturity": item["maturity"], "confidence": item.get("confidence", 0.0)} for item in self._state["claims"].values()]
+        return _generalization.GeneralizationEngine().derive(examples)
+
+    def consolidate(self):
+        return _consolidation.KnowledgeConsolidationEngine().consolidate(tuple(self._state["claims"].values()))
+
+    def analytics_snapshot(self):
+        return self.analytics.snapshot()
+
+    def rollback(self, version_id: str) -> None:
+        version = self.versioner.rollback(str(version_id), label="learning-rollback")
+        snapshot = version.snapshot
+        self._state["claims"] = deepcopy(snapshot.get("claims", {}))
+        self._state["episodes"] = deepcopy(snapshot.get("episodes", []))
+        self._persist()
