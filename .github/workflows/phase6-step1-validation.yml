@@ -75,10 +75,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          & $exe -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); p=root/'🧪'/'🧪'; l=importlib.machinery.SourceFileLoader('_p6s1_diag',str(p)); s=importlib.util.spec_from_loader('_p6s1_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s1_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
+          & $exe -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); a=chr(0x1F9EA); p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a); l=importlib.machinery.SourceFileLoader('_p6s1_diag',str(p)); s=importlib.util.spec_from_loader('_p6s1_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s1_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
 
       - name: "🟩 Renderer syntax"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          node --check '⚡\🎞️'
+          $spark = [char]::ConvertFromUtf32(0x26A1)
+          $movie = [char]::ConvertFromUtf32(0x1F39E) + [char]0xFE0F
+          $renderer = Join-Path (Join-Path (Get-Location) $spark) $movie
+          if (-not (Test-Path -LiteralPath $renderer)) { throw 'renderer file missing' }
+          node --check $renderer
