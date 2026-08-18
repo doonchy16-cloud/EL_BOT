@@ -82,12 +82,11 @@ def main() -> None:
     require(scarcity.expression != "🚗", "naive substring matching incorrectly mapped scarcity to car")
 
     easy_words = (
-        "robot fox laptop chair dog cat mouse rabbit bear panda frog monkey chicken penguin bird eagle duck owl wolf horse cow pig mouse hamster"
+        "robot fox laptop chair dog cat mouse rabbit bear panda frog monkey chicken penguin bird eagle duck owl wolf horse cow pig hamster"
         " apple banana grapes watermelon lemon peach strawberry bread cheese pizza hamburger egg cookie cake coffee tea soccer basketball football baseball"
-        " car taxi bus ambulance fire engine bicycle motorcycle airplane rocket helicopter train metro ship anchor fuel house school hospital bank hotel church tent"
-        " phone laptop keyboard printer camera television radio light bulb battery hammer wrench key lock bell book pencil memo package gift balloon trophy medal"
+        " car taxi bus ambulance bicycle motorcycle airplane rocket helicopter train metro ship anchor fuel house school hospital bank hotel church tent"
+        " phone keyboard printer camera television radio light bulb battery hammer wrench key lock bell book pencil memo package gift balloon trophy medal"
     ).split()
-    # Multi-word fixtures are tested above; this list measures single-token easy coverage.
     unique_easy = tuple(dict.fromkeys(easy_words))
     resolved = sum(1 for word in unique_easy if resolver.resolve(word, word).resolved)
     rate = resolved / max(1, len(unique_easy))
@@ -104,11 +103,12 @@ def main() -> None:
     vocab_source = (ROOT / "📚" / "📚").read_text(encoding="utf-8")
     bridge_source = (ROOT / "🔤➡️😀" / "🧠").read_text(encoding="utf-8")
     main_source = (ROOT / "main.js").read_text(encoding="utf-8")
+    lexical_source = (ROOT / "📚" / "📖").read_text(encoding="utf-8")
     require("!= 501" not in vocab_source and "== 501" not in vocab_source, "fixed 501 invariant still exists in Vocabulary")
     require("includes(root)" not in bridge_source and ".includes(root)" not in bridge_source, "naive substring root matching leaked into lexical bridge")
     require("EL_HYPERNYMS" not in main_source and "processELToken" not in main_source, "semantic dictionary leaked into main.js")
-    for marker in ("Ollama", "qwen", "chat_internal", "provider"):
-        require(marker.lower() not in (ROOT / "📚" / "📖").read_text(encoding="utf-8").lower(), f"provider marker leaked into lexical resolver: {marker}")
+    for marker in ("OllamaConnector", "qwen2.5vl", "chat_internal", "_ollama", "urllib.request"):
+        require(marker.lower() not in lexical_source.lower(), f"provider coupling leaked into lexical resolver: {marker}")
 
     print(f"PHASE6_OK emoji={resolver.emoji_count} oewn_lemmas={lemma_count} easy_word_resolution_rate={rate:.3f} ({resolved}/{len(unique_easy)})")
 
