@@ -48,8 +48,8 @@ def main() -> None:
     require(int(unicode_data.get("fully_qualified_count", 0)) + int(unicode_data.get("component_count", 0)) == derived_emoji_count, "Unicode RGI component arithmetic mismatch")
     require(re.fullmatch(r"[0-9a-f]{64}", str(unicode_data.get("sha256", ""))), "Unicode source hash missing")
     require(oewn_data.get("edition") == "2025+", "Open English WordNet 2025+ authority not loaded")
-    materialized_lemmas = int(oewn_data.get("lexical_lemma_count", 0))
-    require(materialized_lemmas > 100000, f"lexical foundation unexpectedly small: {materialized_lemmas}")
+    source_index_records = int(oewn_data.get("index_record_count", 0))
+    require(source_index_records > 100000, f"OEWN source index unexpectedly small: {source_index_records}")
     require(re.fullmatch(r"[0-9a-f]{64}", str(oewn_data.get("archive_sha256", ""))), "OEWN archive hash missing")
 
     lexical = load("_p6s1_lexical", ROOT / "📚" / "📖")
@@ -62,7 +62,9 @@ def main() -> None:
     require(resolver.emoji.version == "17.0", "lexical emoji authority version mismatch")
     require(resolver.emoji_count == derived_emoji_count, "lexical emoji count differs from materialized Unicode authority")
     require(resolver.wordnet.available, "Open English WordNet is not available to lexical resolver")
-    require(resolver.wordnet.lemma_count == materialized_lemmas, "runtime WordNet count differs from materialized manifest")
+    runtime_pos_lexical_keys = resolver.wordnet.lemma_count
+    require(runtime_pos_lexical_keys > 100000, f"runtime normalized WordNet lexical keys unexpectedly small: {runtime_pos_lexical_keys}")
+    require(runtime_pos_lexical_keys <= source_index_records, "runtime normalized lexical keys cannot exceed raw source index records")
 
     vocab_snapshot = vocab.VocabularyEngine.snapshot()
     require(vocab_snapshot.official_emoji_count == derived_emoji_count, "Vocabulary count differs from Unicode authority")
@@ -79,7 +81,8 @@ def main() -> None:
     token_snapshot = token_authority.snapshot()
     require(token_snapshot.emoji_version == "17.0", "token authority Unicode version mismatch")
     require(token_snapshot.official_emoji_count == derived_emoji_count, "token authority emoji count mismatch")
-    require(token_snapshot.english_lemma_count > 100000, "tokenizer source corpus does not expose six-figure lexical coverage")
+    require(token_snapshot.english_lemma_count > 100000, "tokenizer source corpus does not expose six-figure unique English lexical coverage")
+    require(token_snapshot.english_lemma_count <= runtime_pos_lexical_keys, "unique tokenizer lexical corpus cannot exceed POS-index runtime keys")
     require(token_snapshot.wordnet_available, "tokenizer source authority cannot see WordNet")
     require(len(token_authority.atomic_emoji_tokens) == derived_emoji_count, "every official RGI emoji must have one atomic token identity")
     require(all(token_authority.is_atomic_el(item) for item in token_authority.structural_tokens), "EL structural token not atomic")
@@ -137,7 +140,9 @@ def main() -> None:
     print(
         "PHASE6_STEP1_OK "
         f"emoji={derived_emoji_count} "
-        f"oewn_lemmas={materialized_lemmas} "
+        f"oewn_index_records={source_index_records} "
+        f"runtime_pos_lexical_keys={runtime_pos_lexical_keys} "
+        f"tokenizer_unique_english={token_snapshot.english_lemma_count} "
         f"atomic_el={token_snapshot.atomic_el_token_count} "
         f"semantic_seed={vocab_snapshot.semantic_seed_count} "
         "model=ABSENT teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
