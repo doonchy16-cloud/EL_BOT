@@ -86,9 +86,6 @@ class ForgeyInstaTransformer(nn.Module):
 
     def reset_parameters(self) -> None:
         nn.init.normal_(self.token_embedding.weight, mean=0.0, std=0.02)
-        with torch.no_grad():
-            if 0 <= self.config.pad_id < self.token_embedding.num_embeddings:
-                self.token_embedding.weight[self.config.pad_id].zero_()
         nn.init.normal_(self.position_embedding.weight, mean=0.0, std=0.02)
         for module in self.transformer.modules():
             if isinstance(module, nn.Linear):
@@ -98,6 +95,11 @@ class ForgeyInstaTransformer(nn.Module):
             elif isinstance(module, nn.LayerNorm):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
+        # The output projection is weight-tied to token_embedding. Keep PAD neutral
+        # only after all initialization so no later initializer can repopulate it.
+        with torch.no_grad():
+            if 0 <= self.config.pad_id < self.token_embedding.num_embeddings:
+                self.token_embedding.weight[self.config.pad_id].zero_()
 
     def parameter_report(self) -> ParameterReport:
         trainable = sum(parameter.numel() for parameter in self.parameters() if parameter.requires_grad)
