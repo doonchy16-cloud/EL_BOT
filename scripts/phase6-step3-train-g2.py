@@ -149,12 +149,42 @@ def main() -> None:
     if missing_protected:
         raise RuntimeError(f"protected Step-2 probes missing from replay: {missing_protected}")
 
+    # Forward teacher rows are used for the measured G1→G2 semantic-learning
+    # objective. Bidirectional training rows additionally protect the independently
+    # trusted reverse relationship (emoji → canonical concept). Provider prose is
+    # never used as a neural target or replay row.
     teacher_rows = []
+    teacher_reverse_rows = []
+    teacher_training_rows = []
+    teacher_reverse_benchmark_overlap_count = 0
     for item in teacher_examples:
-        encoded = trainer_module.encode_example(tokenizer, str(item["direction"]), str(item["source"]), str(item["target"]), model.config.max_context)
-        if encoded is None:
-            raise RuntimeError(f"teacher example exceeds model context: {item['lesson_id']}")
-        teacher_rows.append(encoded)
+        forward_key = (str(item["direction"]), str(item["source"]))
+        reverse_key = ("EL_TO_ABC", str(item["target"]))
+        if forward_key in forbidden_keys:
+            raise RuntimeError(f"frozen benchmark source leaked into forward teacher replay: {item['lesson_id']}")
+        if reverse_key in forbidden_keys:
+            teacher_reverse_benchmark_overlap_count += 1
+            raise RuntimeError(f"frozen benchmark source blocks reverse teacher replay: {item['lesson_id']}")
+
+        forward = trainer_module.encode_example(
+            tokenizer,
+            str(item["direction"]),
+            str(item["source"]),
+            str(item["target"]),
+            model.config.max_context,
+        )
+        reverse = trainer_module.encode_example(
+            tokenizer,
+            "EL_TO_ABC",
+            str(item["target"]),
+            str(item["canonical_concept"]),
+            model.config.max_context,
+        )
+        if forward is None or reverse is None:
+            raise RuntimeError(f"teacher relationship exceeds model context: {item['lesson_id']}")
+        teacher_rows.append(forward)
+        teacher_reverse_rows.append(reverse)
+        teacher_training_rows.extend((forward, reverse))
 
     benchmark_rows = []
     for item in benchmark_items:
@@ -200,7 +230,7 @@ def main() -> None:
 
     model.train()
     for step in range(int(args.steps)):
-        selected_teacher = [teacher_rows[index] for index in rng.choices(range(len(teacher_rows)), k=teacher_batch)]
+        selected_teacher = [teacher_training_rows[index] for index in rng.choices(range(len(teacher_training_rows)), k=teacher_batch)]
         selected_protected = [protected_rows[index] for index in rng.choices(range(len(protected_rows)), k=protected_batch)]
         selected_broad = [broad_rows[index] for index in rng.choices(range(len(broad_rows)), weights=broad_weights, k=broad_batch)]
         batch_rows = selected_teacher + selected_protected + selected_broad
@@ -228,14 +258,21 @@ def main() -> None:
     for item, forward in zip(teacher_eval_examples, candidate_teacher_predictions):
         reverse = model.greedy_generate(tokenizer, "EL_TO_ABC", str(item["target"]), max_new_tokens=24, device="cpu")
         expected_reverse = str(item["canonical_concept"])
-        roundtrip_rows.append({
+        roundtrip = {
             "source": item["source"],
             "forward_expected": item["target"],
             "forward_prediction": forward["prediction"],
             "reverse_expected": expected_reverse,
             "reverse_prediction": reverse,
             "exact": bool(forward["exact"] and reverse.casefold() == expected_reverse.casefold()),
-        })
+        }
+        roundtrip_rows.append(roundtrip)
+        print(
+            "G2_ROUNDTRIP "
+            f"source={item['source']!r} forward={forward['prediction']!r}/{item['target']!r} "
+            f"reverse={reverse!r}/{expected_reverse!r} exact={roundtrip['exact']}",
+            flush=True,
+        )
 
     literal_control = "<ABC_TO_EL> remains literal user text"
     tokenizer_literal_safe = tokenizer.decode(tokenizer.encode_text(literal_control)) == literal_control
@@ -246,6 +283,7 @@ def main() -> None:
         and int(teacher_replay.get("frozen_benchmark_overlap_count", -1)) == 0
         and int(teacher_replay.get("provider_authored_el_count", -1)) == 0
         and int(teacher_replay.get("unverified_self_output_truth_count", -1)) == 0
+        and teacher_reverse_benchmark_overlap_count == 0
     )
     validation_pass = all(lang_module.valid_el(row["prediction"]) for row in candidate_teacher_predictions)
 
@@ -257,6 +295,7 @@ def main() -> None:
         "step3_training_steps": int(args.steps),
         "teacher_replay_fingerprint_sha256": str(teacher_replay["fingerprint_sha256"]),
         "teacher_lesson_count": len(teacher_examples),
+        "teacher_reverse_replay_count": len(teacher_reverse_rows),
         "frozen_benchmark_sha256": file_sha256(BENCHMARK),
     })
     model.save_checkpoint(g2_path, metadata=metadata)
@@ -301,6 +340,9 @@ def main() -> None:
         "protected_examples_per_batch": protected_batch,
         "broad_examples_per_batch": broad_batch,
         "teacher_lesson_count": len(teacher_examples),
+        "teacher_reverse_replay_count": len(teacher_reverse_rows),
+        "teacher_training_relation_count": len(teacher_training_rows),
+        "teacher_reverse_benchmark_overlap_count": teacher_reverse_benchmark_overlap_count,
         "provider_authored_el_truth_count": 0,
         "unverified_self_output_truth_count": 0,
         "frozen_benchmark_training_overlap_count": 0,
@@ -317,6 +359,7 @@ def main() -> None:
             "tokenizer_literal_control_safe": tokenizer_literal_safe,
             "hostile_teacher_case_rejected": hostile_rejected,
             "benchmark_overlap_zero": True,
+            "teacher_reverse_benchmark_overlap_zero": teacher_reverse_benchmark_overlap_count == 0,
             "provider_authored_el_zero": True,
             "self_output_truth_zero": True
         },
@@ -341,7 +384,8 @@ def main() -> None:
         f"teacher_loss={baseline_teacher_loss:.4f}->{candidate_teacher_loss:.4f} "
         f"benchmark={baseline_benchmark_loss:.4f}->{candidate_benchmark_loss:.4f} "
         f"protected={candidate_metrics['protected_probe_exact']}/{candidate_metrics['protected_probe_total']} "
-        f"roundtrip={candidate_metrics['roundtrip_exact']}/{candidate_metrics['roundtrip_total']}",
+        f"roundtrip={candidate_metrics['roundtrip_exact']}/{candidate_metrics['roundtrip_total']} "
+        f"reverse_replay={len(teacher_reverse_rows)}/{len(teacher_examples)}",
         flush=True,
     )
 
