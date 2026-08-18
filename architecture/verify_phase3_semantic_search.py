@@ -107,15 +107,20 @@ def main() -> None:
     require(rest.evaluated_count == 8 and toy_done.cursor == 12 and toy_proof.exhausted and toy_proof.visited_candidates == 12, "toy frontier exhaustion proof failed")
 
     u = universe.EmojiUniverseEngine()
-    full = frontiers.define(units=u.units, min_length=1, max_length=1, frontier_id="full-universe-depth1-gate")
+    # Unicode RGI count is a count of exact source rows. Phase-3 search intentionally
+    # canonicalizes aliases into a finite coordinate space. Include the historical
+    # semantic seed explicitly so its non-RGI EL control symbols remain covered.
+    full = frontiers.define(units=tuple(u.units) + tuple(seed), min_length=1, max_length=1, frontier_id="full-canonical-depth1-gate")
     seed_set = frozenset(seed)
     full_result, full_done, full_proof = complete.search_to_exhaustion(
         full,
         lambda candidate, index: {"score": 1.0 if candidate in seed_set else 0.0, "valid": candidate in seed_set, "canonical": candidate in seed_set},
     )
-    require(full.total_candidates == u.snapshot.count, "full depth-1 frontier must equal loaded universe count")
-    require(full_result.evaluated_count == u.snapshot.count and full_done.cursor == u.snapshot.count and full_proof.exhausted, "full depth-1 universe was not exhausted")
-    require(len(full_result.survivors) == len(seed), "full-universe historical semantic-seed survivor count changed")
+    require(u.snapshot.rgi_complete and u.snapshot.version == "17.0", "official released Emoji Universe not loaded")
+    require(full.total_candidates == len(full.units), "depth-1 canonical frontier coordinate count mismatch")
+    require(full_result.evaluated_count == full.total_candidates and full_done.cursor == full.total_candidates and full_proof.exhausted, "full canonical depth-1 frontier was not exhausted")
+    require(full_proof.visited_candidates == full.total_candidates, "full canonical frontier proof count mismatch")
+    require(len(full_result.survivors) == len(seed), "historical semantic-seed survivor count changed")
 
     outside_seed = next((unit for unit in u.units if unit not in seed_set and any(unicodedata.category(ch) == "So" and unicodedata.name(ch, "") for ch in unit)), None)
     require(outside_seed is not None, "no investigable emoji outside historical semantic seed available")
@@ -156,7 +161,7 @@ def main() -> None:
     combined = engine.translate("Use the converter for words with ChatGPT.", cross_verify=False, emit=False)
     require(combined.metrics.get("quality_status") != "fail" and int(combined.metrics.get("phase3_resolved_unknowns", 0)) >= 3, "combined Phase-3 semantic rescue failed")
 
-    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐" + str(u.snapshot.count) + "/" + str(u.snapshot.count) + "✅ seed=" + str(len(seed)) + " 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 😀🌐✅ 🤖❌")
+    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐RGI=" + str(u.snapshot.count) + " canonical-frontier=" + str(full.total_candidates) + "✅ seed=" + str(len(seed)) + " 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 😀🌐✅ 🤖❌")
 
 
 if __name__ == "__main__":
