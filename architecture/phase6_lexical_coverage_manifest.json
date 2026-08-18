@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "name": "Lexical Coverage & Easy-Word Reliability",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "phase5_required_status": "PASS",
+  "engine_count": 44,
+  "new_engine_count": 0,
+  "fixed_501_ceiling_removed": true,
+  "emoji_authority": {
+    "source": "Unicode emoji-test.txt",
+    "target_version": "17.0",
+    "count_is_dataset_derived": true,
+    "hardcoded_emoji_count_forbidden": true
+  },
+  "lexical_authority": {
+    "source": "Open English WordNet",
+    "edition": "2025",
+    "provider_free": true,
+    "supports_senses": true,
+    "supports_synonyms": true,
+    "supports_morphology": true,
+    "supports_hypernyms": true,
+    "supports_multiword_entries": true
+  },
+  "locked": {
+    "dictionary_runs_before_phase3_decomposition": true,
+    "naive_substring_root_matching_forbidden": true,
+    "semantic_loss_scored": true,
+    "close_sense_ties_hold_instead_of_guess": true,
+    "unresolved_words_preserved_as_unresolved": true,
+    "main_js_semantic_dictionary_forbidden": true,
+    "pass_hold_provider_calls_zero": true,
+    "qwen_remains_fail_only": true,
+    "phase1_through_phase5_must_remain_green": true,
+    "exact_final_sha_ci_success_required": true
+  }
+}
