@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phase": 6,
-  "name": "Lexical Coverage & Easy-Word Reliability",
+  "name": "EL Student 1M + Qwen Teacher Distillation",
   "status": "IMPLEMENTATION_IN_PROGRESS",
   "phase5_required_status": "PASS",
   "engine_count": 44,
@@ -13,26 +13,52 @@
     "count_is_dataset_derived": true,
     "hardcoded_emoji_count_forbidden": true
   },
-  "lexical_authority": {
+  "lexical_front_end": {
     "source": "Open English WordNet",
     "edition": "2025",
-    "provider_free": true,
-    "supports_senses": true,
-    "supports_synonyms": true,
-    "supports_morphology": true,
-    "supports_hypernyms": true,
-    "supports_multiword_entries": true
+    "purpose": "fast deterministic exact/lemma/sense front end before learned intelligence",
+    "provider_free": true
+  },
+  "student": {
+    "owner": "Intelligence + Instructor",
+    "source_path": "🧠/🤖",
+    "trainer_path": "🧑‍🏫/🤖",
+    "pretrained": false,
+    "input_dim": 256,
+    "hidden_dim": 256,
+    "output_dim_source": "actual Unicode emoji inventory",
+    "parameter_count_formula": "256*256 + 256 + 256*emoji_count + emoji_count",
+    "target_scale": "approximately one million trainable parameters",
+    "framework_dependency": "none",
+    "persistent": true,
+    "replay_learning": true
+  },
+  "teacher": {
+    "provider": "ollama",
+    "model": "qwen2.5vl:7b",
+    "role": "semantic teacher",
+    "raw_provider_el_is_authority": false,
+    "validated_lessons_train_student": true,
+    "rejected_lessons_train_student": false
   },
   "locked": {
-    "dictionary_runs_before_phase3_decomposition": true,
+    "deterministic_pass_provider_free": true,
+    "semantic_hold_can_use_student_and_teacher": true,
+    "semantic_fail_can_use_student_and_teacher": true,
+    "system_runtime_security_hold_provider_free": true,
+    "student_never_calls_provider": true,
+    "qwen_never_directly_releases_el": true,
+    "teacher_output_must_pass_deterministic_validation": true,
+    "accepted_qwen_lesson_trains_student_immediately": true,
+    "deterministic_pass_may_train_student": true,
+    "explicit_user_selection_may_train_student": true,
+    "student_self_release_requires_high_confidence": true,
+    "student_self_release_requires_repeated_teacher_confirmation": true,
+    "student_self_release_requires_deterministic_revalidation": true,
     "naive_substring_root_matching_forbidden": true,
-    "semantic_loss_scored": true,
-    "close_sense_ties_hold_instead_of_guess": true,
-    "unresolved_words_preserved_as_unresolved": true,
     "main_js_semantic_dictionary_forbidden": true,
-    "pass_hold_provider_calls_zero": true,
-    "qwen_remains_fail_only": true,
     "phase1_through_phase5_must_remain_green": true,
+    "diagnostics_remain_44_of_44": true,
     "exact_final_sha_ci_success_required": true
   }
 }
