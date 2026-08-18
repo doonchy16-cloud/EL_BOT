@@ -89,6 +89,7 @@ class SelectedGeneration:
         model_module = load("_el_step4_model", ROOT / "🧠" / "🤖")
         tokenizer = tokenizer_module.ForgeyInstaTokenizer.load(Path(record["tokenizer_path"]))
         model, metadata = model_module.ForgeyInstaTransformer.load_checkpoint(Path(record["model_path"]), map_location="cpu")
+        model.eval()
         if model.config.vocab_size != tokenizer.vocab_size:
             raise RuntimeError("selected model/tokenizer vocabulary mismatch")
         if str(metadata.get("generation")) != selected:
@@ -148,10 +149,15 @@ class Step4TranslationEngine:
         else:
             reverse = self.legacy.emoji_to_abc.translate(source, verifier=self.legacy.abc_to_emoji, cross_verify=True, emit=False)
             support_quality = str(reverse.metrics.get("quality_status", "fail") or "fail").lower()
+            candidates = _candidate_values(reverse)
+            if support_quality == "pass":
+                canonical_match = next((value for value in candidates if value.casefold() == prediction.casefold()), None)
+                if canonical_match is None:
+                    reasons.append("deterministic-authority-conflict")
+                else:
+                    prediction = canonical_match
             reencoded = self.legacy.abc_to_emoji.translate(prediction, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
             roundtrip_ok = str(reencoded.winner) == source
-            if support_quality == "pass" and prediction.casefold() not in tuple(value.casefold() for value in _candidate_values(reverse)):
-                reasons.append("deterministic-authority-conflict")
             if not roundtrip_ok: reasons.append("deterministic-roundtrip-failed")
 
         if reasons:
