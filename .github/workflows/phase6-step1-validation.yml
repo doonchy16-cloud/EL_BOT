@@ -77,6 +77,11 @@ jobs:
           $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
           & $exe -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); a=chr(0x1F9EA); p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a); l=importlib.machinery.SourceFileLoader('_p6s1_diag',str(p)); s=importlib.util.spec_from_loader('_p6s1_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s1_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
 
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: "🟩 Renderer syntax"
         shell: powershell
         run: |
