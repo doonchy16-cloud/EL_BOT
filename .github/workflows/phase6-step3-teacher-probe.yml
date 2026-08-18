@@ -1,0 +1,44 @@
+name: "🔬 Phase 6 Step 3 Teacher Probe"
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "phase6-step3-teacher-probe-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: "🔬🦙 Structured Qwen semantic probe"
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+    timeout-minutes: 20
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Python 3.12"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10'
+          $exe = Join-Path $dir 'python.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw 'PHASE6_STEP3_PROBE_PYTHON_CACHE_MISSING' }
+          & $exe -c "import sys; assert sys.version_info[:2] == (3,12); print(sys.version)"
+          "EL_PYTHON=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: "🔬🦙 Probe structured teacher"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'scripts\phase6-step3-probe-teacher.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_TEACHER_PROBE_FAILED' }
