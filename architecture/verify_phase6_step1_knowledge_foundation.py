@@ -122,6 +122,7 @@ def main() -> None:
     token_source = (ROOT / "📚" / "🔤").read_text(encoding="utf-8")
     vocab_source = (ROOT / "📚" / "📚").read_text(encoding="utf-8")
     renderer_source = (ROOT / "⚡" / "🎞️").read_text(encoding="utf-8")
+    html_source = (ROOT / "⚡" / "🖥️").read_text(encoding="utf-8")
     launcher_source = (ROOT / "▶️.cmd").read_text(encoding="utf-8")
     for source_name, source in (("lexical", lexical_source), ("token", token_source)):
         lowered = source.lower()
@@ -129,7 +130,9 @@ def main() -> None:
             require(forbidden not in lowered, f"provider coupling leaked into Step-1 {source_name} authority: {forbidden}")
     require("len(CANONICAL_SYMBOLS) !=" not in vocab_source and "len(CANONICAL_SYMBOLS) ==" not in vocab_source, "fixed-size Vocabulary invariant remains")
     require("official_emoji_count" in vocab_source and "is_valid_el_symbol" in vocab_source, "dynamic Vocabulary authority missing")
-    require("query('📚')" in renderer_source and "🔒📚?" in renderer_source, "renderer does not replace stale vocabulary count dynamically")
+    require("🔒📚501" not in html_source, "stale public 501 count remains in UI source")
+    require("🔒📚?" in html_source, "neutral vocabulary placeholder missing from UI source")
+    require("query('📚')" in renderer_source and "🔒📚?" in renderer_source, "renderer does not replace neutral vocabulary placeholder dynamically")
     require("materialize-phase6-step1-knowledge.ps1" in launcher_source, "source launcher does not prepare Step-1 knowledge")
 
     # Scope proof: model/trainer/admin runtime work is not authorized in Step 1.
@@ -145,7 +148,7 @@ def main() -> None:
         f"tokenizer_unique_english={token_snapshot.english_lemma_count} "
         f"atomic_el={token_snapshot.atomic_el_token_count} "
         f"semantic_seed={vocab_snapshot.semantic_seed_count} "
-        "model=ABSENT teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
+        "public_501=ABSENT model=ABSENT teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
     )
 
 
