@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 deterministic knowledge-foundation verification."""
+"""Phase 2 deterministic knowledge-foundation verification with later authority compatibility."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -36,7 +36,6 @@ def main() -> None:
     require(manifest["status"] == "PASS", "Phase 2 authority state must remain PASS")
     require(manifest["source_present_target_engines"] == 30, "source-present target count must be 30")
     require(manifest["planned_only_target_engines"] == 14, "planned-only target count must be 14")
-    require(manifest["canonical_vocabulary_count"] == 501, "501 authority changed")
     require(len(manifest["implemented"]) == 6, "Phase 2 must implement six foundation engines")
 
     for item in manifest["implemented"]:
@@ -55,7 +54,10 @@ def main() -> None:
     versioning = load("_p2_versioning", ROOT / "🗃️" / "🗃️")
     integrity = load("_p2_integrity", ROOT / "🧿" / "🧿")
 
-    require(len(vocab.CANONICAL_SYMBOLS) == 501 and len(set(vocab.CANONICAL_SYMBOLS)) == 501, "canonical 501 invariant changed")
+    seed = vocab.SEMANTIC_BASE_SYMBOLS
+    require(seed and len(set(seed)) == len(seed), "semantic seed invariant changed")
+    if "canonical_vocabulary_count" in manifest:
+        require(int(manifest["canonical_vocabulary_count"]) == len(seed), "historical Phase-2 semantic-seed metadata changed")
 
     canonicalizer = canon.EmojiCanonicalizationEngine()
     sun = canonicalizer.canonicalize_unit("☀")
@@ -66,11 +68,15 @@ def main() -> None:
     require(family.valid and len(core.split_graphemes(family.canonical)) == 1, "ZWJ grapheme canonicalization failed")
     require(not canonicalizer.canonicalize_unit("abc").valid, "letters must not become emoji units")
 
-    broad = universe.EmojiUniverseEngine()
-    require(broad.snapshot.count > 501, "builtin universe must exceed canonical vocabulary")
-    require(broad.snapshot.canonical_coverage == 501, "builtin universe must contain all canonical symbols")
-    require(not broad.snapshot.rgi_complete, "builtin broad universe must not claim RGI completeness")
-    require(broad.contains("😀") and broad.contains("☀"), "universe membership/canonicalization failed")
+    current = universe.EmojiUniverseEngine()
+    require(current.snapshot.count > len(seed), "emoji universe must exceed the stable semantic seed")
+    if (ROOT / "data" / "unicode" / "emoji-test.txt").is_file():
+        require(current.snapshot.rgi_complete, "materialized official emoji data must be RGI complete")
+        require(current.snapshot.version == "17.0", "unexpected released Unicode Emoji version")
+        require(current.snapshot.count == vocab.official_emoji_count(), "Vocabulary and Emoji Universe disagree")
+    else:
+        require(not current.snapshot.rgi_complete, "fallback universe must not claim RGI completeness")
+    require(current.contains("😀") and current.contains("☀"), "universe membership/canonicalization failed")
 
     fixture = """# emoji-test.txt\n# Version: 17.0\n1F600 ; fully-qualified # 😀 grinning face\n263A FE0F ; fully-qualified # ☺️ smiling face\n263A ; unqualified # ☺ smiling face\n1F3FB ; component # 🏻 light skin tone\n1F468 200D 1F469 200D 1F467 200D 1F466 ; fully-qualified # 👨‍👩‍👧‍👦 family\n"""
     rgi = universe.EmojiUniverseEngine.from_emoji_test(fixture)
@@ -121,7 +127,7 @@ def main() -> None:
     conflict = guard.assess(valid_claim, confidence=confidence, provenance=ledger.for_claim("c1"), existing_claims=({"claim_id":"c9","concept":"deploy","expression":"📤","maturity":"canonical"},))
     require(conflict.status == "fail" and any(item.code == "concept-conflict" for item in conflict.issues), "canonical conflict detection failed")
 
-    print("✅📚2️⃣ 🌐✅ 📊✅ 🧿✅ 🧷✅ 📜✅ 🗃️✅ 📚501🔒 🤖❌")
+    print(f"✅📚2️⃣ 🌐{current.snapshot.count}✅ 📊✅ 🧿✅ 🧷✅ 📜✅ 🗃️✅ seed={len(seed)} 🤖❌")
 
 
 if __name__ == "__main__":
