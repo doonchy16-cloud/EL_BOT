@@ -1,0 +1,201 @@
+"""Trusted bootstrap curriculum for Forgey Insta:EL-Bot G1.
+
+Step 2 only. No provider/teacher output is accepted here. Training truth is derived
+from official Unicode emoji names, the already-validated historical semantic seed,
+and explicit deterministic EL structural examples. Frozen benchmark source keys are
+removed before the curriculum is returned.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import sys
+from typing import Iterable
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError(f"module spec unavailable: {path}")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_lexical = _load("_forgey_insta_curriculum_lexical", _ROOT / "📚" / "📖")
+_vocab = _load("_forgey_insta_curriculum_vocab", _ROOT / "📚" / "📚")
+_meanings = _load("_forgey_insta_curriculum_meanings", _ROOT / "📚" / "🧾")
+
+
+@dataclass(frozen=True, slots=True)
+class CurriculumExample:
+    direction: str
+    source: str
+    target: str
+    category: str
+    provenance: str
+    weight: int = 1
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.direction, self.source)
+
+
+@dataclass(frozen=True, slots=True)
+class CurriculumReport:
+    example_count: int
+    abc_to_el_count: int
+    el_to_abc_count: int
+    official_unicode_count: int
+    historical_semantic_count: int
+    structural_count: int
+    excluded_benchmark_keys: int
+
+
+STRUCTURAL_EXAMPLES: tuple[CurriculumExample, ...] = (
+    CurriculumExample("ABC_TO_EL", "input becomes output", "📥➡️📤", "relationship", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "receive then send", "📥➡️📤", "relationship", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "test then validate", "🧪➡️🧾", "relationship", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "validate then deploy", "🧾➡️🚀", "relationship", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "test validate deploy", "🧪➡️🧾➡️🚀", "relationship", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "failed", "❌", "state", "owner-structural", 12),
+    CurriculumExample("ABC_TO_EL", "rejected", "❌", "state", "owner-structural", 12),
+    CurriculumExample("ABC_TO_EL", "pending", "🟡", "state", "owner-structural", 12),
+    CurriculumExample("ABC_TO_EL", "uncertain", "🟡", "state", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "unknown", "❓", "state", "owner-structural", 12),
+    CurriculumExample("ABC_TO_EL", "nonsense input", "❓", "state", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "10 seconds", "⏱️10", "time", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "60 seconds", "⏱️60", "time", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "15 minutes", "⏱️15", "time", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "secure computer", "🔒💻", "technical", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "computer is locked", "💻🔒", "technical", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "software defect", "🐛", "technical", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "dog", "🐕", "morphology", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "car", "🚗", "morphology", "owner-structural", 10),
+    CurriculumExample("ABC_TO_EL", "mouse animal", "🐁", "context", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "mouse device", "🖱️", "context", "owner-structural", 8),
+    CurriculumExample("ABC_TO_EL", "red apple", "🍎", "context", "owner-structural", 8),
+
+    CurriculumExample("EL_TO_ABC", "📥➡️📤", "input becomes output", "relationship", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "🧪➡️🧾", "test then validate", "relationship", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "🧾➡️🚀", "validate then deploy", "relationship", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "❌", "failed", "state", "owner-structural", 12),
+    CurriculumExample("EL_TO_ABC", "🟡", "pending", "state", "owner-structural", 12),
+    CurriculumExample("EL_TO_ABC", "❓", "unknown", "state", "owner-structural", 12),
+    CurriculumExample("EL_TO_ABC", "⏱️10", "10 seconds", "time", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "⏱️60", "60 seconds", "time", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "🔒💻", "secure computer", "technical", "owner-structural", 10),
+    CurriculumExample("EL_TO_ABC", "🐛", "software bug", "technical", "owner-structural", 8),
+)
+
+
+def load_frozen_benchmark(path: Path) -> tuple[dict, ...]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if payload.get("frozen") is not True or payload.get("training_replay_forbidden") is not True:
+        raise ValueError("Step-2 benchmark is not frozen/training-forbidden")
+    examples = tuple(payload.get("examples", ()))
+    if not examples:
+        raise ValueError("Step-2 frozen benchmark is empty")
+    return examples
+
+
+def _dedupe(examples: Iterable[CurriculumExample]) -> tuple[CurriculumExample, ...]:
+    chosen: dict[tuple[str, str, str], CurriculumExample] = {}
+    for example in examples:
+        if not example.source or not example.target:
+            continue
+        key = (example.direction, example.source, example.target)
+        previous = chosen.get(key)
+        if previous is None or example.weight > previous.weight:
+            chosen[key] = example
+    return tuple(chosen[key] for key in sorted(chosen))
+
+
+def build_bootstrap_curriculum(benchmark_path: Path) -> tuple[tuple[CurriculumExample, ...], CurriculumReport]:
+    benchmark = load_frozen_benchmark(benchmark_path)
+    forbidden_keys = {(str(item["direction"]), str(item["source"])) for item in benchmark}
+    resolver = _lexical.resolver()
+    if not resolver.emoji.lexemes:
+        raise RuntimeError("Unicode emoji knowledge is not materialized")
+
+    rows: list[CurriculumExample] = []
+    official_count = 0
+    historical_count = 0
+
+    # Official released Unicode names are the broad atomic bootstrap teacher.
+    for lexeme in resolver.emoji.lexemes:
+        name = str(lexeme.name).strip()
+        symbol = str(lexeme.symbol)
+        if not name or not symbol:
+            continue
+        variants = (
+            CurriculumExample("ABC_TO_EL", name, symbol, "unicode-name", "unicode-emoji-test", 3),
+            CurriculumExample("ABC_TO_EL", "a " + name, symbol, "unicode-name", "unicode-emoji-test", 1),
+            CurriculumExample("ABC_TO_EL", "the " + name, symbol, "unicode-name", "unicode-emoji-test", 1),
+            CurriculumExample("EL_TO_ABC", symbol, name, "unicode-name", "unicode-emoji-test", 3),
+        )
+        for example in variants:
+            if example.key not in forbidden_keys:
+                rows.append(example)
+                official_count += 1
+
+    # Preserve historically validated semantic meanings as bootstrap evidence, but
+    # do not treat the old semantic seed size as a product vocabulary ceiling.
+    symbols = tuple(getattr(_vocab, "CANONICAL_SYMBOLS"))
+    meanings = tuple(getattr(_meanings, "PRIMARY_MEANINGS"))
+    if len(symbols) != len(meanings):
+        raise RuntimeError("historical semantic seed alignment is broken")
+    for symbol, meaning in zip(symbols, meanings, strict=True):
+        normalized = str(meaning).strip().lower()
+        if not normalized:
+            continue
+        forward = CurriculumExample("ABC_TO_EL", normalized, str(symbol), "historical-semantic", "phase1-5-validated-seed", 2)
+        reverse = CurriculumExample("EL_TO_ABC", str(symbol), normalized, "historical-semantic", "phase1-5-validated-seed", 2)
+        if forward.key not in forbidden_keys:
+            rows.append(forward)
+            historical_count += 1
+        if reverse.key not in forbidden_keys:
+            rows.append(reverse)
+            historical_count += 1
+
+    structural_count = 0
+    for example in STRUCTURAL_EXAMPLES:
+        if example.key not in forbidden_keys:
+            rows.append(example)
+            structural_count += 1
+
+    curriculum = _dedupe(rows)
+    # Hard leak gate: no frozen benchmark source key can exist in training/replay.
+    leaked = tuple(example.key for example in curriculum if example.key in forbidden_keys)
+    if leaked:
+        raise RuntimeError(f"frozen benchmark leaked into curriculum: {leaked[:5]}")
+
+    report = CurriculumReport(
+        example_count=len(curriculum),
+        abc_to_el_count=sum(1 for item in curriculum if item.direction == "ABC_TO_EL"),
+        el_to_abc_count=sum(1 for item in curriculum if item.direction == "EL_TO_ABC"),
+        official_unicode_count=official_count,
+        historical_semantic_count=historical_count,
+        structural_count=structural_count,
+        excluded_benchmark_keys=len(forbidden_keys),
+    )
+    return curriculum, report
+
+
+def english_training_texts(examples: Iterable[CurriculumExample]) -> tuple[str, ...]:
+    """English surfaces supplied to BPE training, independent of model direction."""
+    values: list[str] = []
+    for example in examples:
+        if example.direction == "ABC_TO_EL":
+            values.append(example.source)
+        else:
+            values.append(example.target)
+    return tuple(values)

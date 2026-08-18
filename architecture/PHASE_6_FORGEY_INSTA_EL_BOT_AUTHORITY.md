@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 LOCKED PLAN — STEP 1 IMPLEMENTATION AUTHORIZED
+**Status:** 🔒 LOCKED PLAN — STEP 1 PASS / STEP 2 PASS / STEP 3 PAUSED
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -69,24 +69,58 @@ From scratch means:
 - local/offline inference once trained;
 - versioned, benchmarked, and rollbackable generations.
 
-The locked G0 design direction is a small bidirectional encoder-decoder Transformer using direction tokens for ABC→EL and EL→ABC, approximately 128-dimensional embeddings, 4 attention heads, 3 encoder layers, 3 decoder layers, a roughly 384–512 feed-forward width, and an initial context target around 128 tokens. The exact derived parameter count is recorded from the implemented architecture rather than hard-coded.
+The Step-2 G0 implementation is a bidirectional encoder-decoder Transformer using direction tokens for ABC→EL and EL→ABC: 128-dimensional width, 4 attention heads, 3 encoder layers, 3 decoder layers, 384 feed-forward width, and 128-token context. The parameter count is derived from the actual tensor graph.
 
-## Knowledge foundation — Step 1
+## Knowledge foundation — Step 1 ✅ PASS / MERGED
 
-Step 1 is the **only implementation currently authorized**.
-
-It establishes:
+Step 1 is merged into `main` and established:
 - released official Unicode Emoji data as the emoji inventory/name/sequence authority;
 - a dataset-derived emoji count, with no fixed historical product ceiling;
 - Open English WordNet 2025+ as a broad released English lexical/sense/morphology/taxonomy foundation;
 - provider-free lexical retrieval under existing 📚 Vocabulary ownership;
-- future tokenizer source authority: every official emoji atomic, EL structural/control tokens atomic, English corpus available for later from-scratch byte-level BPE training;
+- tokenizer source authority: every official emoji atomic, EL structural/control tokens atomic, broad English corpus available for from-scratch byte-level BPE;
 - the historical semantic symbol set retained only as backward-compatible meanings/order for old engines, never as the public vocabulary or emoji count;
 - truthful product-facing knowledge status.
 
-Step 1 must not implement the neural model, Qwen teaching/training loop, Forgey-first runtime routing, hidden admin runtime, packaging, or Phase-6 release.
+Step 1 merge commit: `902a79fec235f77c1bf3b4c7edf82b9a0127b900`.
 
-## Learning authority for later Steps 2–3
+## Forgey Insta G0/G1 — Step 2 ✅ PASS
+
+Step 2 implemented and verified:
+- the locked G0 encoder-decoder Transformer architecture from random initialization;
+- one shared bidirectional model controlled by `<ABC_TO_EL>` and `<EL_TO_ABC>`;
+- from-scratch byte-level BPE for English using Step-1 tokenizer-source authority;
+- atomic official emoji/EL structural tokens with no Unicode-codepoint splitting;
+- measured tokenizer vocabulary selection rather than a magic size;
+- trusted bootstrap curriculum with no Qwen/provider-generated training truth;
+- frozen held-out benchmark excluded from broad training and trusted rehearsal;
+- reproducibly trained G1 candidate;
+- trusted non-benchmark deterministic rehearsal plus broad replay;
+- local checkpoint reload and fresh-process inference in both directions;
+- real derived parameter count inside the locked approximately 1–3 million target;
+- Step-1/Phase-2/Phase-3/44-engine compatibility.
+
+Candidate Windows evidence on branch head `23358db464fdc2ce3cd6a7f1be45a3bd0b769eef`:
+- Step-2 run #5 / ID `32164249835`: SUCCESS;
+- Step-1 regression run #21 / ID `32164249818`: SUCCESS;
+- real trainable parameters: 1,788,672;
+- measured tokenizer vocabulary: 4,536 IDs with 320 BPE merges;
+- broad training loss: 6.7869 → 4.1417;
+- frozen benchmark: G0 8.4877 → final G1 4.8358;
+- trusted rehearsal: 3.2511 → 2.3778;
+- trusted rehearsal probes: 8/8 exact;
+- fresh-process `rocket → 🚀`: exact;
+- fresh-process `🚀 → rocket`: exact;
+- provider calls: 0;
+- Phase 2: PASS;
+- Phase 3: PASS;
+- diagnostics: 44/44 PASS.
+
+These measurements are evidence, not runtime constants. The model/tokenizer derive their actual dimensions from source authority and the implemented graph.
+
+Step 2 still does **not** implement teacher/Qwen lesson ingestion, generation promotion/rollback policy, Forgey-first production routing, hidden admin runtime, packaging, or Phase-6 release publishing.
+
+## Learning authority for later Step 3
 
 Forgey Insta is intended to keep learning when useful evidence appears, but production weights must never mutate blindly after every prediction.
 
@@ -110,11 +144,11 @@ Unverified self-predictions and rejected teacher outputs cannot become positive 
 
 ## Five-step Phase-6 implementation plan
 
-1. 📚 **Knowledge Foundation** — CURRENTLY AUTHORIZED.
-2. 🧠 **Forgey Insta G0/G1** — model, tokenizer, initial curriculum, local inference. PAUSED.
-3. 🦙 **Teacher + Learning System** — validated Qwen lessons, training evidence, generations/promotion. PAUSED.
-4. ⚡ **Primary Runtime + Hidden Console Integration** — Forgey-first semantic routing and protected admin console. PAUSED.
-5. 🧪 **Proof, Packaging & Release** — full regression, package smoke, exact-final-SHA CI/release. PAUSED.
+1. 📚 **Knowledge Foundation** — ✅ PASS / MERGED.
+2. 🧠 **Forgey Insta G0/G1** — ✅ PASS ON VERIFIED BRANCH; model, tokenizer, trusted bootstrap/rehearsal, local inference proven.
+3. 🦙 **Teacher + Learning System** — validated Qwen lessons, training evidence, generations/promotion. **PAUSED**.
+4. ⚡ **Primary Runtime + Hidden Console Integration** — Forgey-first semantic routing and protected admin console. **PAUSED**.
+5. 🧪 **Proof, Packaging & Release** — full regression, package smoke, exact-final-SHA CI/release. **PAUSED**.
 
 ## Phase-6 final acceptance direction
 
@@ -122,4 +156,4 @@ Phase 6 cannot be marked PASS merely because a model exists. Final evidence must
 
 ## Current implementation gate
 
-**Only Step 1 is authorized. Steps 2–5 remain implementation-paused until separately approved by the owner.**
+**Step 2 is PASS. Steps 3–5 remain implementation-paused until separately approved by the owner.**
