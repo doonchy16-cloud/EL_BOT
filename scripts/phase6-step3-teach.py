@@ -62,6 +62,13 @@ def main() -> None:
     if hostile is None or "case-not-training-eligible" not in hostile["reason_codes"]:
         raise RuntimeError("hostile teacher case was not rejected as negative evidence")
 
+    # A correct unresolved provider answer has an empty structured definition. Keep
+    # evidence truthful by hashing that empty value rather than inventing prose.
+    empty_definition_sha = sha256(b"").hexdigest()
+    for rejection in evidence["rejections"]:
+        if not rejection.get("rejected_definition_sha256"):
+            rejection["rejected_definition_sha256"] = empty_definition_sha
+
     replay_examples = [
         {
             "lesson_id": lesson["lesson_id"],
