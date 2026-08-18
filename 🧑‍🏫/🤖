@@ -1,0 +1,320 @@
+"""Phase-6 Step-3 Forgey Insta teacher-learning coordinator.
+
+Integration code under existing Engine 16 (Instructor). It does not create engine #45.
+The provider may contribute semantic evidence only. EL training targets are accepted
+only when independently anchored by deterministic or trusted Step-2 EL authority.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+from typing import Any
+import json
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError(f"module spec unavailable: {path}")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_PROVIDER_MARKER = "🦙"
+_ALLOWED_DIRECTIONS = frozenset({"ABC_TO_EL"})
+_STEP2_BENCHMARK = _ROOT / "architecture" / "phase6_step2_frozen_benchmark.json"
+_provider_adapter = None
+_learning_module = _load("_p6s3_learning_store", _ROOT / "🧑‍🏫" / "🧠")
+_abc_module = _load("_p6s3_abc", _ROOT / "🔤➡️😀" / "🔤➡️😀")
+_lang_module = _load("_p6s3_lang", _ROOT / "🧠" / "🧬")
+_curriculum_module = _load("_p6s3_curriculum", _ROOT / "🧠" / "🌱")
+
+
+def _normalized(value: str) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _sha_text(value: str) -> str:
+    return sha256(str(value).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class TeacherLesson:
+    case_id: str
+    lesson_id: str
+    direction: str
+    source: str
+    canonical_concept: str
+    target: str
+    semantic_definition: str
+    semantic_confidence: float
+    provider: str
+    model: str
+    learning_claim_id: str
+    learning_maturity: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeacherDecision:
+    case_id: str
+    accepted: bool
+    provider_called: bool
+    provider: str
+    model: str
+    reason_codes: tuple[str, ...]
+    lesson: TeacherLesson | None = None
+    rejected_definition_sha256: str = ""
+
+
+class TeacherLearningCoordinator:
+    """Request semantic lessons and admit only independently validated targets."""
+
+    def __init__(self, *, connector=None, learning=None, learning_path: str | Path | None = None) -> None:
+        self._connector = connector
+        self.learning = learning if learning is not None else _learning_module.LearningCoordinator(path=learning_path)
+        self.abc = _abc_module.ABCToEmojiEngine()
+        self.provider_call_count = 0
+        self._step2_trusted_targets: frozenset[tuple[str, str, str]] | None = None
+
+    def _ensure_connector(self):
+        global _provider_adapter
+        if self._connector is None:
+            if _provider_adapter is None:
+                _provider_adapter = _load("_p6s3_provider_adapter", _ROOT / "🔌" / "🧠")
+            self._connector = _provider_adapter.build_current_intelligence_connector()
+        return self._connector
+
+    def _trusted_step2_targets(self) -> frozenset[tuple[str, str, str]]:
+        if self._step2_trusted_targets is None:
+            curriculum, _ = _curriculum_module.build_bootstrap_curriculum(_STEP2_BENCHMARK)
+            self._step2_trusted_targets = frozenset(
+                (
+                    str(example.direction),
+                    _normalized(example.source).casefold(),
+                    str(example.target),
+                )
+                for example in curriculum
+            )
+        return self._step2_trusted_targets
+
+    @staticmethod
+    def _benchmark_keys(benchmark_path: Path) -> frozenset[tuple[str, str]]:
+        payload = json.loads(Path(benchmark_path).read_text(encoding="utf-8"))
+        return frozenset((str(item["direction"]), str(item["source"])) for item in payload.get("examples", ()))
+
+    @staticmethod
+    def _validate_case(case: dict[str, Any]) -> None:
+        required = {"id", "direction", "source", "canonical_concept", "trusted_target", "semantic_terms_any", "training_eligible"}
+        if not required.issubset(case):
+            raise ValueError(f"teacher case missing fields: {sorted(required - set(case))}")
+        if str(case["direction"]) not in _ALLOWED_DIRECTIONS:
+            raise ValueError("Step-3 teacher cases currently admit ABC_TO_EL only")
+        if not isinstance(case["semantic_terms_any"], list):
+            raise ValueError("semantic_terms_any must be a list")
+        if not isinstance(case["training_eligible"], bool):
+            raise ValueError("training_eligible must be boolean")
+
+    def _deterministic_target_valid(self, canonical_concept: str, target: str) -> tuple[bool, tuple[str, ...]]:
+        concept = _normalized(canonical_concept)
+        candidate = str(target or "").strip()
+        if not concept or not candidate:
+            return False, ("trusted-target-missing",)
+        if not _lang_module.valid_el(candidate):
+            return False, ("trusted-target-invalid-el",)
+
+        # First prefer the currently executable deterministic translator.
+        result = self.abc.translate(concept, cross_verify=False, emit=False)
+        if str(result.winner) == candidate and str(result.metrics.get("quality_status", "fail")).lower() != "fail":
+            return True, ("trusted-target-deterministic-runtime",)
+
+        # Step 2 also established trusted deterministic curriculum pairs used to
+        # train/protect G1. They are independent of the teacher response and are a
+        # valid target authority even when the older runtime cannot release them.
+        if ("ABC_TO_EL", concept.casefold(), candidate) in self._trusted_step2_targets():
+            return True, ("trusted-target-step2-curriculum",)
+
+        return False, ("trusted-target-not-independently-derived",)
+
+    def evaluate_case(self, case: dict[str, Any], *, benchmark_keys: frozenset[tuple[str, str]]) -> TeacherDecision:
+        self._validate_case(case)
+        case_id = str(case["id"])
+        direction = str(case["direction"])
+        source = _normalized(case["source"])
+        training_eligible = bool(case["training_eligible"])
+        reasons: list[str] = []
+
+        connector = self._ensure_connector()
+        result = connector.invoke_internal(_PROVIDER_MARKER, {"source": source})
+        if result.called:
+            self.provider_call_count += 1
+        provider = str(result.provider or "")
+        model = str(result.model or "")
+        payload = result.payload if isinstance(result.payload, dict) else None
+
+        if not result.called:
+            reasons.append("provider-not-called")
+        if not result.ok or payload is None:
+            reasons.append(result.error_code or "provider-result-invalid")
+
+        definition = ""
+        confidence = 0.0
+        resolvable = False
+        if payload is not None:
+            expected_keys = {"resolvable", "definition", "candidate_el", "confidence"}
+            if set(payload) != expected_keys:
+                reasons.append("teacher-schema-mismatch")
+            else:
+                resolvable = payload.get("resolvable") is True
+                definition = _normalized(payload.get("definition", ""))
+                try:
+                    confidence = float(payload.get("confidence", 0.0))
+                except (TypeError, ValueError):
+                    confidence = -1.0
+                if str(payload.get("candidate_el", "")):
+                    reasons.append("provider-authored-el-forbidden")
+                if not resolvable:
+                    reasons.append("teacher-unresolved")
+                if not 0.0 <= confidence <= 1.0:
+                    reasons.append("teacher-confidence-invalid")
+
+        if (direction, source) in benchmark_keys:
+            reasons.append("frozen-benchmark-source-forbidden")
+
+        forced_rejection = _normalized(case.get("forced_rejection_reason", ""))
+        if forced_rejection:
+            reasons.append(forced_rejection)
+        if not training_eligible:
+            reasons.append("case-not-training-eligible")
+
+        target_ok = False
+        target_reasons: tuple[str, ...] = ()
+        if training_eligible:
+            target_ok, target_reasons = self._deterministic_target_valid(str(case["canonical_concept"]), str(case["trusted_target"]))
+            reasons.extend(target_reasons)
+
+        semantic_terms = tuple(_normalized(item).casefold() for item in case.get("semantic_terms_any", ()) if _normalized(item))
+        if training_eligible:
+            folded = definition.casefold()
+            if not semantic_terms or not any(term in folded for term in semantic_terms):
+                reasons.append("teacher-semantic-target-mismatch")
+
+        accepted = bool(
+            training_eligible
+            and not forced_rejection
+            and result.called
+            and result.ok
+            and payload is not None
+            and resolvable
+            and 0.0 <= confidence <= 1.0
+            and target_ok
+            and (direction, source) not in benchmark_keys
+            and semantic_terms
+            and any(term in definition.casefold() for term in semantic_terms)
+            and not any(code in reasons for code in (
+                "provider-authored-el-forbidden",
+                "teacher-schema-mismatch",
+                "frozen-benchmark-source-forbidden",
+                "teacher-confidence-invalid",
+            ))
+        )
+
+        mapping = None
+        try:
+            mapping = self.learning.record_provider_decision(
+                source=source,
+                candidate=str(case["trusted_target"]) if accepted else "",
+                accepted=accepted,
+                provider=provider,
+                model=model,
+                validation_status="pass" if accepted else "fail",
+                reasons=tuple(dict.fromkeys(reasons)) or (("teacher-accepted",) if accepted else ("teacher-rejected",)),
+                provider_called=result.called,
+            )
+        except Exception:
+            reasons.append("learning-evidence-persist-failed")
+            accepted = False
+            mapping = None
+
+        unique_reasons = tuple(dict.fromkeys(reasons))
+        if not accepted:
+            return TeacherDecision(
+                case_id=case_id,
+                accepted=False,
+                provider_called=bool(result.called),
+                provider=provider,
+                model=model,
+                reason_codes=unique_reasons,
+                rejected_definition_sha256=_sha_text(definition) if definition else "",
+            )
+
+        lesson_id = "lesson:" + sha256((case_id + "\0" + source + "\0" + definition + "\0" + str(case["trusted_target"])).encode("utf-8")).hexdigest()[:24]
+        lesson = TeacherLesson(
+            case_id=case_id,
+            lesson_id=lesson_id,
+            direction=direction,
+            source=source,
+            canonical_concept=_normalized(case["canonical_concept"]),
+            target=str(case["trusted_target"]),
+            semantic_definition=definition,
+            semantic_confidence=confidence,
+            provider=provider,
+            model=model,
+            learning_claim_id=str(mapping.claim_id) if mapping is not None else "",
+            learning_maturity=str(mapping.maturity) if mapping is not None else "discovered",
+        )
+        return TeacherDecision(
+            case_id=case_id,
+            accepted=True,
+            provider_called=bool(result.called),
+            provider=provider,
+            model=model,
+            reason_codes=unique_reasons + ("teacher-semantic-only", "deterministic-target-admitted"),
+            lesson=lesson,
+        )
+
+    def run_cases(self, cases_path: str | Path, benchmark_path: str | Path) -> dict[str, Any]:
+        cases_payload = json.loads(Path(cases_path).read_text(encoding="utf-8"))
+        if cases_payload.get("frozen") is not True or cases_payload.get("provider_may_author_el") is not False:
+            raise ValueError("teacher case authority is not frozen/semantic-only")
+        cases = tuple(cases_payload.get("cases", ()))
+        benchmark_keys = self._benchmark_keys(Path(benchmark_path))
+        decisions = tuple(self.evaluate_case(dict(case), benchmark_keys=benchmark_keys) for case in cases)
+        accepted = tuple(item for item in decisions if item.accepted and item.lesson is not None)
+        rejected = tuple(item for item in decisions if not item.accepted)
+        return {
+            "schema_version": 1,
+            "phase": 6,
+            "step": 3,
+            "kind": "teacher-lesson-evidence",
+            "provider_calls": self.provider_call_count,
+            "provider_authored_el_count": 0,
+            "unverified_self_output_truth_count": 0,
+            "benchmark_training_overlap_count": 0,
+            "accepted_count": len(accepted),
+            "rejected_count": len(rejected),
+            "lessons": [asdict(item.lesson) for item in accepted],
+            "rejections": [
+                {
+                    "case_id": item.case_id,
+                    "provider_called": item.provider_called,
+                    "provider": item.provider,
+                    "model": item.model,
+                    "reason_codes": list(item.reason_codes),
+                    "rejected_definition_sha256": item.rejected_definition_sha256,
+                }
+                for item in rejected
+            ],
+        }
+
+    def render_el_status(self) -> str:
+        return "✅🧑‍🏫🦙🧠"
