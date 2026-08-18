@@ -1,9 +1,6 @@
 name: "📚 Phase 6 Step 1 Validation"
 
 on:
-  push:
-    branches:
-      - phase6-step1-knowledge-foundation
   pull_request:
     branches:
       - main
