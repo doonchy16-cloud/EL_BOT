@@ -1,0 +1,27 @@
+EL Bot - Third-Party Data Notices
+
+Unicode Emoji Data
+------------------
+EL Bot materializes Unicode emoji-test data from the Unicode Consortium for its
+emoji inventory and names.
+Source family: https://www.unicode.org/Public/
+Target edition in Phase 6: Unicode Emoji 17.0
+Copyright: Unicode, Inc. / The Unicode Consortium.
+Unicode data files are distributed under the applicable Unicode Terms of Use and
+Unicode License. See https://www.unicode.org/copyright.html for current terms.
+SPDX identifier for Unicode License v3: Unicode-3.0.
+
+Open English WordNet
+--------------------
+EL Bot materializes Open English WordNet for English lexical forms, senses,
+synonyms, morphology, and taxonomy/hypernym relations.
+Project: Open English WordNet
+Source: https://en-word.net/
+Target edition in Phase 6: Open English WordNet 2025
+Open English WordNet is derived from Princeton WordNet by the Open English WordNet
+Community and is released under the Creative Commons Attribution 4.0 International
+(CC BY 4.0) License.
+License: https://creativecommons.org/licenses/by/4.0/
+
+EL Bot does not claim ownership of these third-party datasets. This notice is
+shipped with the application alongside the materialized data used by Phase 6.
