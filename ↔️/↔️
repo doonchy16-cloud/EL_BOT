@@ -4,9 +4,9 @@
 1 = Emoji Language -> ABC
 2 = ABC -> Emoji Language
 
-ABC -> Emoji remains deterministic-first. PASS/HOLD never import or call an
-external provider. Only a genuine deterministic FAIL may enter the provider-neutral
-Forgey Orchestration boundary. Raw provider text is never returned by this facade.
+Phase 6 keeps deterministic PASS provider-free, but semantic HOLD/FAIL may enter the
+EL Student -> Qwen teacher loop. System/runtime/security HOLDs remain provider-free.
+Raw provider text is never returned by this facade.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ _emoji = _load("_el_emoji_engine", _ROOT / "😀➡️🔤" / "😀➡️🔤")
 _orchestration = _load("_el_bidi_orchestration", _ROOT / "✦" / "✦")
 _validation = _load("_el_bidi_validation", _ROOT / "🧾" / "🧾")
 _learning = _load("_el_bidi_learning", _ROOT / "🧑‍🏫" / "🧠")
+_student_teacher = _load("_el_bidi_student_teacher", _ROOT / "🧑‍🏫" / "🤖")
 
 ABCToEmojiEngine = _abc.ABCToEmojiEngine
 EmojiToABCEngine = _emoji.EmojiToABCEngine
@@ -47,21 +48,22 @@ SelectionStore = _rank.SelectionStore
 
 
 class TranslationEngine:
-    def __init__(self, store=None, *, learning=None, connector=None, assist_enabled: bool = True) -> None:
+    def __init__(self, store=None, *, learning=None, student_teacher=None, connector=None, assist_enabled: bool = True) -> None:
         self.store = store if store is not None else SelectionStore()
         self.abc_to_emoji = ABCToEmojiEngine()
         self.emoji_to_abc = EmojiToABCEngine()
         self.orchestration = _orchestration.OrchestrationEngine()
         self.validation = _validation.ValidationEngine()
         self.learning = learning if learning is not None else _learning.LearningCoordinator()
+        self.student_teacher = student_teacher if student_teacher is not None else _student_teacher.StudentTeacherCoordinator()
         self._connector = connector
         self.assist_enabled = bool(assist_enabled)
         self.provider_call_count = 0
 
     def _ensure_connector(self):
         if self._connector is None:
-            # Provider-specific implementation is loaded lazily and only after the
-            # permanent FAIL-only escalation policy has already fired.
+            # Provider implementation is lazy and remains behind the semantic
+            # orchestration boundary. The student module itself never imports it.
             adapter = _load("_el_current_semantic_provider_adapter", _ROOT / "🔌" / "🧠")
             self._connector = adapter.build_current_intelligence_connector()
         return self._connector
@@ -90,6 +92,30 @@ class TranslationEngine:
         score = 100.0 * ((coverage + roundtrip + alignment) / 3.0)
         item = _lang.Candidate(candidate, score, reasons, coverage, roundtrip)
         return _lang.EngineResult(2, base.source, (item,), base.stages, dict(base.metrics))
+
+    @staticmethod
+    def _student_metrics(prediction) -> dict:
+        if prediction is None:
+            return {
+                "student_ready": False,
+                "student_prediction": "",
+                "student_confidence": 0.0,
+                "student_margin": 0.0,
+                "student_support": 0,
+                "student_examples": 0,
+                "student_parameter_count": 0,
+            }
+        return {
+            "student_ready": bool(prediction.ready),
+            "student_prediction": prediction.winner,
+            "student_candidates": tuple(prediction.candidates),
+            "student_confidence": float(prediction.confidence),
+            "student_margin": float(prediction.margin),
+            "student_support": int(prediction.support),
+            "student_examples": int(prediction.trained_examples),
+            "student_parameter_count": int(prediction.parameter_count),
+            "student_model_signature": str(prediction.model_signature),
+        }
 
     def _try_learned(self, source: str, deterministic):
         learned = self.learning.lookup_releasable(source)
@@ -121,6 +147,7 @@ class TranslationEngine:
             "deterministic_quality_status": str(deterministic.metrics.get("quality_status", "fail")),
             "quality_status": "pass",
             "ai_assisted": False,
+            "student_assisted": False,
             "learned_assisted": True,
             "assist_path": "learned-validated",
             "assist_validation": "pass",
@@ -131,6 +158,52 @@ class TranslationEngine:
         })
         result = self._assisted_result(deterministic, learned.expression, metrics=metrics, reasons=("learned-validated", "deterministic-revalidation"))
         return replace(result, metrics=metrics, stages=deterministic.stages + ("Learned Knowledge — deterministic revalidation",))
+
+    def _try_student(self, source: str, deterministic, prediction):
+        """Permit provider-free student reuse only after repeated teacher confirmation."""
+        if prediction is None or not prediction.ready or not prediction.winner:
+            return None
+        if float(prediction.confidence) < 0.82:
+            return None
+        candidate = prediction.winner
+        try:
+            confirmations = self.student_teacher.teacher_confirmations(source, candidate)
+            definition = self.student_teacher.trusted_teacher_definition(source, candidate)
+        except Exception:
+            return None
+        if confirmations < 2 or not definition:
+            return None
+        try:
+            reverse = self._reverse_candidate(candidate)
+            forward = self._translate_definition(definition)
+            report = self.validation.validate_assisted(
+                source,
+                definition,
+                candidate,
+                reverse_text=reverse.winner,
+                deterministic_metrics=dict(forward.metrics),
+            )
+        except Exception:
+            return None
+        if not report.releasable:
+            return None
+        metrics = dict(deterministic.metrics)
+        metrics.update(report.metrics)
+        metrics.update(self._student_metrics(prediction))
+        metrics.update({
+            "deterministic_quality_status": str(deterministic.metrics.get("quality_status", "fail")),
+            "quality_status": "pass",
+            "ai_assisted": True,
+            "student_assisted": True,
+            "learned_assisted": False,
+            "assist_path": "student-teacher-confirmed",
+            "assist_validation": "pass",
+            "provider_calls": 0,
+            "student_teacher_confirmations": confirmations,
+            "raw_provider_exposed": False,
+        })
+        result = self._assisted_result(deterministic, candidate, metrics=metrics, reasons=("student-1m", "teacher-confirmed", "deterministically-revalidated"))
+        return replace(result, metrics=metrics, stages=deterministic.stages + ("EL Student 1M — teacher-confirmed deterministic revalidation",))
 
     def ranked_to_el(self, source: str, *, emit: bool = True):
         counts = self.store.counts(2, source)
@@ -145,18 +218,35 @@ class TranslationEngine:
         try: self.learning.record_deterministic(quality)
         except Exception: pass
 
-        # Permanent boundary: PASS and HOLD return immediately with no provider import/call.
-        if not self.orchestration.should_escalate(quality):
+        # Safe deterministic PASS is also a low-weight supervised lesson. It never
+        # causes a provider call and accelerates the from-scratch student bootstrap.
+        if quality == "pass":
+            try: self.student_teacher.learn_deterministic(source, deterministic.winner, quality)
+            except Exception: pass
+            return deterministic
+
+        semantic_escalation = self.orchestration.should_escalate(quality, dict(deterministic.metrics))
+        if not semantic_escalation:
             return deterministic
 
         learned = self._try_learned(source, deterministic)
         if learned is not None:
             return learned
+
+        prediction = None
+        try: prediction = self.student_teacher.predict(source)
+        except Exception: prediction = None
+        student_result = self._try_student(source, deterministic, prediction)
+        if student_result is not None:
+            return student_result
+
         if not self.assist_enabled:
-            return deterministic
+            metrics = dict(deterministic.metrics); metrics.update(self._student_metrics(prediction))
+            return replace(deterministic, metrics=metrics)
 
         if emit:
-            _lang.emit_stage(1, 3, "Forgey Orchestration — deterministic FAIL escalation", True)
+            _lang.emit_stage(1, 4, "EL Student 1M — semantic uncertainty prediction", True)
+            _lang.emit_stage(2, 4, "Qwen teacher — semantic lesson request", True)
         try:
             connector = self._ensure_connector()
             request = _orchestration.AssistRequest(source, quality, deterministic.winner, dict(deterministic.metrics))
@@ -170,13 +260,14 @@ class TranslationEngine:
             )
         except Exception:
             metrics = dict(deterministic.metrics)
-            metrics.update({"ai_assisted": False, "assist_path": "orchestration-error", "assist_validation": "fail", "provider_calls": 0, "raw_provider_exposed": False})
+            metrics.update(self._student_metrics(prediction))
+            metrics.update({"ai_assisted": False, "student_assisted": False, "assist_path": "orchestration-error", "assist_validation": "fail", "provider_calls": 0, "raw_provider_exposed": False})
             return replace(deterministic, metrics=metrics)
 
         if decision.provider_called:
             self.provider_call_count += 1
         if emit:
-            _lang.emit_stage(2, 3, "Forgey Orchestration — validate assisted semantics", True)
+            _lang.emit_stage(3, 4, "Qwen teacher — deterministic lesson validation", True)
 
         learned_record = None
         try:
@@ -193,28 +284,50 @@ class TranslationEngine:
         except Exception:
             learned_record = None
 
+        student_lesson = None
+        try:
+            student_lesson = self.student_teacher.learn_qwen(
+                source=source,
+                candidate=decision.candidate,
+                semantic_definition=decision.semantic_definition,
+                accepted=decision.accepted,
+                provider=decision.provider,
+                model=decision.model,
+                validation_status=decision.validation_status,
+            )
+        except Exception:
+            student_lesson = None
+
+        if emit:
+            _lang.emit_stage(4, 4, "Instructor — validated lesson replay + student update", True)
+
         if not decision.accepted:
             metrics = dict(deterministic.metrics)
+            metrics.update(self._student_metrics(prediction))
             metrics.update({
                 "ai_assisted": bool(decision.provider_called),
+                "student_assisted": False,
                 "learned_assisted": False,
                 "assist_path": decision.path,
                 "assist_provider": decision.provider,
                 "assist_model": decision.model,
                 "assist_validation": decision.validation_status,
                 "provider_calls": 1 if decision.provider_called else 0,
+                "student_lesson_accepted": False,
                 "raw_provider_exposed": False,
             })
-            return replace(deterministic, metrics=metrics, stages=deterministic.stages + ("Forgey Orchestration — assisted candidate rejected",))
+            return replace(deterministic, metrics=metrics, stages=deterministic.stages + ("Qwen teacher — assisted candidate rejected", "EL Student — no training from rejected lesson"))
 
-        if emit:
-            _lang.emit_stage(3, 3, "Forgey Orchestration — validated assisted release", True)
         metrics = dict(deterministic.metrics)
         metrics.update(decision.validation_metrics)
+        metrics.update(self._student_metrics(prediction))
+        try: student_stats = self.student_teacher.stats()
+        except Exception: student_stats = {}
         metrics.update({
             "deterministic_quality_status": quality,
             "quality_status": "pass",
             "ai_assisted": True,
+            "student_assisted": False,
             "learned_assisted": False,
             "assist_path": decision.path,
             "assist_provider": decision.provider,
@@ -223,10 +336,14 @@ class TranslationEngine:
             "provider_calls": 1 if decision.provider_called else 0,
             "learning_claim_id": learned_record.claim_id if learned_record is not None else "",
             "learning_maturity": learned_record.maturity if learned_record is not None else "discovered",
+            "student_lesson_accepted": bool(student_lesson is not None and student_lesson.accepted),
+            "student_examples_after": int(student_stats.get("examples_seen", 0) or 0),
+            "student_teacher_examples_after": int(student_stats.get("teacher_examples", 0) or 0),
+            "student_parameter_count": int(student_stats.get("parameter_count", 0) or 0),
             "raw_provider_exposed": False,
         })
-        result = self._assisted_result(deterministic, decision.candidate, metrics=metrics, reasons=("ai-semantic-assist", "deterministically-validated", decision.path))
-        return replace(result, metrics=metrics, stages=deterministic.stages + ("Forgey Orchestration — provider semantic resolution", "Validation Engine — assisted release gate"))
+        result = self._assisted_result(deterministic, decision.candidate, metrics=metrics, reasons=("qwen-teacher", "deterministically-validated", "student-trained", decision.path))
+        return replace(result, metrics=metrics, stages=deterministic.stages + ("Qwen teacher — semantic resolution", "Validation Engine — assisted release gate", "Instructor — EL Student updated"))
 
     def ranked(self, mode: int, source: str, *, emit: bool = True):
         if mode == 1:
@@ -249,10 +366,12 @@ class TranslationEngine:
         if mode == 2:
             try: self.learning.record_user_selection(source, value)
             except Exception: pass
+            try: self.student_teacher.learn_user(source, value)
+            except Exception: pass
         return count
 
     def render_el_status(self) -> str:
-        return "✅↔️24+24✦"
+        return "✅↔️24+24🧠🤖✦"
 
 
 def _read_mode_source() -> tuple[int, str] | None:
