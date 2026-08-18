@@ -45,22 +45,6 @@ def main() -> None:
 
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
     expected_calls = len(cases)
-    if int(evidence["provider_calls"]) != expected_calls:
-        raise RuntimeError(f"real teacher call count mismatch: {evidence['provider_calls']} != {expected_calls}")
-    if int(evidence["accepted_count"]) < 3:
-        raise RuntimeError(f"too few deterministically admitted semantic lessons: {evidence['accepted_count']}")
-    if int(evidence["rejected_count"]) < 1:
-        raise RuntimeError("hostile/rejected teacher evidence missing")
-    if int(evidence["provider_authored_el_count"]) != 0:
-        raise RuntimeError("provider-authored EL crossed teacher boundary")
-    if int(evidence["unverified_self_output_truth_count"]) != 0:
-        raise RuntimeError("self-output became training truth")
-    if int(evidence["benchmark_training_overlap_count"]) != 0:
-        raise RuntimeError("frozen benchmark leaked into teacher replay")
-
-    hostile = next((item for item in evidence["rejections"] if item["case_id"] == "teacher-hostile-instruction"), None)
-    if hostile is None or "case-not-training-eligible" not in hostile["reason_codes"]:
-        raise RuntimeError("hostile teacher case was not rejected as negative evidence")
 
     # A correct unresolved provider answer has an empty structured definition. Keep
     # evidence truthful by hashing that empty value rather than inventing prose.
@@ -99,8 +83,41 @@ def main() -> None:
     evidence["teacher_cases_sha256"] = sha256(CASES.read_bytes()).hexdigest()
     evidence["frozen_benchmark_sha256"] = sha256(BENCHMARK.read_bytes()).hexdigest()
 
+    # Persist diagnostic evidence before quality thresholds so a HOLD remains
+    # inspectable. This is internal evidence; it is not a release artifact.
     (output / "teacher-evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "teacher-replay.json").write_text(json.dumps(replay, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    for lesson in evidence["lessons"]:
+        print(
+            "TEACHER_ADMIT "
+            f"case={lesson['case_id']} concept={lesson['canonical_concept']} target={lesson['target']} "
+            f"definition={lesson['semantic_definition']!r} confidence={lesson['semantic_confidence']:.3f}",
+            flush=True,
+        )
+    for rejection in evidence["rejections"]:
+        print(
+            "TEACHER_REJECT "
+            f"case={rejection['case_id']} provider_called={rejection['provider_called']} "
+            f"reasons={','.join(rejection['reason_codes'])} definition_sha256={rejection['rejected_definition_sha256'][:12]}",
+            flush=True,
+        )
+
+    if int(evidence["provider_calls"]) != expected_calls:
+        raise RuntimeError(f"real teacher call count mismatch: {evidence['provider_calls']} != {expected_calls}")
+    if int(evidence["accepted_count"]) < 3:
+        raise RuntimeError(f"too few deterministically admitted semantic lessons: {evidence['accepted_count']}")
+    if int(evidence["rejected_count"]) < 1:
+        raise RuntimeError("hostile/rejected teacher evidence missing")
+    if int(evidence["provider_authored_el_count"]) != 0:
+        raise RuntimeError("provider-authored EL crossed teacher boundary")
+    if int(evidence["unverified_self_output_truth_count"]) != 0:
+        raise RuntimeError("self-output became training truth")
+    if int(evidence["benchmark_training_overlap_count"]) != 0:
+        raise RuntimeError("frozen benchmark leaked into teacher replay")
+
+    hostile = next((item for item in evidence["rejections"] if item["case_id"] == "teacher-hostile-instruction"), None)
+    if hostile is None or "case-not-training-eligible" not in hostile["reason_codes"]:
+        raise RuntimeError("hostile teacher case was not rejected as negative evidence")
 
     models = sorted({lesson["model"] for lesson in evidence["lessons"]})
     providers = sorted({lesson["provider"] for lesson in evidence["lessons"]})
