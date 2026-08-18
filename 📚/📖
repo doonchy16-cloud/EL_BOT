@@ -329,6 +329,23 @@ class LexicalResolver:
     def _context_words(context: str) -> frozenset[str]:
         return frozenset(normalize_phrase(context).split())
 
+    def _morphological_exact(self, value: str) -> tuple[EmojiLexeme, str] | None:
+        if not value or " " in value:
+            return None
+        lemmas: list[str] = list(simple_lemmas(value))
+        if self.wordnet.available:
+            for pos in ("n", "v", "a", "r"):
+                lemmas.extend(self.wordnet.candidate_lemmas(value, pos))
+        candidates: dict[str, tuple[EmojiLexeme, str]] = {}
+        for lemma in dict.fromkeys(lemmas):
+            if not lemma or lemma == value:
+                continue
+            for item in self.emoji.by_phrase.get(lemma, ()):
+                candidates.setdefault(item.symbol, (item, lemma))
+        if len(candidates) != 1:
+            return None
+        return next(iter(candidates.values()))
+
     @lru_cache(maxsize=32768)
     def _resolve_cached(self, surface: str, context: str) -> LexicalResolution:
         value = normalize_phrase(surface)
@@ -340,6 +357,11 @@ class LexicalResolver:
         if len(exact) == 1:
             item = exact[0][0]
             return LexicalResolution(surface, value, item.symbol, item.name, "resolved", 1.0, 0.0, "unicode-emoji-name", "emoji:" + str(item.ordinal))
+
+        morphology = self._morphological_exact(value)
+        if morphology is not None:
+            item, lemma = morphology
+            return LexicalResolution(surface, lemma, item.symbol, item.name, "resolved", 0.98, 0.02, "unicode-emoji-name-lemma", "emoji:" + str(item.ordinal))
 
         context_words = self._context_words(context)
         scored: dict[str, tuple[float, EmojiLexeme, str, str, str]] = {}
