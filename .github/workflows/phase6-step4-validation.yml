@@ -74,12 +74,12 @@ jobs:
 
       - name: "📦 Electron dependencies"
         shell: powershell
-        run: npm ci --ignore-scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: "🕶️ Two-page hidden console proof"
         shell: powershell
         run: |
-          $env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path;$env:EL_PYTHON=$env:EL_PYTHON;& '.\node_modules\.bin\electron.cmd' 'scripts\phase6-step4-console-proof.js' 'data\phase6-step4\console-proof.json';if($LASTEXITCODE-ne 0){throw 'CONSOLE_PROOF_FAILED'}
+          $env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path;& '.\node_modules\.bin\electron.cmd' 'scripts\phase6-step4-console-proof.js' 'data\phase6-step4\console-proof.json';if($LASTEXITCODE-ne 0){throw 'CONSOLE_PROOF_FAILED'}
 
       - name: "🧪 Step 4 authority"
         shell: powershell
