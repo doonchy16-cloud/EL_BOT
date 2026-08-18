@@ -9,6 +9,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist "data\phase6-data-manifest.json" (
+  echo Preparing EL Bot dictionary and Unicode emoji data for first launch...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\materialize-phase6-lexicon.ps1"
+  if errorlevel 1 (
+    echo.
+    echo EL Bot could not prepare its Phase 6 lexical data.
+    echo Check the internet connection and try again.
+    pause
+    exit /b 4
+  )
+)
+
 where npx >nul 2>&1
 if errorlevel 1 (
   echo Node.js and npm are required to launch EL Bot.
