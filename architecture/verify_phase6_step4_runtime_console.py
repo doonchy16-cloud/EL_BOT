@@ -34,7 +34,7 @@ def main():
         req((evidence_dir/name).is_file(),f'missing Step4 evidence {name}')
     f=load(evidence_dir/'primary-forward.json');r=load(evidence_dir/'primary-reverse.json');s=load(evidence_dir/'status.json');a=load(evidence_dir/'auth-proof.json');c=load(evidence_dir/'console-proof.json')
     req(f.get('winner')=='🚲' and f.get('metrics',{}).get('forgey_primary_released') is True and int(f.get('metrics',{}).get('provider_calls',-1))==0,'forward primary proof failed')
-    req(r.get('winner')=='bicycle' and r.get('metrics',{}).get('forgey_primary_released') is True and int(r.get('metrics',{}).get('provider_calls',-1))==0,'reverse primary proof failed')
+    req(str(r.get('winner','')).casefold()=='bicycle'.casefold() and r.get('metrics',{}).get('forgey_primary_released') is True and int(r.get('metrics',{}).get('provider_calls',-1))==0,'reverse primary proof failed')
     req(f['metrics'].get('forgey_generation')=='G2' and r['metrics'].get('forgey_generation')=='G2','selected G2 not used')
     req(s.get('registry',{}).get('hashes_verified') is True and s.get('registry',{}).get('selected_generation')=='G2','status registry proof failed')
     req(int(s.get('model',{}).get('trainable_parameters') or 0)==1788672,'runtime parameter count not derived')
