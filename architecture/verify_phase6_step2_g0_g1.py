@@ -129,6 +129,13 @@ def main() -> None:
     require(proof["tokenizer"]["sha256"] == file_sha256(TOKENIZER_ARTIFACT), "tokenizer artifact hash mismatch")
     require(proof["tokenizer"]["vocabulary_size"] == tokenizer.vocab_size, "tokenizer proof vocabulary size mismatch")
 
+    rehearsal = proof.get("rehearsal", {})
+    require(rehearsal.get("truth_source") == "trusted deterministic Step-2 curriculum only", "G1 rehearsal truth authority mismatch")
+    require(int(rehearsal.get("provider_generated_truth_count", -1)) == 0, "provider-generated truth leaked into trusted rehearsal")
+    require(int(rehearsal.get("unverified_self_output_truth_count", -1)) == 0, "unverified self-output leaked into trusted rehearsal")
+    require(int(rehearsal.get("benchmark_source_overlap_count", -1)) == 0, "frozen benchmark leaked into trusted rehearsal")
+    require(int(rehearsal.get("steps", 0)) > 0, "trusted rehearsal did not execute")
+
     model, checkpoint_metadata = model_module.ForgeyInstaTransformer.load_checkpoint(CHECKPOINT, map_location="cpu")
     config = model.config
     require(config.d_model == 128 and config.nhead == 4, "G0 width/head contract mismatch")
@@ -151,7 +158,8 @@ def main() -> None:
     require(all(finite_positive(value) for value in (g0_loss, early, late, g1_loss)), "non-finite/non-positive G0/G1 loss evidence")
     require(float(late) <= float(early) * 0.85, f"G1 training loss did not materially improve: {early} -> {late}")
     require(float(g1_loss) <= float(g0_loss) * 0.99, f"G1 frozen benchmark did not improve over G0: {g0_loss} -> {g1_loss}")
-    require(int(proof["g1"]["smoke_exact_count"]) >= 2, "G1 did not learn enough trusted rehearsal probes for a real candidate")
+    require(int(proof["g1"]["smoke_total"]) == 8, "trusted rehearsal probe cardinality changed")
+    require(int(proof["g1"]["smoke_exact_count"]) == int(proof["g1"]["smoke_total"]), "trusted rehearsal probes are not all exact")
 
     forward = json.loads(INFER_FORWARD.read_text(encoding="utf-8"))
     reverse = json.loads(INFER_REVERSE.read_text(encoding="utf-8"))
@@ -170,6 +178,7 @@ def main() -> None:
         "model": (ROOT / "🧠" / "🤖").read_text(encoding="utf-8"),
         "curriculum": (ROOT / "🧠" / "🌱").read_text(encoding="utf-8"),
         "trainer": (ROOT / "scripts" / "phase6-step2-train-g1.py").read_text(encoding="utf-8"),
+        "rehearsal": (ROOT / "scripts" / "phase6-step2-rehearse-g1.py").read_text(encoding="utf-8"),
         "inference": (ROOT / "scripts" / "phase6-step2-infer.py").read_text(encoding="utf-8"),
     }
     for name, source in guarded_sources.items():
