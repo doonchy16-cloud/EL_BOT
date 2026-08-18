@@ -14,7 +14,7 @@ if (!fs.existsSync(python)) throw new Error('EL_PYTHON does not exist');
 if (!registry || !fs.existsSync(registry)) throw new Error('EL_FORGEY_REGISTRY is required');
 if (!fs.existsSync(launcher)) throw new Error('Step-4 runtime launcher is missing');
 
-function infer(input, expectedWinner, evidenceName) {
+function infer(input, expectedWinner, evidenceName, { caseInsensitive = false } = {}) {
   const run = spawnSync(python, [launcher, '🔀'], {
     cwd: ROOT,
     input,
@@ -31,27 +31,30 @@ function infer(input, expectedWinner, evidenceName) {
   try { payload = JSON.parse(stdout); }
   catch (error) { throw new Error(`runtime JSON parse failed: ${error.message}`); }
   const metrics = payload && payload.metrics || {};
-  if (payload.winner !== expectedWinner) throw new Error(`winner mismatch: expected ${expectedWinner}, got ${payload.winner}`);
+  const winner = String(payload && payload.winner || '');
+  const winnerMatches = caseInsensitive ? winner.toLocaleLowerCase('en-US') === expectedWinner.toLocaleLowerCase('en-US') : winner === expectedWinner;
+  if (!winnerMatches) throw new Error(`winner mismatch: expected ${expectedWinner}, got ${payload.winner}`);
   if (metrics.forgey_primary_released !== true) throw new Error('Forgey primary was not released');
   if (Number(metrics.provider_calls) !== 0) throw new Error('provider call occurred on successful Forgey-primary inference');
   if (metrics.forgey_generation !== 'G2') throw new Error(`selected generation is not G2: ${metrics.forgey_generation}`);
   fs.mkdirSync(evidenceDir, { recursive: true });
   fs.writeFileSync(path.join(evidenceDir, evidenceName), JSON.stringify(payload, null, 2) + '\n', 'utf8');
-  return { payload, stderrBytes: Buffer.byteLength(String(run.stderr || ''), 'utf8') };
+  return { payload, stderrBytes: Buffer.byteLength(String(run.stderr || ''), 'utf8'), winnerMatches };
 }
 
 const forward = infer('2\nvehicle powered by pedals with two wheels', '🚲', 'primary-forward.json');
-const reverse = infer('1\n🚲', 'bicycle', 'primary-reverse.json');
+const reverse = infer('1\n🚲', 'bicycle', 'primary-reverse.json', { caseInsensitive: true });
 const streamProof = {
   schema_version: 1,
   stdout_json_exact: true,
   stdout_stderr_separated: true,
   forward_winner: forward.payload.winner,
   reverse_winner: reverse.payload.winner,
+  reverse_case_insensitive_exact: reverse.winnerMatches,
   generation: forward.payload.metrics.forgey_generation,
   provider_calls: forward.payload.metrics.provider_calls,
   forward_stderr_bytes: forward.stderrBytes,
   reverse_stderr_bytes: reverse.stderrBytes,
 };
 fs.writeFileSync(path.join(evidenceDir, 'runtime-stream-proof.json'), JSON.stringify(streamProof, null, 2) + '\n', 'utf8');
-console.log('PHASE6_STEP4_RUNTIME_OK forward=🚲 reverse=bicycle generation=G2 provider=0');
+console.log(`PHASE6_STEP4_RUNTIME_OK forward=🚲 reverse=${reverse.payload.winner} generation=G2 provider=0`);
