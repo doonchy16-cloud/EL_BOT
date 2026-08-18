@@ -1,0 +1,468 @@
+"""Forgey Insta:EL-Bot Step-2 tokenizer.
+
+The tokenizer is trained from scratch. English/non-EL text starts from raw UTF-8
+bytes, so unseen text remains representable. Released emoji/EL units supplied by
+Step-1 authority are assigned atomic token IDs and are never decomposed into Unicode
+code points. Model control tokens are reserved separately and are never parsed from
+untrusted user text as control instructions.
+"""
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import sys
+from typing import Iterable, Sequence
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError(f"module spec unavailable: {path}")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_authority_module = _load("_forgey_insta_token_source", _ROOT / "📚" / "🔤")
+
+
+@dataclass(frozen=True, slots=True)
+class CompressionCandidate:
+    merge_count: int
+    vocabulary_size: int
+    raw_byte_count: int
+    encoded_token_count: int
+    bytes_per_token: float
+
+
+@dataclass(frozen=True, slots=True)
+class BPETrainingReport:
+    source_item_count: int
+    evaluation_item_count: int
+    source_sha256: str
+    evaluation_sha256: str
+    requested_max_merges: int
+    trained_merge_count: int
+    chosen_merge_count: int
+    candidates: tuple[CompressionCandidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TokenizerSnapshot:
+    emoji_version: str
+    special_token_count: int
+    atomic_el_token_count: int
+    byte_token_count: int
+    merge_token_count: int
+    vocabulary_size: int
+    pad_id: int
+    bos_id: int
+    eos_id: int
+    abc_to_el_id: int
+    el_to_abc_id: int
+
+
+class ForgeyInstaTokenizer:
+    BYTE_COUNT = 256
+
+    def __init__(
+        self,
+        *,
+        emoji_version: str,
+        special_tokens: Sequence[str],
+        atomic_el_tokens: Sequence[str],
+        merges: Sequence[tuple[int, int]],
+        training_report: BPETrainingReport | None = None,
+    ) -> None:
+        self.emoji_version = str(emoji_version)
+        self.special_tokens = tuple(str(x) for x in special_tokens)
+        self.atomic_el_tokens = tuple(dict.fromkeys(str(x) for x in atomic_el_tokens))
+        self.merges = tuple((int(a), int(b)) for a, b in merges)
+        self.training_report = training_report
+
+        if len(set(self.special_tokens)) != len(self.special_tokens):
+            raise ValueError("duplicate model special token")
+        if set(self.special_tokens).intersection(self.atomic_el_tokens):
+            raise ValueError("model special token collides with EL output token")
+
+        self.special_to_id = {token: index for index, token in enumerate(self.special_tokens)}
+        self.atomic_start = len(self.special_tokens)
+        self.atomic_to_id = {token: self.atomic_start + index for index, token in enumerate(self.atomic_el_tokens)}
+        self.id_to_atomic = {value: key for key, value in self.atomic_to_id.items()}
+        self.byte_start = self.atomic_start + len(self.atomic_el_tokens)
+        self.merge_start = self.byte_start + self.BYTE_COUNT
+        self.merge_pair_to_rank: dict[tuple[int, int], int] = {}
+        self.merge_pair_to_id: dict[tuple[int, int], int] = {}
+        self.merge_id_to_bytes: dict[int, bytes] = {}
+
+        token_bytes: dict[int, bytes] = {self.byte_start + value: bytes((value,)) for value in range(self.BYTE_COUNT)}
+        for rank, pair in enumerate(self.merges):
+            left, right = pair
+            if left not in token_bytes or right not in token_bytes:
+                raise ValueError(f"invalid BPE merge dependency at rank {rank}: {pair}")
+            token_id = self.merge_start + rank
+            token_bytes[token_id] = token_bytes[left] + token_bytes[right]
+            self.merge_pair_to_rank[pair] = rank
+            self.merge_pair_to_id[pair] = token_id
+            self.merge_id_to_bytes[token_id] = token_bytes[token_id]
+        self._token_bytes = token_bytes
+
+        by_first: dict[str, list[str]] = {}
+        for token in self.atomic_el_tokens:
+            if token:
+                by_first.setdefault(token[0], []).append(token)
+        self._atomic_by_first = {
+            first: tuple(sorted(values, key=lambda value: (-len(value), value)))
+            for first, values in by_first.items()
+        }
+
+        required = ("<PAD>", "<BOS>", "<EOS>", "<ABC_TO_EL>", "<EL_TO_ABC>")
+        missing = tuple(token for token in required if token not in self.special_to_id)
+        if missing:
+            raise ValueError(f"required special tokens missing: {missing}")
+
+    @classmethod
+    def from_step1_authority(
+        cls,
+        merges: Sequence[tuple[int, int]] = (),
+        training_report: BPETrainingReport | None = None,
+    ) -> "ForgeyInstaTokenizer":
+        authority = _authority_module.ELTokenAuthority()
+        snapshot = authority.snapshot()
+        if not snapshot.wordnet_available or snapshot.official_emoji_count <= 0:
+            raise RuntimeError("Step-1 token authority is not materialized")
+        return cls(
+            emoji_version=snapshot.emoji_version,
+            special_tokens=authority.model_special_tokens,
+            atomic_el_tokens=authority.atomic_el_tokens,
+            merges=merges,
+            training_report=training_report,
+        )
+
+    @property
+    def vocab_size(self) -> int:
+        return self.merge_start + len(self.merges)
+
+    @property
+    def pad_id(self) -> int:
+        return self.special_to_id["<PAD>"]
+
+    @property
+    def bos_id(self) -> int:
+        return self.special_to_id["<BOS>"]
+
+    @property
+    def eos_id(self) -> int:
+        return self.special_to_id["<EOS>"]
+
+    def direction_id(self, direction: str) -> int:
+        normalized = str(direction).strip().upper()
+        token = "<ABC_TO_EL>" if normalized == "ABC_TO_EL" else "<EL_TO_ABC>" if normalized == "EL_TO_ABC" else ""
+        if not token:
+            raise ValueError(f"unsupported Forgey Insta direction: {direction}")
+        return self.special_to_id[token]
+
+    def snapshot(self) -> TokenizerSnapshot:
+        return TokenizerSnapshot(
+            emoji_version=self.emoji_version,
+            special_token_count=len(self.special_tokens),
+            atomic_el_token_count=len(self.atomic_el_tokens),
+            byte_token_count=self.BYTE_COUNT,
+            merge_token_count=len(self.merges),
+            vocabulary_size=self.vocab_size,
+            pad_id=self.pad_id,
+            bos_id=self.bos_id,
+            eos_id=self.eos_id,
+            abc_to_el_id=self.special_to_id["<ABC_TO_EL>"],
+            el_to_abc_id=self.special_to_id["<EL_TO_ABC>"],
+        )
+
+    def _match_atomic(self, text: str, index: int) -> str | None:
+        if index >= len(text):
+            return None
+        for token in self._atomic_by_first.get(text[index], ()):
+            if text.startswith(token, index):
+                return token
+        return None
+
+    def _apply_bpe(self, ids: list[int]) -> list[int]:
+        if len(ids) < 2 or not self.merges:
+            return ids
+        current = list(ids)
+        while len(current) >= 2:
+            best_rank: int | None = None
+            best_pair: tuple[int, int] | None = None
+            for index in range(len(current) - 1):
+                pair = (current[index], current[index + 1])
+                rank = self.merge_pair_to_rank.get(pair)
+                if rank is not None and (best_rank is None or rank < best_rank):
+                    best_rank = rank
+                    best_pair = pair
+            if best_pair is None:
+                break
+            replacement = self.merge_pair_to_id[best_pair]
+            merged: list[int] = []
+            index = 0
+            while index < len(current):
+                if index + 1 < len(current) and (current[index], current[index + 1]) == best_pair:
+                    merged.append(replacement)
+                    index += 2
+                else:
+                    merged.append(current[index])
+                    index += 1
+            current = merged
+        return current
+
+    def _encode_bytes(self, text: str) -> list[int]:
+        base = [self.byte_start + value for value in str(text).encode("utf-8")]
+        return self._apply_bpe(base)
+
+    def encode_text(self, text: str) -> list[int]:
+        """Encode user/model text without interpreting literal special-token strings."""
+        value = str(text)
+        result: list[int] = []
+        pending: list[str] = []
+
+        def flush_pending() -> None:
+            if pending:
+                result.extend(self._encode_bytes("".join(pending)))
+                pending.clear()
+
+        index = 0
+        while index < len(value):
+            atomic = self._match_atomic(value, index)
+            if atomic is None:
+                pending.append(value[index])
+                index += 1
+                continue
+            flush_pending()
+            result.append(self.atomic_to_id[atomic])
+            index += len(atomic)
+        flush_pending()
+        return result
+
+    def encode_source(self, direction: str, text: str, *, add_eos: bool = True) -> list[int]:
+        ids = [self.direction_id(direction)]
+        ids.extend(self.encode_text(text))
+        if add_eos:
+            ids.append(self.eos_id)
+        return ids
+
+    def encode_target(self, text: str) -> tuple[list[int], list[int]]:
+        body = self.encode_text(text)
+        decoder_input = [self.bos_id, *body]
+        labels = [*body, self.eos_id]
+        return decoder_input, labels
+
+    def decode(self, ids: Iterable[int], *, include_special: bool = False) -> str:
+        output: list[str] = []
+        pending = bytearray()
+        id_to_special = {value: key for key, value in self.special_to_id.items()}
+
+        def flush_bytes() -> None:
+            if pending:
+                output.append(bytes(pending).decode("utf-8", errors="replace"))
+                pending.clear()
+
+        for raw in ids:
+            token_id = int(raw)
+            special = id_to_special.get(token_id)
+            if special is not None:
+                flush_bytes()
+                if include_special:
+                    output.append(special)
+                continue
+            atomic = self.id_to_atomic.get(token_id)
+            if atomic is not None:
+                flush_bytes()
+                output.append(atomic)
+                continue
+            token_bytes = self._token_bytes.get(token_id)
+            if token_bytes is not None:
+                pending.extend(token_bytes)
+                continue
+            flush_bytes()
+            output.append("�")
+        flush_bytes()
+        return "".join(output)
+
+    def to_artifact(self) -> dict:
+        report = None
+        if self.training_report is not None:
+            report = asdict(self.training_report)
+        return {
+            "schema_version": 1,
+            "kind": "forgey-insta-byte-bpe",
+            "emoji_version": self.emoji_version,
+            "special_tokens": list(self.special_tokens),
+            "atomic_el_tokens": list(self.atomic_el_tokens),
+            "byte_token_count": self.BYTE_COUNT,
+            "merges": [[left, right] for left, right in self.merges],
+            "training_report": report,
+            "snapshot": asdict(self.snapshot()),
+        }
+
+    def save(self, path: Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.to_artifact(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: Path) -> "ForgeyInstaTokenizer":
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        if payload.get("kind") != "forgey-insta-byte-bpe":
+            raise ValueError("wrong Forgey Insta tokenizer artifact kind")
+        report_payload = payload.get("training_report")
+        report = None
+        if isinstance(report_payload, dict):
+            candidates = tuple(CompressionCandidate(**item) for item in report_payload.get("candidates", ()))
+            report = BPETrainingReport(
+                source_item_count=int(report_payload["source_item_count"]),
+                evaluation_item_count=int(report_payload["evaluation_item_count"]),
+                source_sha256=str(report_payload["source_sha256"]),
+                evaluation_sha256=str(report_payload["evaluation_sha256"]),
+                requested_max_merges=int(report_payload["requested_max_merges"]),
+                trained_merge_count=int(report_payload["trained_merge_count"]),
+                chosen_merge_count=int(report_payload["chosen_merge_count"]),
+                candidates=candidates,
+            )
+        return cls(
+            emoji_version=str(payload["emoji_version"]),
+            special_tokens=tuple(payload["special_tokens"]),
+            atomic_el_tokens=tuple(payload["atomic_el_tokens"]),
+            merges=tuple((int(pair[0]), int(pair[1])) for pair in payload["merges"]),
+            training_report=report,
+        )
+
+
+def _replace_pair(sequence: tuple[int, ...], pair: tuple[int, int], replacement: int) -> tuple[int, ...]:
+    if len(sequence) < 2:
+        return sequence
+    output: list[int] = []
+    index = 0
+    while index < len(sequence):
+        if index + 1 < len(sequence) and sequence[index] == pair[0] and sequence[index + 1] == pair[1]:
+            output.append(replacement)
+            index += 2
+        else:
+            output.append(sequence[index])
+            index += 1
+    return tuple(output)
+
+
+def _fingerprint(items: Sequence[str]) -> str:
+    digest = sha256()
+    for item in items:
+        digest.update(str(item).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _train_merge_sequence(corpus: Sequence[str], tokenizer: ForgeyInstaTokenizer, max_merges: int) -> tuple[tuple[int, int], ...]:
+    weighted: Counter[tuple[int, ...]] = Counter()
+    for item in corpus:
+        value = str(item)
+        if not value:
+            continue
+        sequence = tuple(tokenizer.byte_start + byte for byte in value.encode("utf-8"))
+        if sequence:
+            weighted[sequence] += 1
+
+    merges: list[tuple[int, int]] = []
+    for rank in range(int(max_merges)):
+        pair_counts: Counter[tuple[int, int]] = Counter()
+        for sequence, frequency in weighted.items():
+            for index in range(len(sequence) - 1):
+                pair_counts[(sequence[index], sequence[index + 1])] += frequency
+        if not pair_counts:
+            break
+        best_frequency = max(pair_counts.values())
+        if best_frequency < 2:
+            break
+        best_pair = min(pair for pair, frequency in pair_counts.items() if frequency == best_frequency)
+        replacement = tokenizer.merge_start + rank
+        replaced: Counter[tuple[int, ...]] = Counter()
+        for sequence, frequency in weighted.items():
+            replaced[_replace_pair(sequence, best_pair, replacement)] += frequency
+        weighted = replaced
+        merges.append(best_pair)
+    return tuple(merges)
+
+
+def _compression_candidate(
+    base: ForgeyInstaTokenizer,
+    merges: Sequence[tuple[int, int]],
+    items: Sequence[str],
+) -> CompressionCandidate:
+    tokenizer = ForgeyInstaTokenizer(
+        emoji_version=base.emoji_version,
+        special_tokens=base.special_tokens,
+        atomic_el_tokens=base.atomic_el_tokens,
+        merges=merges,
+    )
+    raw_bytes = sum(len(str(item).encode("utf-8")) for item in items)
+    encoded = sum(len(tokenizer._encode_bytes(str(item))) for item in items)
+    ratio = (raw_bytes / encoded) if encoded else 0.0
+    return CompressionCandidate(
+        merge_count=len(merges),
+        vocabulary_size=tokenizer.vocab_size,
+        raw_byte_count=raw_bytes,
+        encoded_token_count=encoded,
+        bytes_per_token=ratio,
+    )
+
+
+def train_byte_bpe(
+    source_items: Sequence[str],
+    evaluation_items: Sequence[str],
+    *,
+    candidate_merge_counts: Sequence[int] = (128, 256, 384),
+    within_best_token_fraction: float = 1.025,
+) -> ForgeyInstaTokenizer:
+    """Train byte-level BPE and select the smallest near-best measured vocabulary.
+
+    Selection rule: among measured candidate merge budgets, choose the smallest
+    vocabulary whose evaluation token count is within ``within_best_token_fraction``
+    of the best candidate. This keeps model size bounded without choosing an opaque
+    fixed vocabulary size.
+    """
+    source = tuple(str(item) for item in source_items if str(item))
+    evaluation = tuple(str(item) for item in evaluation_items if str(item))
+    if not source or not evaluation:
+        raise ValueError("BPE source/evaluation corpus cannot be empty")
+    budgets = tuple(sorted({int(value) for value in candidate_merge_counts if int(value) > 0}))
+    if not budgets:
+        raise ValueError("at least one positive BPE merge candidate is required")
+
+    base = ForgeyInstaTokenizer.from_step1_authority()
+    all_merges = _train_merge_sequence(source, base, max(budgets))
+    if not all_merges:
+        raise RuntimeError("byte BPE training produced no merges")
+
+    actual_budgets = tuple(sorted({min(value, len(all_merges)) for value in budgets if min(value, len(all_merges)) > 0}))
+    candidates = tuple(_compression_candidate(base, all_merges[:budget], evaluation) for budget in actual_budgets)
+    best_tokens = min(candidate.encoded_token_count for candidate in candidates)
+    limit = best_tokens * float(within_best_token_fraction)
+    chosen = next(candidate for candidate in candidates if candidate.encoded_token_count <= limit)
+    chosen_merges = all_merges[: chosen.merge_count]
+    report = BPETrainingReport(
+        source_item_count=len(source),
+        evaluation_item_count=len(evaluation),
+        source_sha256=_fingerprint(source),
+        evaluation_sha256=_fingerprint(evaluation),
+        requested_max_merges=max(budgets),
+        trained_merge_count=len(all_merges),
+        chosen_merge_count=len(chosen_merges),
+        candidates=candidates,
+    )
+    return ForgeyInstaTokenizer.from_step1_authority(chosen_merges, training_report=report)
