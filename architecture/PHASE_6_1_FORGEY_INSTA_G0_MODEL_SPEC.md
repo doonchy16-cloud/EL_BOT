@@ -1,8 +1,8 @@
 # Phase 6.1 — Forgey Insta:EL-Bot G0 Model Specification
 
-**Status:** 🔒 LOCKED PLAN — STEP 2 IMPLEMENTATION PAUSED
+**Status:** 🔥 STEP 2 IMPLEMENTATION AUTHORIZED
 
-This file records the owner-approved G0 design direction. It does not authorize model implementation during Step 1.
+This file records the owner-approved G0/G1 design direction. Step 1 is merged; Step 2 is now authorized. Steps 3–5 remain paused.
 
 ## Purpose
 
@@ -31,7 +31,7 @@ Build a small, from-scratch, bidirectional EL-specialist sequence model that can
 English side:
 - byte-level BPE trained from scratch on the approved corpus;
 - no permanent unknown-word ceiling because raw bytes remain representable;
-- vocabulary size chosen from measured corpus/accuracy/size evidence during Step 2.
+- vocabulary size chosen from measured corpus compression + model-size evidence during Step 2.
 
 EL side:
 - every released official emoji grapheme/sequence remains atomic;
@@ -40,6 +40,25 @@ EL side:
 - model special tokens remain separate from EL output tokens.
 
 The Step-1 `📚/🔤` authority defines the immutable tokenizer source inventories. It is not itself the trained tokenizer.
+
+## G0 implementation contract
+
+G0 must be instantiated from random weights and report its exact trainable parameter count from the implemented tensor graph. G0 must be executable in both directions before training, even though random output is not expected to be semantically useful.
+
+The Step-2 implementation uses one shared token embedding and one tied output projection where evidence supports the parameter target. This is an implementation detail of the single bidirectional model, not a second model.
+
+## G1 bootstrap contract
+
+G1 is the first trained candidate from trusted, deterministic bootstrap evidence only:
+- official Unicode emoji names/atomic sequences;
+- existing validated historical semantic meanings;
+- deterministic EL structural examples;
+- no Qwen/provider-generated positive truth;
+- no unverified self-output as positive truth.
+
+The frozen Step-2 benchmark must be excluded from model training/replay examples. Its exact content/hash is evidence authority for this step.
+
+G1 is a candidate, not Phase-6 production. Step 4 later decides production routing; Step 3 later owns teacher-driven continuing learning and generation promotion/rollback policy.
 
 ## Generation lifecycle
 
@@ -55,6 +74,15 @@ Production weights do not update live after each prediction. Unverified self-out
 
 A held-out benchmark must never be included in training/replay data. It must cover at least easy words, morphology, compounds, ambiguity, context, negation, relationships, numbers/time, technical language, unknown/nonsense inputs, ABC→EL, and EL→ABC.
 
+Step 2 must prove at minimum:
+- G1 training objective improves materially from early to late training;
+- G1 frozen-benchmark loss improves over G0;
+- the saved G1 artifact reloads into a fresh local process/model instance;
+- local greedy inference executes in both directions without a provider;
+- tokenizer byte fallback round-trips unseen English text;
+- official emoji remain atomic tokens;
+- no Step-3 teacher/Qwen training path is implemented.
+
 ## Implementation gate
 
-**Step 2 is paused. This file is design authority only until the owner separately authorizes Step 2.**
+**Step 2 is authorized. Steps 3–5 remain paused.**
