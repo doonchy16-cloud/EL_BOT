@@ -2,7 +2,7 @@
 
 Integration code under existing Engine 16 (Instructor). It does not create engine #45.
 The provider may contribute semantic evidence only. EL training targets are accepted
-only when independently anchored by deterministic EL Bot authority.
+only when independently anchored by deterministic or trusted Step-2 EL authority.
 """
 from __future__ import annotations
 
@@ -30,13 +30,14 @@ def _load(name: str, path: Path):
 
 
 _ROOT = Path(__file__).resolve().parent.parent
+_PROVIDER_MARKER = "🦙"
+_ALLOWED_DIRECTIONS = frozenset({"ABC_TO_EL"})
+_STEP2_BENCHMARK = _ROOT / "architecture" / "phase6_step2_frozen_benchmark.json"
 _provider_adapter = None
 _learning_module = _load("_p6s3_learning_store", _ROOT / "🧑‍🏫" / "🧠")
 _abc_module = _load("_p6s3_abc", _ROOT / "🔤➡️😀" / "🔤➡️😀")
 _lang_module = _load("_p6s3_lang", _ROOT / "🧠" / "🧬")
-
-_PROVIDER_MARKER = "🦙"
-_ALLOWED_DIRECTIONS = frozenset({"ABC_TO_EL"})
+_curriculum_module = _load("_p6s3_curriculum", _ROOT / "🧠" / "🌱")
 
 
 def _normalized(value: str) -> str:
@@ -83,6 +84,7 @@ class TeacherLearningCoordinator:
         self.learning = learning if learning is not None else _learning_module.LearningCoordinator(path=learning_path)
         self.abc = _abc_module.ABCToEmojiEngine()
         self.provider_call_count = 0
+        self._step2_trusted_targets: frozenset[tuple[str, str, str]] | None = None
 
     def _ensure_connector(self):
         global _provider_adapter
@@ -91,6 +93,19 @@ class TeacherLearningCoordinator:
                 _provider_adapter = _load("_p6s3_provider_adapter", _ROOT / "🔌" / "🧠")
             self._connector = _provider_adapter.build_current_intelligence_connector()
         return self._connector
+
+    def _trusted_step2_targets(self) -> frozenset[tuple[str, str, str]]:
+        if self._step2_trusted_targets is None:
+            curriculum, _ = _curriculum_module.build_bootstrap_curriculum(_STEP2_BENCHMARK)
+            self._step2_trusted_targets = frozenset(
+                (
+                    str(example.direction),
+                    _normalized(example.source).casefold(),
+                    str(example.target),
+                )
+                for example in curriculum
+            )
+        return self._step2_trusted_targets
 
     @staticmethod
     def _benchmark_keys(benchmark_path: Path) -> frozenset[tuple[str, str]]:
@@ -116,12 +131,19 @@ class TeacherLearningCoordinator:
             return False, ("trusted-target-missing",)
         if not _lang_module.valid_el(candidate):
             return False, ("trusted-target-invalid-el",)
+
+        # First prefer the currently executable deterministic translator.
         result = self.abc.translate(concept, cross_verify=False, emit=False)
-        if str(result.winner) != candidate:
-            return False, ("trusted-target-not-independently-derived",)
-        if str(result.metrics.get("quality_status", "fail")).lower() == "fail":
-            return False, ("trusted-concept-deterministic-fail",)
-        return True, ("trusted-target-independent",)
+        if str(result.winner) == candidate and str(result.metrics.get("quality_status", "fail")).lower() != "fail":
+            return True, ("trusted-target-deterministic-runtime",)
+
+        # Step 2 also established trusted deterministic curriculum pairs used to
+        # train/protect G1. They are independent of the teacher response and are a
+        # valid target authority even when the older runtime cannot release them.
+        if ("ABC_TO_EL", concept.casefold(), candidate) in self._trusted_step2_targets():
+            return True, ("trusted-target-step2-curriculum",)
+
+        return False, ("trusted-target-not-independently-derived",)
 
     def evaluate_case(self, case: dict[str, Any], *, benchmark_keys: frozenset[tuple[str, str]]) -> TeacherDecision:
         self._validate_case(case)
