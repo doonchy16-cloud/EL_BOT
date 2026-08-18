@@ -55,6 +55,9 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-step3-teach.py' --output $step3;if($LASTEXITCODE-ne 0){throw 'TEACH_FAILED'}
           & $env:EL_PYTHON 'scripts\phase6-step3-train-g2.py' --step2-artifact $step2 --step3-artifact $step3 --steps 360 --batch-size 40;if($LASTEXITCODE-ne 0){throw 'G2_TRAIN_FAILED'}
           & $env:EL_PYTHON 'scripts\phase6-step3-promote.py' --step2-artifact $step2 --step3-artifact $step3;if($LASTEXITCODE-ne 0){throw 'G2_PROMOTE_FAILED'}
+          $bicycle=[char]::ConvertFromUtf32(0x1F6B2);$registry=Join-Path $step3 'generation-registry.json'
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'ABC_TO_EL' --text 'vehicle powered by pedals with two wheels' --expected $bicycle --evidence (Join-Path $step3 'infer-selected-forward.json');if($LASTEXITCODE-ne 0){throw 'G2_FORWARD_EVIDENCE_FAILED'}
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'EL_TO_ABC' --text $bicycle --expected 'bicycle' --evidence (Join-Path $step3 'infer-selected-reverse.json');if($LASTEXITCODE-ne 0){throw 'G2_REVERSE_EVIDENCE_FAILED'}
 
       - name: "🧪 Step 3 regression"
         shell: powershell
