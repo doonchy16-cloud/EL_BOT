@@ -13,4 +13,14 @@ contextBridge.exposeInMainWorld('😀', Object.freeze({
     ipcRenderer.on('⏳', listener);
     return () => ipcRenderer.removeListener('⏳', listener);
   },
+  '🔐': Object.freeze({
+    state: () => ipcRenderer.invoke('🔐:state'),
+    bootstrap: (password, confirmation) => ipcRenderer.invoke('🔐:bootstrap', password, confirmation),
+    login: (password) => ipcRenderer.invoke('🔐:login', password),
+    logout: (token) => ipcRenderer.invoke('🔐:logout', token),
+    rotate: (token, currentPassword, nextPassword, confirmation) => ipcRenderer.invoke('🔐:rotate', token, currentPassword, nextPassword, confirmation),
+    snapshot: (token, force = false) => ipcRenderer.invoke('🤖:snapshot', token, Boolean(force)),
+    validate: (token) => ipcRenderer.invoke('🤖:validate', token),
+    rollback: (token, generation, password, confirmation) => ipcRenderer.invoke('🤖:rollback', token, generation, password, confirmation),
+  }),
 }));

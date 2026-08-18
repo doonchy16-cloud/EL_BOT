@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 LOCKED PLAN — STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS / STEP 4 PAUSED / STEP 5 PAUSED
+**Status:** 🔒 STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS+MERGED / STEP 4 AUTHORIZED+IN PROGRESS / STEP 5 PAUSED
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -10,182 +10,90 @@ This file is the canonical Phase-6 authority. Where an older Phase-6 draft confl
 
 ## Mission
 
-`Forgey Insta:EL-Bot` becomes EL Bot's primary semantic/conversion intelligence for ABC→EL and EL→ABC after the later Step-4 routing gate. It is a small, from-scratch, EL-specialized neural model intended to perform most conversions locally, improve from validated evidence, and progressively reduce dependence on the temporary `qwen2.5vl:7b` teacher.
+`Forgey Insta:EL-Bot` is EL Bot's small, from-scratch, EL-specialized bidirectional neural intelligence. Phase 6 makes it the primary semantic/conversion path for ABC→EL and EL→ABC, while preserving the existing 44-engine architecture as deterministic support, validation, integrity, learning, recovery, and orchestration authority. Phase 6 does not add engine #45.
 
-The existing 44-engine architecture remains intact. Phase 6 does not add engine #45.
+Qwen `qwen2.5vl:7b` is temporary teacher/fallback semantic intelligence only. It cannot directly release EL, become canonical truth, bypass deterministic validation, or mutate production weights.
 
-## Permanent runtime direction for later Step 4
+## Completed authority
 
-```text
-ABC / EL input
-      ↓
-basic parser / integrity / security boundaries
-      ↓
-🧠 Forgey Insta:EL-Bot
-      ↓
-local candidate(s) + confidence + semantic state
-      ↓
-📚📖🧭🗺️ deterministic knowledge/support
-      ↓
-🧾 deterministic validation + round-trip checks
-   ┌──────────────┴──────────────┐
- PASS                         uncertain / fail
-   │                                │
-   ▼                                ▼
-release                    supporting engines resolve?
-                                │             │
-                               YES            NO
-                                │             │
-                                ▼             ▼
-                             validate    ✦ Orchestration
-                                             ↓
-                                         🔌 Connector
-                                             ↓
-                                      🦙 qwen2.5vl:7b
-                                          TEACHER
-                                             ↓
-                                      semantic lesson only
-                                             ↓
-                                   Forgey Insta + EL construction
-                                             ↓
-                                        🧾 validate
-```
-
-Permanent boundaries:
-- Forgey Insta is the normal primary semantic translator only after Step 4 is implemented.
-- Qwen is a teacher for difficult, novel, or unresolved semantic cases, not the normal translator.
-- Qwen cannot directly release EL, bypass deterministic validation, write raw provider prose into canonical truth, or directly mutate production weights.
-- non-semantic parser/security/auth/recovery/UI/animation failures are not teacher-learning opportunities.
-
-## Model authority
-
-The implemented Forgey Insta model family is one bidirectional encoder-decoder Transformer with `<ABC_TO_EL>` and `<EL_TO_ABC>` direction controls, 128 model width, 4 attention heads, 3 encoder layers, 3 decoder layers, 384 feed-forward width, 128-token context, shared/tied vocabulary weights, random initialization, and no pretrained semantic weights. The trainable parameter count is derived from the actual tensor graph and must remain inside the owner-locked approximately 1–3 million target unless a later separately approved architecture change says otherwise.
-
-## Step 1 — Knowledge Foundation ✅ PASS / MERGED
-
-Step 1 established released Unicode Emoji authority, Open English WordNet 2025+ lexical/sense/morphology/taxonomy data, provider-free lexical retrieval, atomic official emoji/EL tokenizer-source authority, historical-seed compatibility without a public 501 ceiling, and truthful product-facing knowledge status.
+### Step 1 — Knowledge Foundation ✅ PASS / MERGED
 
 Step-1 merge commit: `902a79fec235f77c1bf3b4c7edf82b9a0127b900`.
 
-## Step 2 — Forgey Insta G0/G1 ✅ PASS / MERGED
+Established released Unicode Emoji authority, Open English WordNet 2025+ lexical/sense/morphology/taxonomy data, provider-free lexical retrieval, atomic official emoji/EL tokenizer-source authority, historical-seed compatibility without a public 501 ceiling, and truthful product-facing knowledge status.
 
-Step 2 implemented and verified:
-- one from-scratch bidirectional encoder-decoder Transformer;
-- from-scratch byte-level BPE with complete byte fallback;
-- atomic official emoji/EL symbols;
-- measured tokenizer vocabulary selection;
-- trusted deterministic bootstrap + rehearsal only;
-- frozen benchmark excluded from training/replay;
-- reproducible G1 training;
-- fresh-process local inference in both directions;
-- Step-1/Phase-2/Phase-3/44-engine compatibility.
+### Step 2 — Forgey Insta G0/G1 ✅ PASS / MERGED
 
-Exact verified Step-2 head before merge: `3f5264d07a74ed254299cb066ed585dbfcdc978a`.
 Step-2 merge commit: `cc49045e8933d43aae285add3ade480fe64e9a89`.
 
-Observed Step-2 evidence included 1,788,672 trainable parameters, measured 4,536-token model vocabulary with 320 BPE merges, broad training loss 6.7869→4.1417, final frozen-benchmark loss materially below G0, 8/8 trusted rehearsal probes, exact fresh-process `rocket → 🚀` and `🚀 → rocket`, provider calls 0, Phase 2 PASS, Phase 3 PASS, and 44/44 diagnostics PASS. These are evidence, not runtime constants.
+Implemented one from-scratch bidirectional encoder-decoder Transformer with `<ABC_TO_EL>` and `<EL_TO_ABC>` direction controls, from-scratch byte BPE with complete byte fallback, atomic official emoji/EL symbols, measured tokenizer selection, deterministic bootstrap/rehearsal, frozen benchmark isolation, reproducible training, and fresh-process provider-free inference.
 
-## Step 3 — Teacher + Learning System ✅ PASS
+Observed Step-2 evidence included 1,788,672 trainable parameters, measured 4,536-token vocabulary with 320 BPE merges, broad loss 6.7869→4.1417, 8/8 trusted rehearsal probes, exact `rocket → 🚀` and `🚀 → rocket`, provider calls 0, Phase 2 PASS, Phase 3 PASS, and 44/44 diagnostics PASS. Historical observations are evidence, not runtime constants.
 
-Step 3 is implemented on its verified branch and remains unmerged until owner approval.
+### Step 3 — Teacher + Learning System ✅ PASS / MERGED
 
-### Teacher lesson boundary
+Step-3 merge commit: `2e40519e89ce0c8a412d5f0f47ad18fa7407ee09`.
 
-A teacher lesson is requested only through the existing provider-neutral `🔌` boundary. The temporary provider is Ollama `qwen2.5vl:7b`.
+Step 3 proved the teacher/learning/generation lifecycle:
+- real Qwen/Ollama invocation through the existing `🔌` connector;
+- strict semantic-only teacher lessons;
+- independently trusted EL targets;
+- positive + negative provenance/trust persistence;
+- frozen-benchmark exclusion and zero self-output truth;
+- isolated G2 training from verified G1 + admitted lessons + protected replay;
+- immutable generation registry;
+- measurable-improvement + protected-non-regression promotion;
+- rejection that leaves production unchanged;
+- exact-hash rollback;
+- fresh-process provider-free selected-generation inference;
+- Step-1/Step-2/Phase-2/Phase-3/44-engine regressions.
 
-Qwen supplies **semantic evidence only**. It does not supply authoritative EL output. Provider output is reduced to a strict bounded structured lesson before admission. Positive training truth requires an EL target independently anchored by trusted Step-1/Step-2 authority; rejected provider output becomes negative evidence only.
+Verified Step-3 evidence included 5 Qwen calls, 3 admitted lessons, 2 rejected/negative lessons, provider-authored EL truth 0, self-output truth 0, benchmark overlap 0, G1→G2 teacher exactness 0/3→3/3, protected probes 8/8, teacher round-trip 3/3, promotion G1→G2, rollback G2→G1→G2, exact bicycle forward/reverse inference, Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS.
 
-The verified teacher admission path proves:
-1. actual provider invocation and provider/model identity evidence;
-2. exact bounded lesson schema;
-3. semantic definition without provider-authored EL;
-4. frozen Step-2 benchmark exclusion;
-5. independent trusted EL target authority;
-6. provenance/trust persistence;
-7. deterministic admission/rejection;
-8. rejected provider output and unverified self-output never become positive neural truth.
+## Step 4 — Primary Runtime + Hidden Control Room ⚡ AUTHORIZED / IN PROGRESS
 
-### Generation lifecycle
+Owner authorization date: **2026-08-18**.
 
-```text
-validated teacher/deterministic evidence
-  ↓
-📜 provenance + 📊 trust
-  ↓
-versioned replay dataset
-  ↓
-train isolated candidate generation
-  ↓
-🧪 frozen benchmark
-+ 🪤 protected/adversarial checks
-+ 🔁 round-trip checks
-+ 🧾 deterministic validation
-  ↓
-measurably better AND no protected regression?
-  ├─ YES → promote generation pointer
-  └─ NO  → reject candidate; keep production generation
-```
+Step-4 branch starts from exact merged Step-3 main SHA `2e40519e89ce0c8a412d5f0f47ad18fa7407ee09`.
 
-Production weights never mutate in place. Every generation carries immutable lineage and artifact evidence. Previous verified generations remain rollback targets, and rollback changes the selected pointer to an already-verified exact-hash artifact rather than retraining or rewriting old weights.
+### Primary runtime
 
-### Verified candidate evidence
+Normal translation now targets a Step-4 facade that attempts the registry-selected Forgey Insta generation first when a verified runtime generation is available. A neural candidate may release only after deterministic canonical/integrity/round-trip checks. Successful Forgey-primary release must remain provider-free.
 
-Candidate head: `35e85a898f0c2e5359f905342498f6fa06616bd4`.
+If Forgey is unavailable or its candidate is rejected, the existing deterministic/support path remains available. Only unresolved semantics may reach Qwen behind orchestration/connector boundaries, and Qwen remains semantic teacher/fallback evidence rather than an EL author.
 
-Exact candidate workflows on that SHA:
-- Step-1 regression run #40 / ID `32182064506`: SUCCESS;
-- Step-2 regression run #24 / ID `32182064458`: SUCCESS;
-- Step-3 teacher/learning run #15 / ID `32182064476`: SUCCESS.
+### Hidden control room
 
-Observed Step-3 run #15 evidence:
-- Qwen teacher: Ollama `qwen2.5vl:7b`, reachable and present;
-- teacher calls: 5;
-- deterministically admitted lessons: 3;
-- rejected/negative lessons: 2;
-- provider-authored EL positive truth: 0;
-- unverified self-output positive truth: 0;
-- frozen benchmark training overlap: 0;
-- G1→G2 teacher exactness: 0/3 → 3/3;
-- G1→G2 teacher token loss: 4.4057 → 0.0990;
-- frozen benchmark: 4.8178 → 4.5608;
-- protected Step-2 probes: 8/8;
-- admitted teacher round-trip: 3/3;
-- protected reverse teacher replay: 3/3;
-- real measured promotion: G1 → G2;
-- rejection-policy fixture: deterministic validation failure correctly rejected without moving the production pointer;
-- rollback: G2 → G1 → G2 with exact artifact-hash verification;
-- selected-generation fresh-process `vehicle powered by pedals with two wheels → 🚲`: exact;
-- selected-generation fresh-process `🚲 → bicycle`: exact;
-- Phase 2: PASS;
-- Phase 3: PASS;
-- diagnostics: 44/44 PASS;
-- Step 4: ABSENT;
-- Step 5: ABSENT.
+The hidden entry remains the existing far-left header 🤖 clicked **5 times within 3 seconds**, with zero discovery clue. The gesture opens authentication only.
 
-These numbers are historical evidence, not runtime constants. The generation registry and promotion policy operate on the actual measured artifacts, hashes, replay fingerprints, and metrics produced by each run.
+Authentication uses a local salted slow scrypt verifier, short-lived in-memory sessions, rate limiting, password rotation, no committed/hard-coded/plaintext Owner password, no backdoor password, and no remote admin endpoint.
 
-### Explicitly NOT Step 3
+The Owner explicitly locked the hidden console to exactly **two primary pages**:
 
-Step 3 does not implement:
-- Forgey-Insta-first user translation routing;
-- hidden/admin console runtime;
-- normal user-facing teacher invocation;
-- packaging, installer, updater, or Phase-6 release publishing.
+1. **📊 Current Status** — live app/model active time, selected generation, Forgey-primary counters/share, teacher dependency, latest inference metadata without user content, knowledge/diagnostics, runtime readiness, and session/security state.
+2. **🏋️ Training Center** — actual current model/tokenizer sizes, runtime-derived parameter count, vocabulary, architecture, hashes, generation lineage, training/benchmark metrics, teacher/negative evidence, replay/learning counts, promotion/rollback history, validation, and truthful training capability state.
 
-Those remain Steps 4–5.
+No fake data is permitted. Unavailable data must be labeled unavailable.
 
-## Five-step Phase-6 plan
+### Step-4 acceptance direction
 
-1. 📚 **Knowledge Foundation** — ✅ PASS / MERGED.
-2. 🧠 **Forgey Insta G0/G1** — ✅ PASS / MERGED.
-3. 🦙 **Teacher + Learning System** — ✅ **PASS ON VERIFIED BRANCH; awaiting owner merge approval**.
-4. ⚡ **Primary Runtime + Hidden Console Integration** — **PAUSED**.
-5. 🧪 **Proof, Packaging & Release** — **PAUSED**.
+Step 4 must prove all of the following on a final exact candidate head:
+- selected verified G2 is used as the primary path in both directions;
+- successful selected-generation inference makes zero provider calls;
+- deterministic support/round-trip gates can reject unsafe neural output;
+- old deterministic and Step-3 behavior remains compatible;
+- hidden gesture has no visible clue and opens only authentication;
+- auth verifier contains no plaintext credential and passes bootstrap/login/rate-limit/session/rotation tests;
+- rendered Electron proof reaches the hidden gesture, bootstraps auth, opens the console, and proves exactly two pages;
+- Current Status exposes real runtime state;
+- Training Center exposes actual model size, tokenizer size, runtime-derived parameters, architecture, vocabulary, hashes, metrics, teacher evidence, lineage, and rollback state;
+- Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS;
+- Step 5 remains absent.
 
-## Phase-6 final acceptance direction
+## Step 5 — Proof, Packaging & Release 🔒 PAUSED
 
-Phase 6 cannot be marked PASS merely because a model exists. Final evidence must prove the primary Forgey-Insta path, from-scratch model, dynamic emoji authority, broad offline lexical foundation, safe teacher boundary, controlled learning/promotion/rollback, improved translation reliability, protected Phase 1–5 regressions, 44/44 diagnostics, Windows package behavior, and one exact-final-main-SHA green release gate.
+Step 5 will own final Phase-6 Windows packaging, runtime artifact materialization, installer/updater/release publishing, and exact-final-main-SHA release evidence. Step 4 must not publish the Phase-6 release.
 
 ## Current implementation gate
 
-**Step 3 is PASS on its verified branch. Step 4 remains implementation-paused until separately approved by the owner.**
+**Step 4 implementation is authorized. Step 5 remains paused until Step 4 is proven and closed.**

@@ -1,62 +1,118 @@
-# Phase 6.10 — Hidden Forgey Insta AI & Training Console
+# Phase 6.10 — Hidden Forgey Insta Control Room
 
-**Status:** 🔒 LOCKED PLAN — STEP 4 IMPLEMENTATION PAUSED
+**Status:** ⚡ STEP 4 IMPLEMENTATION AUTHORIZED / IN PROGRESS
 
 **Canonical intelligence:** `Forgey Insta:EL-Bot`
 
-This is planning authority only. The hidden console must not be implemented during Step 1.
+This is the locked Step-4 control-room authority. The Owner authorized Step 4 on 2026-08-18 and then explicitly refined the hidden console to exactly **two primary pages**.
 
-## Locked hidden entry
+## Hidden entry
 
-The existing **🤖 AI identity emoji at the far-left of EL Bot's top header** is the sole concealed UI activation target.
+The existing **🤖 at the far-left of EL Bot's header** is the sole concealed activation target.
 
 - click the existing 🤖 **5 times within 3 seconds**;
 - clicks 1–4 produce no visible response;
-- the fifth valid click opens Forgey Insta admin authentication;
-- timeout, clicking another control, app focus loss, or abandoning the sequence resets it silently;
-- no click counter or progress indicator.
+- the fifth valid click opens local Owner authentication;
+- timeout, clicking another control, app focus loss, or abandoning the sequence resets silently;
+- no counter, progress, tooltip, hover clue, glow, pointer cursor, pressed state, keyboard clue, nearby label, or ordinary navigation entry.
 
-The 🤖 must give **zero discovery clue**:
-- no hover animation;
-- no hover glow/background/color change;
-- no tooltip;
-- no pointer/hand cursor;
-- no pressed state;
-- no visible keyboard-focus clue for the hidden action;
-- no nearby Admin/Settings/Training label;
-- no ordinary navigation entry.
+The gesture is camouflage only. Authentication is the security boundary.
 
-Hidden access is not the security boundary. Discovering the five-click gesture grants only the password prompt.
+## Authentication
 
-## Authentication/security direction
+- no Owner password is committed, hard-coded, shipped in plaintext, logged, or embedded in evidence;
+- first use creates a local Owner credential for that installation;
+- only a salted slow **scrypt** verifier is stored under Electron `userData`;
+- no backdoor/recovery password and no remote admin endpoint;
+- failed attempts are rate-limited;
+- successful login creates a short-lived in-memory local session;
+- app restart and session expiry invalidate access;
+- credential rotation invalidates existing sessions;
+- audit records contain action metadata only, never passwords or translation text.
 
-- owner-supplied bootstrap credential is temporary and must be rotated later;
-- the literal credential must never be committed, hard-coded, packaged in recoverable plaintext, logged, or shown in evidence;
-- implementation must use a salted slow password verifier or appropriate OS-backed secret storage;
-- short-lived local admin session;
-- failed attempts rate-limited;
-- restart/session expiry closes admin access;
-- credential rotation invalidates old sessions/verifier;
-- no hidden backdoor recovery password;
-- no remote admin endpoint by default.
+Sensitive generation rollback requires both an active session and password re-entry plus the exact confirmation phrase `ROLLBACK <generation>`.
 
-Sensitive operations require re-authentication plus explicit high-friction confirmation and verified audit logging, including model promotion, rollback, trusted-evidence deletion/quarantine, teacher/provider changes, training-policy changes, and credential rotation.
+## Exactly two primary pages
 
-## Planned console areas
+### 1. 📊 Current Status
 
-1. 🧠 Overview — production/candidate generation, parameter count, architecture/tokenizer signature, model hash, readiness.
-2. ⚡ Live AI Status — real inference state, direction, latency, confidence, validation, support/teacher usage, CPU/RAM where measurable.
-3. 📖 Knowledge Foundation — Unicode version/count, OEWN edition/counts, tokenizer vocabulary, hashes/provenance.
-4. 🦙 Qwen Teacher — reachability, model, calls, latency, accepted/rejected lessons, dependency rate.
-5. 🎓 Learning Evidence — deterministic truth, user corrections, validated teacher lessons, negative evidence, provenance/trust tiers.
-6. 🏋️ Training — candidate generation, dataset hash/splits, optimizer/config, progress/loss/checkpoints, start/pause/stop/validate/compare controls.
-7. 🧪 Benchmarks & Promotion — production-vs-candidate accuracy, round-trip, ambiguity, unknown rejection, semantic loss, latency, regressions.
-8. 🗃️ Generations & Rollback — G0→G1→G2 lineage, reports, hashes, promotion/rejection reason, rollback.
-9. 📈 Learning Analytics — Forgey Insta conversion share ↑, Qwen dependency ↓, accuracy ↑, corrections/semantic loss ↓.
-10. 📜 Audit & Security — truthful auth/training/promotion/rollback/config events without secrets.
+This page answers: **what is EL Bot / Forgey Insta doing right now?**
 
-No fake status, fake activity, fake charts, fake generation progress, or fake metrics are allowed.
+It shows real, currently observable data only:
+- EL Bot app active time;
+- Forgey model active time for the current app process once a neural generation has actually released a translation;
+- translation count for the current app run;
+- Forgey-primary release count and share;
+- Qwen teacher/fallback usage count;
+- latest inference metadata without storing the user's source/output text: direction, source length, latency, quality, selected generation, teacher usage;
+- selected generation and verified artifact-hash state;
+- neural runtime readiness;
+- Step-1/Step-2/Step-3 authority status;
+- current 44-engine diagnostics when measurable;
+- Qwen teacher evidence and dependency counts;
+- authentication session remaining time;
+- credential rotation control.
 
-## Implementation gate
+If a value cannot be observed, the page says **Unavailable**. It never invents uptime, activity, counts, confidence, status, or errors.
 
-**Step 4 is paused. This file records the locked hidden-console design only.**
+### 2. 🏋️ Training Center
+
+This page answers: **what exactly is the current AI, what evidence produced it, and how is it performing?**
+
+It shows, from the actual selected registry/checkpoint/tokenizer/evidence when available:
+- selected generation;
+- actual model checkpoint file size;
+- actual tokenizer file size;
+- runtime-derived trainable and total parameter counts;
+- tokenizer vocabulary size;
+- architecture family;
+- model width;
+- attention heads;
+- encoder/decoder layers;
+- feed-forward width;
+- context length;
+- pretrained-semantic-weight status;
+- model and tokenizer hashes;
+- generation lineage and statuses;
+- teacher exactness and token loss;
+- frozen benchmark loss;
+- protected probes;
+- round-trip metrics;
+- adversarial-integrity and deterministic-validation state;
+- teacher calls, admitted lessons, rejected/negative evidence;
+- learning claim and negative-episode counts;
+- replay example count and replay fingerprint;
+- promotion and rollback history;
+- raw measured training/promotion evidence for inspection.
+
+The Training Center includes a real **Validate Current Generation** control and authenticated rollback for previously verified generations. A generic post-G2 continual trainer is not fabricated: until such a trainer exists, the UI explicitly reports that training-next-generation is unavailable instead of showing a fake Start button.
+
+## Runtime contract
+
+Step 4 changes normal translation routing to:
+
+```text
+ABC / EL input
+  ↓
+🧠 registry-selected Forgey Insta generation — PRIMARY ATTEMPT
+  ↓
+deterministic structural / canonical / round-trip support + validation
+  ├─ PASS → release Forgey result with provider_calls=0
+  └─ reject / unavailable
+       ↓
+existing deterministic/support path
+       ↓
+if still unresolved → ✦ orchestration → 🔌 connector → 🦙 Qwen semantic teacher/fallback evidence
+       ↓
+deterministic EL construction + validation only
+```
+
+The old deterministic translator remains intact as historical/support authority. Step 4 is implemented as a new runtime facade rather than rewriting Step-3-proven translation code.
+
+## No-fake-data rule
+
+No fake model size, parameter count, training progress, active time, confidence, status, teacher usage, generation, chart, benchmark, or audit event is allowed. Missing or unmeasurable data must remain missing and be labeled accordingly.
+
+## Step boundary
+
+Step 4 does **not** publish a Phase-6 installer/release or implement the Step-5 release publisher. Packaging/release proof remains Step 5.
