@@ -4,7 +4,7 @@
   "step": 1,
   "name": "Knowledge Foundation",
   "canonical_intelligence": "Forgey Insta:EL-Bot",
-  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "status": "PASS",
   "base_main_sha": "62d2caee6f225a6c3c50b8de5b20e4122df103e3",
   "engine_count": 44,
   "new_engine_count": 0,
@@ -48,6 +48,23 @@
     "hidden_admin_console_implemented": false,
     "phase6_windows_release_implemented": false
   },
+  "evidence_basis": {
+    "candidate_head_sha": "26894845e40d2df02c097de49d01180c2ac2bf42",
+    "workflow_run_id": 32129703334,
+    "workflow_run_number": 13,
+    "workflow_conclusion": "success",
+    "unicode_rgi_count_observed": 3953,
+    "oewn_index_records_observed": 160502,
+    "runtime_pos_lexical_keys_observed": 160182,
+    "tokenizer_unique_english_observed": 151792,
+    "atomic_el_tokens_observed": 3954,
+    "phase2_compatibility": "PASS",
+    "phase3_compatibility": "PASS",
+    "diagnostics": "44/44 PASS",
+    "renderer_syntax": "PASS",
+    "note": "Observed counts are historical run evidence only; runtime authorities derive current counts from materialized datasets rather than these numbers."
+  },
+  "final_exact_head_ci_required": true,
   "required_evidence": [
     "released Unicode data materializes and all knowledge authorities agree on its derived count",
     "Open English WordNet 2025+ materializes with six-figure lexical coverage",
