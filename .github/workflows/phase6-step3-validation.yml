@@ -164,8 +164,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $rocket = [char]::ConvertFromUtf32(0x1F680)
-          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'ABC_TO_EL' --text 'vehicle launched into space' --expected $rocket --evidence 'data\phase6-step3\infer-selected-forward.json'
+          $bicycle = [char]::ConvertFromUtf32(0x1F6B2)
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'ABC_TO_EL' --text 'vehicle powered by pedals with two wheels' --expected $bicycle --evidence 'data\phase6-step3\infer-selected-forward.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_SELECTED_FORWARD_FAILED' }
 
       - name: "⚡ Selected G2 inference EL → ABC"
@@ -173,8 +173,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $rocket = [char]::ConvertFromUtf32(0x1F680)
-          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence 'data\phase6-step3\infer-selected-reverse.json'
+          $bicycle = [char]::ConvertFromUtf32(0x1F6B2)
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'EL_TO_ABC' --text $bicycle --expected 'bicycle' --evidence 'data\phase6-step3\infer-selected-reverse.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_SELECTED_REVERSE_FAILED' }
 
       - name: "🧪 Step 3 authority"
