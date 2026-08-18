@@ -1,4 +1,8 @@
-"""Provider-neutral Forgey Orchestration policy for EL Bot."""
+"""Provider-neutral Forgey Orchestration policy for EL Bot.
+
+Phase 6 supersedes the old blanket HOLD prohibition. Semantic uncertainty may use
+local student/Qwen teaching; system/runtime/security HOLD states remain provider-free.
+"""
 
 from __future__ import annotations
 
@@ -46,7 +50,7 @@ class AssistDecision:
 
 
 class OrchestrationEngine:
-    """Own FAIL-only intelligence escalation policy without provider-specific implementation."""
+    """Own semantic-intelligence escalation without provider-specific implementation."""
 
     def __init__(self, stages: tuple[str, ...] | None = None) -> None:
         self._stages = stages or (
@@ -61,9 +65,28 @@ class OrchestrationEngine:
         return OrchestrationSnapshot(self._stages)
 
     @staticmethod
-    def should_escalate(quality_status: str) -> bool:
-        """Permanent rule: PASS/HOLD never escalate; only an exact deterministic FAIL may."""
-        return str(quality_status or "").strip().lower() == "fail"
+    def semantic_uncertainty(metrics: dict | None) -> bool:
+        if not isinstance(metrics, dict):
+            return False
+        try:
+            unknown_count = int(metrics.get("unknown_count", 0) or 0)
+            unresolved = int(metrics.get("unresolved_clauses", 0) or 0)
+            lexical = int(metrics.get("phase6_lexical_resolutions", 0) or 0)
+            remaining = int(metrics.get("phase3_remaining_unknowns", unknown_count) or 0)
+        except (TypeError, ValueError):
+            return False
+        ambiguity = bool(metrics.get("semantic_ambiguity") or metrics.get("lexical_ambiguity"))
+        return unknown_count > 0 or unresolved > 0 or remaining > 0 or ambiguity or lexical > 0 and str(metrics.get("quality_status", "")).lower() == "hold"
+
+    @classmethod
+    def should_escalate(cls, quality_status: str, metrics: dict | None = None) -> bool:
+        """Escalate deterministic FAIL or semantic HOLD; never ordinary/system HOLD."""
+        quality = str(quality_status or "").strip().lower()
+        if quality == "fail":
+            return True
+        if quality == "hold":
+            return cls.semantic_uncertainty(metrics)
+        return False
 
     @staticmethod
     def _status_name(report) -> str:
@@ -82,8 +105,8 @@ class OrchestrationEngine:
     ) -> AssistDecision:
         if not isinstance(request, AssistRequest):
             raise TypeError("request must be AssistRequest")
-        if not self.should_escalate(request.deterministic_quality):
-            return AssistDecision(False, False, False, "", "deterministic-no-escalation", "", "", 0.0, "", "not-run", {}, ("quality-not-fail",))
+        if not self.should_escalate(request.deterministic_quality, request.deterministic_metrics):
+            return AssistDecision(False, False, False, "", "deterministic-no-escalation", "", "", 0.0, "", "not-run", {}, ("quality-not-semantic-escalation",))
         if not request.source.strip():
             return AssistDecision(True, False, False, "", "invalid-source", "", "", 0.0, "", "fail", {}, ("empty-source",))
 
@@ -108,7 +131,7 @@ class OrchestrationEngine:
 
         reports: list[tuple[str, object, str]] = []
 
-        # Preferred path: AI resolves the meaning; EL Bot itself constructs the EL.
+        # Teacher resolves plain-English meaning. EL Bot itself constructs EL.
         try:
             definition_result = translate_definition(definition)
             definition_candidate = str(getattr(definition_result, "winner", ""))
@@ -127,8 +150,7 @@ class OrchestrationEngine:
         except Exception:
             reports.append(("semantic-definition", None, ""))
 
-        # Secondary path: provider may suggest EL, but it still must survive EL Bot's
-        # canonical parsing, deterministic reverse translation, retranslation and release gate.
+        # Provider-authored EL is still secondary and fully deterministic-gated.
         if proposed:
             try:
                 reverse_result = reverse_translate(proposed)
