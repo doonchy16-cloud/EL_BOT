@@ -12,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "architecture" / "phase6_step1_knowledge_foundation_manifest.json"
 DATA_MANIFEST = ROOT / "data" / "phase6-step1-data-manifest.json"
+STEP2_MANIFEST = ROOT / "architecture" / "phase6_step2_g0_g1_manifest.json"
 
 
 def load(name: str, path: Path):
@@ -35,7 +36,7 @@ def main() -> None:
     require(manifest.get("phase") == 6 and manifest.get("step") == 1, "wrong Step-1 manifest")
     require(manifest.get("engine_count") == 44 and manifest.get("new_engine_count") == 0, "Step 1 must not invent engine #45")
     guards = manifest.get("scope_guards", {})
-    require(all(value is False for value in guards.values()), "Step 1 scope guard claims later implementation")
+    require(all(value is False for value in guards.values()), "Step 1 historical scope guard claims later implementation")
 
     require(DATA_MANIFEST.is_file(), "Step-1 data manifest missing; materializer did not run")
     data = json.loads(DATA_MANIFEST.read_text(encoding="utf-8-sig"))
@@ -89,8 +90,6 @@ def main() -> None:
     require(set(token_authority.model_special_tokens).isdisjoint(token_authority.atomic_el_tokens), "model special token collides with EL token")
     require("<ABC_TO_EL>" in token_authority.model_special_tokens and "<EL_TO_ABC>" in token_authority.model_special_tokens, "bidirectional direction tokens missing")
 
-    # Easy/common surfaces must be represented in the knowledge foundation. Ambiguity
-    # is allowed here: Step 1 must know the word without manufacturing one winner.
     easy = ("robot", "fox", "laptop", "chair", "apple", "football", "car", "phone", "light", "lock")
     missing = tuple(word for word in easy if not resolver.is_known(word))
     require(not missing, f"easy words absent from lexical knowledge: {missing}")
@@ -135,10 +134,19 @@ def main() -> None:
     require("query('📚')" in renderer_source and "🔒📚?" in renderer_source, "renderer does not replace neutral vocabulary placeholder dynamically")
     require("materialize-phase6-step1-knowledge.ps1" in launcher_source, "source launcher does not prepare Step-1 knowledge")
 
-    # Scope proof: model/trainer/admin runtime work is not authorized in Step 1.
-    require(not (ROOT / "🧠" / "🤖").exists(), "Step-2 Forgey Insta model leaked into Step 1")
-    require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 training coordinator leaked into Step 1")
-    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 release publisher leaked into Step 1")
+    # Historical Step-1 scope proof remains strict before Step 2 exists. Once an
+    # authorized Step-2 manifest is present, the Step-1 gate validates that authority
+    # instead of falsely requiring the later model to disappear.
+    step2_state = "ABSENT"
+    if STEP2_MANIFEST.is_file():
+        step2 = json.loads(STEP2_MANIFEST.read_text(encoding="utf-8"))
+        require(step2.get("phase") == 6 and step2.get("step") == 2, "unrecognized later-step manifest")
+        require((ROOT / "🧠" / "🤖").is_file(), "Step-2 manifest exists but model source is missing")
+        step2_state = "AUTHORIZED"
+    else:
+        require(not (ROOT / "🧠" / "🤖").exists(), "Step-2 Forgey Insta model leaked into Step 1")
+    require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 training coordinator leaked into Step 1/2")
+    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 release publisher leaked into Step 1/2")
 
     print(
         "PHASE6_STEP1_OK "
@@ -148,7 +156,7 @@ def main() -> None:
         f"tokenizer_unique_english={token_snapshot.english_lemma_count} "
         f"atomic_el={token_snapshot.atomic_el_token_count} "
         f"semantic_seed={vocab_snapshot.semantic_seed_count} "
-        "public_501=ABSENT model=ABSENT teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
+        f"public_501=ABSENT model={step2_state} teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
     )
 
 
