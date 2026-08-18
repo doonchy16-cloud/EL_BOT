@@ -176,7 +176,11 @@ class DiagnosticsEngine:
         canonicalizer = _canonicalization.EmojiCanonicalizationEngine(); sun = canonicalizer.canonicalize_unit("☀"); keycap = canonicalizer.canonicalize_unit("1\u20e3")
         checks.append(DiagnosticCheck("2️⃣5️⃣🧷", sun.valid and sun.canonical == "☀️" and keycap.valid and keycap.canonical == "1️⃣" and not canonicalizer.canonicalize_unit("abc").valid))
         universe = _universe.EmojiUniverseEngine()
-        checks.append(DiagnosticCheck("2️⃣6️⃣🌐", universe.snapshot.count > 501 and universe.snapshot.canonical_coverage == 501 and not universe.snapshot.rgi_complete and universe.contains("😀")))
+        if (_ROOT / "data" / "unicode" / "emoji-test.txt").is_file():
+            universe_ok = universe.snapshot.rgi_complete and universe.snapshot.version == "17.0" and universe.snapshot.count == _vocab.official_emoji_count() and universe.contains("😀")
+        else:
+            universe_ok = universe.snapshot.count > len(_vocab.CANONICAL_SYMBOLS) and universe.snapshot.canonical_coverage == len(_vocab.CANONICAL_SYMBOLS) and not universe.snapshot.rgi_complete and universe.contains("😀")
+        checks.append(DiagnosticCheck("2️⃣6️⃣🌐", universe_ok))
 
         provenance = _provenance.ProvenanceLedgerEngine(); p1 = provenance.append(record_id="p1", claim_id="c1", source_kind="deterministic", source_ref="diagnostics", validation_status="pass", created_at="2026-08-12T23:00:00Z")
         checks.append(DiagnosticCheck("2️⃣7️⃣📜", provenance.for_claim("c1") == (p1,) and p1.validation_status == "pass"))
