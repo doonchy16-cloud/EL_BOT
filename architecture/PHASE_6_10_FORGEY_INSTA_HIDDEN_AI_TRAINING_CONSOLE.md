@@ -12,14 +12,55 @@ EL Bot needs a private owner/admin surface for observing and controlling the int
 
 The console is **not** part of normal EL Bot navigation and must never be required for ordinary ABC↔EL use.
 
-## Access model
+## Locked hidden-entry design
 
-The console must be deliberately difficult to reach accidentally, but concealment is only an additional UX barrier and is never treated as real authentication.
+The existing **🤖 AI identity emoji at the far-left side of the normal top header** is the sole concealed UI activation target for the Forgey Insta admin console.
 
-Planned access layers:
+### Secret activation sequence
 
-1. **No visible normal-navigation entry.** No menu item, toolbar button, help link, or obvious route from the normal conversion UI.
-2. **Hidden local activation gesture/chord.** A deliberately uncommon owner-only activation sequence reveals the authentication prompt. The exact gesture is an implementation detail to be selected so it does not conflict with Windows/Electron shortcuts.
+- Click the existing 🤖 emoji **5 times within 3 seconds**.
+- Clicks 1–4 produce **no visible response whatsoever**.
+- The fifth valid click reveals the Forgey Insta admin authentication prompt.
+- If more than 3 seconds elapse before the fifth click, the sequence resets silently.
+- Clicking another control, losing application focus, or otherwise abandoning the sequence resets it silently.
+- No click counter or progress indicator is shown.
+
+### The 🤖 must look non-interactive
+
+The normal user receives no discovery clue:
+
+- no hover animation;
+- no hover color/glow/background change;
+- no tooltip;
+- no pointer/hand cursor;
+- no pressed state;
+- no visible keyboard-focus ring for the hidden action;
+- no context-menu clue;
+- no nearby Admin/Settings/Training label;
+- no visible navigation item to the console.
+
+The emoji remains visually identical to its normal identity/status presentation. The hidden click detector must not interfere with its existing visual role.
+
+### Authentication remains the real security boundary
+
+The five-click sequence is only an accidental-discovery barrier. Discovering the gesture does not grant admin access.
+
+```text
+🤖 ×5 within 3 seconds
+        ↓
+🔐 Forgey Insta admin authentication
+        ↓
+short-lived authenticated admin session
+        ↓
+Forgey Insta:EL-Bot — AI & Training Console
+```
+
+Sensitive operations such as model promotion, rollback, trusted-evidence deletion/quarantine, teacher changes, training-policy changes, or credential rotation require re-authentication plus explicit high-friction confirmation.
+
+## Access/security model
+
+1. **No visible normal-navigation entry.** No menu item, toolbar button, help link, route hint, or ordinary navigation path exposes the console.
+2. **Locked hidden activation:** exactly 5 clicks on the existing 🤖 AI emoji within 3 seconds, with zero hover/cursor/tooltip/visual clues.
 3. **Admin authentication prompt.** Access requires the owner-supplied bootstrap admin credential or its rotated successor.
 4. **No plaintext credential in source, repository, packaged resources, logs, screenshots, telemetry, or crash evidence.** The credential itself must not be committed to Git. Implementation must use a salted slow password verifier or an OS/secret-backed equivalent.
 5. **Rotation support.** The owner can replace the bootstrap credential later without rebuilding the model or losing training state.
@@ -299,31 +340,32 @@ Implementation requirements:
 
 ## Hidden access does not equal security
 
-The activation sequence is intentionally obscure only to prevent accidental discovery by ordinary users. A technically capable local user may inspect a packaged desktop app. Therefore the page's protection depends on authentication, privilege gating, safe secret storage, and action re-authentication—not on hiding the route name or keyboard shortcut.
+The activation sequence is intentionally obscure only to prevent accidental discovery by ordinary users. A technically capable local user may inspect a packaged desktop app. Therefore the page's protection depends on authentication, privilege gating, safe secret storage, and action re-authentication—not on hiding the route name or gesture.
 
 ## Acceptance direction
 
 Phase 6.10 is not PASS until implementation evidence proves at minimum:
 
-1. no visible normal-user navigation exposes the console;
-2. hidden activation works only as designed;
-3. unauthenticated access to the console and privileged IPC/actions is rejected even if the route is discovered directly;
-4. the literal bootstrap password is absent from repository source, package resources, logs, screenshots, and generated evidence;
-5. valid authentication opens a short-lived admin session;
-6. failed attempts are rate-limited;
-7. session expiry/restart closes admin access;
-8. rotation invalidates the old verifier/session;
-9. sensitive model/training actions require re-authentication;
-10. status values are sourced from real model/training/teacher data;
-11. production/candidate generation and lineage are truthful;
-12. benchmarks and analytics use measured data only;
-13. Qwen status and teacher activity are truthful;
-14. promotion/rollback produce verified audit records;
-15. no admin action can bypass the mandatory EL validation/promotion authority merely because the console is authenticated;
-16. packaged Windows runtime preserves the same authentication boundary;
-17. security tests include direct-route/IPC bypass attempts, not only UI clicking;
-18. existing normal EL Bot conversion behavior remains available to non-admin users without exposing admin internals.
+1. the 🤖 identity emoji shows no visible hover/cursor/tooltip/click clue;
+2. exactly five valid clicks within three seconds reveal authentication and incomplete/expired sequences do nothing visible;
+3. no visible normal-user navigation exposes the console;
+4. unauthenticated access to the console and privileged IPC/actions is rejected even if the route is discovered directly;
+5. the literal bootstrap password is absent from repository source, package resources, logs, screenshots, and generated evidence;
+6. valid authentication opens a short-lived admin session;
+7. failed attempts are rate-limited;
+8. session expiry/restart closes admin access;
+9. rotation invalidates the old verifier/session;
+10. sensitive model/training actions require re-authentication;
+11. status values are sourced from real model/training/teacher data;
+12. production/candidate generation and lineage are truthful;
+13. benchmarks and analytics use measured data only;
+14. Qwen status and teacher activity are truthful;
+15. promotion/rollback produce verified audit records;
+16. no admin action can bypass the mandatory EL validation/promotion authority merely because the console is authenticated;
+17. packaged Windows runtime preserves the same authentication boundary;
+18. security tests include direct-route/IPC bypass attempts, not only UI clicking;
+19. existing normal EL Bot conversion behavior remains available to non-admin users without exposing admin internals.
 
 ## Implementation gate
 
-**Implementation remains paused.** This file locks the hidden-console purpose, access/security model, information architecture, and sensitive-action behavior only. Runtime/UI/security/model/training changes require a later explicit implementation GO.
+**Implementation remains paused.** This file locks the hidden-console purpose, exact 🤖 five-click/three-second access sequence, access/security model, information architecture, and sensitive-action behavior only. Runtime/UI/security/model/training changes require a later explicit implementation GO.
