@@ -80,9 +80,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_TORCH_INSTALL_FAILED' }
             Set-Content -LiteralPath $marker -Value 'torch 2.13.0 cp312 ready' -Encoding ASCII
           }
-          # The embeddable Python distribution uses python312._pth isolation, which
-          # intentionally ignores PYTHONPATH. Register the pinned Torch target in
-          # that path authority itself so every later script process sees it.
           $pyDir = Split-Path -Parent $env:EL_PYTHON
           $pth = Join-Path $pyDir 'python312._pth'
           if (-not (Test-Path -LiteralPath $pth)) { throw 'PHASE6_STEP2_PYTHON_PTH_MISSING' }
@@ -102,6 +99,15 @@ jobs:
           $output = Join-Path (Get-Location) 'data\phase6-step2'
           & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output $output --steps 480 --batch-size 28
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_TRAIN_FAILED' }
+
+      - name: "🎯 Trusted G1 rehearsal"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $artifact = Join-Path (Get-Location) 'data\phase6-step2'
+          & $env:EL_PYTHON 'scripts\phase6-step2-rehearse-g1.py' --artifact-dir $artifact --steps 240 --batch-size 32
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_REHEARSAL_FAILED' }
 
       - name: "⚡ Local inference ABC → EL"
         shell: powershell
