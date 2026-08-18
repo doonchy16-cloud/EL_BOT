@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "step": 4,
+  "name": "Forgey Insta Primary Runtime + Hidden Control Room",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "base_main_sha": "2e40519e89ce0c8a412d5f0f47ad18fa7407ee09",
+  "engine_count": 44,
+  "new_engine_count": 0,
+  "runtime": {
+    "forgey_insta_primary_semantic_path": true,
+    "selected_generation_registry_required_for_neural_release": true,
+    "deterministic_support_and_validation_retained": true,
+    "qwen_role": "teacher/fallback-semantic-evidence-only",
+    "provider_authored_el_release_forbidden": true,
+    "provider_free_selected_generation_inference": true
+  },
+  "hidden_control_room": {
+    "entry": "existing far-left header robot clicked 5 times within 3 seconds",
+    "visible_discovery_clues": false,
+    "page_count": 2,
+    "pages": ["Current Status", "Training Center"],
+    "fake_or_placeholder_metrics_forbidden": true
+  },
+  "authentication": {
+    "hard_coded_password": false,
+    "plaintext_password_storage": false,
+    "salted_scrypt_verifier": true,
+    "local_bootstrap_only": true,
+    "short_lived_session": true,
+    "restart_invalidates_session": true,
+    "failed_attempt_rate_limit": true,
+    "credential_rotation_supported": true,
+    "backdoor_password": false,
+    "remote_admin_endpoint": false
+  },
+  "status_page": {
+    "app_active_time": true,
+    "model_active_time_when_observable": true,
+    "selected_generation": true,
+    "primary_runtime_counters": true,
+    "latest_inference_metadata_without_user_content": true,
+    "knowledge_and_diagnostics": true,
+    "teacher_dependency": true,
+    "auth_session_state": true
+  },
+  "training_center": {
+    "actual_model_file_size": true,
+    "actual_tokenizer_file_size": true,
+    "runtime_derived_parameter_count_when_loadable": true,
+    "architecture_and_context": true,
+    "vocabulary_size": true,
+    "generation_lineage_and_hashes": true,
+    "training_and_benchmark_metrics": true,
+    "teacher_admission_and_negative_evidence": true,
+    "replay_and_learning_counts": true,
+    "promotion_and_rollback_history": true,
+    "validation_control": true,
+    "unsupported_controls_must_report_unavailable": true
+  },
+  "scope_guards": {"phase6_windows_release_implemented": false, "step5_release_publisher_implemented": false},
+  "required_evidence": [
+    "Step 3 remains compatible and 44/44 diagnostics stay green",
+    "normal translation attempts registry-selected Forgey Insta before supporting translation logic when a verified generation is available",
+    "selected neural output cannot release without deterministic structural and round-trip validation",
+    "provider calls remain zero on successful selected-generation inference",
+    "Qwen remains behind the existing connector as semantic teacher/fallback evidence and cannot author released EL",
+    "hidden robot entry has five-click/three-second silent gesture with no visual discovery clue",
+    "admin password is not hard-coded or committed and is verified by salted scrypt",
+    "failed auth attempts are rate-limited and sessions expire/restart-invalidated",
+    "control room has exactly two primary pages: Current Status and Training Center",
+    "Current Status reports real app/model activity and runtime counters without storing user translation content",
+    "Training Center reports real current model sizes, runtime-derived parameter count when available, architecture, vocabulary, hashes, metrics, teacher evidence and generation history",
+    "unavailable data is labeled unavailable instead of synthesized",
+    "Step 5 remains absent"
+  ],
+  "final_exact_head_ci_required": true
+}

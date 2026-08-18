@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""Phase-6 Step-4 Forgey Insta primary translation runtime.
+
+The registry-selected neural generation is attempted first when a verified runtime
+artifact exists. Deterministic engines remain support/validation authority. Qwen
+remains behind the legacy orchestration connector as semantic teacher/fallback
+only when Forgey + deterministic support cannot safely release a result.
+"""
+from __future__ import annotations
+
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import os
+import re
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parent.parent
+LEGACY = ROOT / "↔️" / "↔️"
+DEFAULT_REGISTRY = ROOT / "data" / "phase6-step3" / "generation-registry.json"
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+legacy_module = load("_el_step4_legacy", LEGACY)
+lang = legacy_module._lang
+
+
+def registry_path() -> Path:
+    value = str(os.environ.get("EL_FORGEY_REGISTRY", "")).strip()
+    return Path(value).resolve() if value else DEFAULT_REGISTRY
+
+
+def _candidate_values(result) -> tuple[str, ...]:
+    return tuple(str(item.value) for item in getattr(result, "candidates", ()))
+
+
+def _relation_integrity(source: str, candidate: str) -> bool:
+    try:
+        document = lang.parse_abc_document(source)
+        markers = [relation.marker for clause in document.clauses for relation in clause.relations if relation.kind != "and"]
+    except Exception:
+        markers = []
+    for marker in markers:
+        if marker in candidate:
+            continue
+        if marker == "🚦➡️" and "🚦" in candidate and "➡️" in candidate:
+            continue
+        if marker == "🚦⬅️" and "🚦" in candidate and "⬅️" in candidate:
+            continue
+        if marker == "🚦❌" and "🚦" in candidate and "❌" in candidate:
+            continue
+        if marker == "🔗➡️" and "🔗" in candidate and "➡️" in candidate:
+            continue
+        return False
+    return True
+
+
+def _number_integrity(source: str, candidate: str) -> bool:
+    return all(number in candidate for number in _NUMBER_RE.findall(source))
+
+
+class SelectedGeneration:
+    def __init__(self, path: Path) -> None:
+        registry_module = load("_el_step4_registry", ROOT / "🗃️" / "🤖")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        selected = str(payload.get("production_generation", ""))
+        record = dict(payload.get("generations", {}).get(selected) or {})
+        if not selected or not record:
+            raise RuntimeError("selected generation missing")
+        registry = registry_module.ForgeyGenerationRegistry(path)
+        if not registry.verify_generation_hashes(selected):
+            raise RuntimeError("selected generation hashes failed")
+        tokenizer_module = load("_el_step4_tokenizer", ROOT / "📚" / "✂️")
+        model_module = load("_el_step4_model", ROOT / "🧠" / "🤖")
+        tokenizer = tokenizer_module.ForgeyInstaTokenizer.load(Path(record["tokenizer_path"]))
+        model, metadata = model_module.ForgeyInstaTransformer.load_checkpoint(Path(record["model_path"]), map_location="cpu")
+        if model.config.vocab_size != tokenizer.vocab_size:
+            raise RuntimeError("selected model/tokenizer vocabulary mismatch")
+        if str(metadata.get("generation")) != selected:
+            raise RuntimeError("selected generation metadata mismatch")
+        self.path = path
+        self.selected = selected
+        self.record = record
+        self.tokenizer = tokenizer
+        self.model = model
+        self.report = model.parameter_report()
+
+    def infer(self, mode: int, source: str) -> tuple[str, float]:
+        direction = "EL_TO_ABC" if mode == 1 else "ABC_TO_EL"
+        started = time.perf_counter()
+        prediction = self.model.greedy_generate(self.tokenizer, direction, source, max_new_tokens=64, device="cpu")
+        return prediction.strip(), (time.perf_counter() - started) * 1000.0
+
+
+class Step4TranslationEngine:
+    def __init__(self) -> None:
+        self.legacy = legacy_module.TranslationEngine()
+        self.registry = registry_path()
+        self.selected = None
+        self.selected_error = ""
+        if self.registry.is_file():
+            try:
+                self.selected = SelectedGeneration(self.registry)
+            except Exception as error:
+                self.selected_error = type(error).__name__
+
+    def _neural_release(self, mode: int, source: str, *, emit: bool):
+        if self.selected is None:
+            return None, {"reason": self.selected_error or "registry-unavailable"}
+        if emit:
+            lang.emit_stage(1, 3, f"Forgey Insta — {self.selected.selected} primary inference", True)
+        prediction, latency_ms = self.selected.infer(mode, source)
+        if not prediction:
+            return None, {"reason": "empty-neural-output", "latency_ms": latency_ms}
+
+        reasons = []
+        support_quality = "unknown"
+        roundtrip_ok = False
+        if mode == 2:
+            canonical = bool(lang.valid_el(prediction)) and "❓" not in prediction
+            reverse = self.legacy.emoji_to_abc.translate(prediction, verifier=self.legacy.abc_to_emoji, cross_verify=True, emit=False)
+            reverse_text = str(reverse.winner or "")
+            reencoded = self.legacy.abc_to_emoji.translate(reverse_text, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
+            roundtrip_ok = str(reencoded.winner) == prediction
+            deterministic = self.legacy.abc_to_emoji.translate(source, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
+            support_quality = str(deterministic.metrics.get("quality_status", "fail") or "fail").lower()
+            if support_quality == "pass" and prediction not in _candidate_values(deterministic):
+                reasons.append("deterministic-authority-conflict")
+            if not canonical: reasons.append("noncanonical-neural-el")
+            if not roundtrip_ok: reasons.append("deterministic-roundtrip-failed")
+            if not _number_integrity(source, prediction): reasons.append("number-integrity-failed")
+            if not _relation_integrity(source, prediction): reasons.append("relation-integrity-failed")
+        else:
+            reverse = self.legacy.emoji_to_abc.translate(source, verifier=self.legacy.abc_to_emoji, cross_verify=True, emit=False)
+            support_quality = str(reverse.metrics.get("quality_status", "fail") or "fail").lower()
+            reencoded = self.legacy.abc_to_emoji.translate(prediction, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
+            roundtrip_ok = str(reencoded.winner) == source
+            if support_quality == "pass" and prediction.casefold() not in tuple(value.casefold() for value in _candidate_values(reverse)):
+                reasons.append("deterministic-authority-conflict")
+            if not roundtrip_ok: reasons.append("deterministic-roundtrip-failed")
+
+        if reasons:
+            return None, {"reason": ",".join(reasons), "latency_ms": latency_ms, "prediction": prediction, "support_quality": support_quality, "roundtrip": roundtrip_ok}
+        if emit:
+            lang.emit_stage(2, 3, "Deterministic support — validate Forgey candidate", True)
+            lang.emit_stage(3, 3, "Validation — Forgey primary release", True)
+        metrics = {
+            "quality_status": "pass",
+            "coverage": 1.0,
+            "roundtrip": 1.0 if roundtrip_ok else 0.0,
+            "unknown_count": 0,
+            "forgey_primary_ready": True,
+            "forgey_primary_attempted": True,
+            "forgey_primary_released": True,
+            "forgey_generation": self.selected.selected,
+            "forgey_model_sha256": self.selected.record.get("model_sha256", ""),
+            "forgey_tokenizer_sha256": self.selected.record.get("tokenizer_sha256", ""),
+            "forgey_trainable_parameters": int(self.selected.report.trainable_parameters),
+            "forgey_latency_ms": round(latency_ms, 3),
+            "forgey_validation": "pass",
+            "deterministic_support_quality": support_quality,
+            "assist_path": "forgey-insta-primary",
+            "provider_calls": 0,
+            "raw_provider_exposed": False,
+        }
+        result = {
+            "mode": mode,
+            "source": source,
+            "winner": prediction,
+            "candidates": [{
+                "value": prediction, "score": 100.0,
+                "reasons": ["forgey-insta-primary", "selected-generation", "deterministically-validated"],
+                "coverage": 1.0, "roundtrip": 1.0 if roundtrip_ok else 0.0,
+            }],
+            "stages": [f"Forgey Insta — {self.selected.selected} primary inference", "Deterministic support — candidate validation", "Validation — Forgey primary release"],
+            "metrics": metrics,
+        }
+        return result, {"reason": "pass", "latency_ms": latency_ms}
+
+    def ranked(self, mode: int, source: str, *, emit: bool = True) -> dict:
+        result, neural = self._neural_release(mode, source, emit=emit)
+        if result is not None:
+            return result
+        legacy_result = self.legacy.ranked(mode, source, emit=emit)
+        payload = legacy_result.as_dict()
+        metrics = dict(payload.get("metrics", {}))
+        metrics.update({
+            "forgey_primary_ready": self.selected is not None,
+            "forgey_primary_attempted": self.selected is not None,
+            "forgey_primary_released": False,
+            "forgey_generation": self.selected.selected if self.selected is not None else "",
+            "forgey_validation": "fail" if self.selected is not None else "unavailable",
+            "forgey_rejection_reason": neural.get("reason", "unavailable"),
+            "forgey_latency_ms": round(float(neural.get("latency_ms", 0.0) or 0.0), 3),
+            "teacher_fallback": int(metrics.get("provider_calls", 0) or 0) > 0,
+        })
+        payload["metrics"] = metrics
+        stages = list(payload.get("stages", []))
+        if self.selected is not None:
+            stages.insert(0, f"Forgey Insta — {self.selected.selected} attempted; deterministic support retained")
+        else:
+            stages.insert(0, "Forgey Insta — runtime generation unavailable; safe support path")
+        payload["stages"] = stages
+        return payload
+
+    def record_selection(self, mode: int, source: str, value: str) -> int:
+        return self.legacy.record_selection(mode, source, value)
+
+
+def read_mode_source() -> tuple[int, str] | None:
+    payload = sys.stdin.read()
+    if "\n" not in payload:
+        return None
+    head, source = payload.split("\n", 1)
+    try: mode = int(head.strip())
+    except ValueError: return None
+    return mode, source.strip()
+
+
+def main() -> int:
+    engine = Step4TranslationEngine()
+    action = sys.argv[1] if len(sys.argv) > 1 else ""
+    if action == "✅":
+        try:
+            payload = json.loads(sys.stdin.read())
+            count = engine.record_selection(int(payload["mode"]), str(payload["source"]), str(payload["value"]))
+            print("✅🏆" + str(count))
+        except Exception:
+            print("❌🏆")
+        return 0
+    pair = read_mode_source()
+    if pair is None or pair[0] not in (1, 2):
+        print("❌🔢")
+        return 0
+    result = engine.ranked(pair[0], pair[1], emit=True)
+    if action == "🔀": print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    else: print(str(result.get("winner", "")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

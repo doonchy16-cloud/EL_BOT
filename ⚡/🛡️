@@ -1,0 +1,236 @@
+'use strict';
+
+const { app, ipcMain } = require('electron');
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { AdminAuthStore } = require('./🔐');
+
+const ROOT = path.resolve(__dirname, '..');
+const UI_CSS = path.join(__dirname, '🕶️');
+const UI_JS = path.join(__dirname, '🎛️');
+const STATUS_SCRIPT = path.join(ROOT, 'scripts', 'phase6-step4-status.py');
+const ACTION_SCRIPT = path.join(ROOT, 'scripts', 'phase6-step4-admin-action.py');
+const SOURCE_REGISTRY = path.join(ROOT, 'data', 'phase6-step3', 'generation-registry.json');
+const STARTED_AT = Date.now();
+const runtime = {
+  translations: 0,
+  forgey_primary_releases: 0,
+  teacher_fallbacks: 0,
+  model_activated_at: 0,
+  last_inference: null,
+};
+let auth = null;
+let aiCache = { at: 0, registry: '', value: null };
+let handlersRegistered = false;
+
+function userData() { return app.getPath('userData'); }
+function authStore() {
+  if (!auth) auth = new AdminAuthStore(path.join(userData(), 'admin'));
+  return auth;
+}
+function auditPath() { return path.join(userData(), 'admin', 'audit-v1.jsonl'); }
+function writeAudit(event, details = {}) {
+  try {
+    const target = auditPath();
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const safe = { at: new Date().toISOString(), event: String(event) };
+    for (const [key, value] of Object.entries(details || {})) {
+      if (/pass|secret|token|source|input|output/i.test(key)) continue;
+      if (['string', 'number', 'boolean'].includes(typeof value) || value === null) safe[key] = value;
+    }
+    fs.appendFileSync(target, JSON.stringify(safe) + '\n', 'utf8');
+  } catch (_) {}
+}
+
+function pythonCandidate() {
+  const candidates = [];
+  if (process.env.EL_PYTHON) candidates.push({ command: process.env.EL_PYTHON, prefix: [] });
+  candidates.push({ command: path.join(ROOT, 'python', 'python.exe'), prefix: [] });
+  if (process.env.RUNNER_TOOL_CACHE) candidates.push({ command: path.join(process.env.RUNNER_TOOL_CACHE, 'ELPython', '3.12.10', 'python.exe'), prefix: [] });
+  candidates.push(
+    { command: 'C:\\Git\\EL-bot-runner\\actions-runner\\_work\\_tool\\ELPython\\3.12.10\\python.exe', prefix: [] },
+    { command: 'py', prefix: ['-3'] },
+    { command: 'python', prefix: [] },
+    { command: 'python3', prefix: [] },
+  );
+  for (const candidate of candidates) {
+    if (candidate.command.includes(path.sep) || /^[A-Za-z]:\\/.test(candidate.command)) {
+      if (fs.existsSync(candidate.command)) return candidate;
+      continue;
+    }
+    try {
+      if (spawnSync(candidate.command, [...candidate.prefix, '--version'], { windowsHide: true, stdio: 'ignore', timeout: 4000 }).status === 0) return candidate;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function registryPath() {
+  const explicit = String(process.env.EL_FORGEY_REGISTRY || '').trim();
+  if (explicit) return path.resolve(explicit);
+  const local = path.join(userData(), 'forgey', 'generation-registry.json');
+  if (fs.existsSync(local)) return local;
+  return SOURCE_REGISTRY;
+}
+
+function collectAiSnapshot(force = false) {
+  const registry = registryPath();
+  const now = Date.now();
+  if (!force && aiCache.value && aiCache.registry === registry && now - aiCache.at < 5000) return aiCache.value;
+  const python = pythonCandidate();
+  if (!python || !fs.existsSync(STATUS_SCRIPT)) {
+    const value = { available: false, reason: !python ? 'python-unavailable' : 'status-collector-unavailable', registry_path: registry };
+    aiCache = { at: now, registry, value };
+    return value;
+  }
+  try {
+    const run = spawnSync(python.command, [...python.prefix, STATUS_SCRIPT, '--registry', registry], {
+      cwd: ROOT,
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 20000,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_FORGEY_REGISTRY: registry },
+    });
+    if (run.status !== 0 || !String(run.stdout || '').trim()) throw new Error('collector-failed');
+    const value = JSON.parse(String(run.stdout).trim());
+    aiCache = { at: now, registry, value };
+    return value;
+  } catch (error) {
+    const value = { available: false, reason: 'status-collector-failed', registry_path: registry, error_code: String(error && error.message || 'error') };
+    aiCache = { at: now, registry, value };
+    return value;
+  }
+}
+
+function recordTranslation({ mode, sourceLength, elapsedMs, result }) {
+  runtime.translations += 1;
+  const metrics = result && result.metrics && typeof result.metrics === 'object' ? result.metrics : {};
+  const forgey = metrics.forgey_primary_released === true;
+  const teacher = Number(metrics.provider_calls || 0) > 0;
+  if (forgey) {
+    runtime.forgey_primary_releases += 1;
+    if (!runtime.model_activated_at) runtime.model_activated_at = Date.now();
+  }
+  if (teacher) runtime.teacher_fallbacks += 1;
+  runtime.last_inference = {
+    at: new Date().toISOString(),
+    direction: mode === 1 ? 'EL_TO_ABC' : 'ABC_TO_EL',
+    source_length: Number(sourceLength || 0),
+    elapsed_ms: Number(elapsedMs || 0),
+    quality_status: String(metrics.quality_status || 'unknown'),
+    forgey_primary_released: forgey,
+    selected_generation: String(metrics.forgey_generation || ''),
+    teacher_fallback: teacher,
+    provider_calls: Number(metrics.provider_calls || 0),
+  };
+}
+
+function clientId(event) { return event && event.sender ? String(event.sender.id) : 'unknown'; }
+function requireSession(event, token) { return authStore().requireSession(clientId(event), token); }
+
+function snapshot(event, token, force = false) {
+  const session = requireSession(event, token);
+  if (!session) return { ok: false, code: 'session-required' };
+  const ai = collectAiSnapshot(force);
+  const now = Date.now();
+  return {
+    ok: true,
+    runtime: {
+      app_started_at: new Date(STARTED_AT).toISOString(),
+      app_active_seconds: Math.max(0, Math.floor((now - STARTED_AT) / 1000)),
+      model_active_seconds: runtime.model_activated_at ? Math.max(0, Math.floor((now - runtime.model_activated_at) / 1000)) : null,
+      translations: runtime.translations,
+      forgey_primary_releases: runtime.forgey_primary_releases,
+      teacher_fallbacks: runtime.teacher_fallbacks,
+      forgey_primary_share: runtime.translations ? runtime.forgey_primary_releases / runtime.translations : null,
+      last_inference: runtime.last_inference,
+    },
+    auth: authStore().sessionStatus(clientId(event), token),
+    ai,
+  };
+}
+
+function runAdminAction(action, args = []) {
+  const python = pythonCandidate();
+  if (!python || !fs.existsSync(ACTION_SCRIPT)) return { ok: false, code: 'action-runtime-unavailable' };
+  const registry = registryPath();
+  try {
+    const run = spawnSync(python.command, [...python.prefix, ACTION_SCRIPT, '--registry', registry, action, ...args], {
+      cwd: ROOT, windowsHide: true, encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_FORGEY_REGISTRY: registry },
+    });
+    if (run.status !== 0) return { ok: false, code: 'action-failed', detail: String(run.stderr || '').trim().slice(0, 300) };
+    return JSON.parse(String(run.stdout || '{}').trim());
+  } catch (_) { return { ok: false, code: 'action-failed' }; }
+}
+
+function registerHandlers() {
+  if (handlersRegistered) return;
+  handlersRegistered = true;
+
+  ipcMain.handle('🔐:state', async () => ({ configured: authStore().isConfigured(), session_ttl_ms: authStore().sessionTtlMs }));
+  ipcMain.handle('🔐:bootstrap', async (event, password, confirmation) => {
+    const result = authStore().bootstrap(password, confirmation);
+    writeAudit(result.ok ? 'credential-bootstrap' : 'credential-bootstrap-failed', { client_id: clientId(event), code: result.code || 'ok' });
+    if (!result.ok) return result;
+    const login = authStore().login(clientId(event), password);
+    if (login.ok) writeAudit('admin-login', { client_id: clientId(event), bootstrap: true });
+    return login;
+  });
+  ipcMain.handle('🔐:login', async (event, password) => {
+    const result = authStore().login(clientId(event), password);
+    writeAudit(result.ok ? 'admin-login' : 'admin-login-failed', { client_id: clientId(event), code: result.code || 'ok' });
+    return result;
+  });
+  ipcMain.handle('🔐:logout', async (event, token) => {
+    const result = authStore().logout(clientId(event), token);
+    writeAudit('admin-logout', { client_id: clientId(event) });
+    return result;
+  });
+  ipcMain.handle('🔐:rotate', async (event, token, currentPassword, nextPassword, confirmation) => {
+    const result = authStore().rotate(clientId(event), token, currentPassword, nextPassword, confirmation);
+    writeAudit(result.ok ? 'credential-rotate' : 'credential-rotate-failed', { client_id: clientId(event), code: result.code || 'ok' });
+    return result;
+  });
+  ipcMain.handle('🤖:snapshot', async (event, token, force) => snapshot(event, token, Boolean(force)));
+  ipcMain.handle('🤖:validate', async (event, token) => {
+    if (!requireSession(event, token)) return { ok: false, code: 'session-required' };
+    const ai = collectAiSnapshot(true);
+    const valid = Boolean(ai && ai.registry && ai.registry.hashes_verified === true && ai.model && ai.model.loadable !== false);
+    writeAudit('model-validate', { client_id: clientId(event), valid, generation: ai && ai.registry ? ai.registry.selected_generation : '' });
+    return { ok: true, valid, ai };
+  });
+  ipcMain.handle('🤖:rollback', async (event, token, target, password, confirmation) => {
+    if (!requireSession(event, token)) return { ok: false, code: 'session-required' };
+    const generation = String(target || '').trim();
+    if (!generation) return { ok: false, code: 'target-required' };
+    if (!authStore().verifyPassword(password)) {
+      writeAudit('rollback-reauth-failed', { client_id: clientId(event), generation });
+      return { ok: false, code: 'reauth-failed' };
+    }
+    if (String(confirmation || '') !== `ROLLBACK ${generation}`) return { ok: false, code: 'confirmation-required' };
+    const result = runAdminAction('rollback', [generation]);
+    if (result.ok) {
+      runtime.model_activated_at = Date.now();
+      aiCache = { at: 0, registry: '', value: null };
+    }
+    writeAudit(result.ok ? 'model-rollback' : 'model-rollback-failed', { client_id: clientId(event), generation, code: result.code || 'ok' });
+    return result;
+  });
+}
+
+async function install(win) {
+  registerHandlers();
+  if (!win || win.isDestroyed()) return false;
+  if (!fs.existsSync(UI_CSS) || !fs.existsSync(UI_JS)) throw new Error('Step-4 hidden control room assets missing');
+  const css = fs.readFileSync(UI_CSS, 'utf8');
+  const script = fs.readFileSync(UI_JS, 'utf8');
+  await win.webContents.insertCSS(css);
+  await win.webContents.executeJavaScript(script, true);
+  return true;
+}
+
+registerHandlers();
+
+module.exports = Object.freeze({ install, recordTranslation, registryPath, collectAiSnapshot });
