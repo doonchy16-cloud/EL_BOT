@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "step": 1,
+  "name": "Knowledge Foundation",
+  "canonical_intelligence": "Forgey Insta:EL-Bot",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "base_main_sha": "62d2caee6f225a6c3c50b8de5b20e4122df103e3",
+  "engine_count": 44,
+  "new_engine_count": 0,
+  "unicode": {
+    "released_emoji_version": "17.0",
+    "source": "official Unicode emoji-test.txt",
+    "count_is_dataset_derived": true,
+    "hardcoded_count_forbidden": true
+  },
+  "english_lexicon": {
+    "source": "Open English WordNet",
+    "edition": "2025+",
+    "minimum_indexed_lemmas": 100000,
+    "provider_free": true
+  },
+  "token_authority": {
+    "path": "📚/🔤",
+    "official_emoji_are_atomic": true,
+    "el_structural_tokens_are_atomic": true,
+    "future_english_tokenizer": "byte-level BPE from scratch",
+    "trained_tokenizer_present": false
+  },
+  "lexical_authority": {
+    "path": "📚/📖",
+    "supports_lemmas": true,
+    "supports_senses": true,
+    "supports_synonyms": true,
+    "supports_morphology": true,
+    "supports_hypernyms": true,
+    "provider_calls": 0
+  },
+  "semantic_seed": {
+    "purpose": "backward-compatible historical semantic meanings/order only",
+    "is_public_vocabulary_count": false,
+    "is_emoji_universe_count": false
+  },
+  "scope_guards": {
+    "forgey_insta_model_implemented": false,
+    "teacher_learning_system_implemented": false,
+    "forgey_insta_primary_runtime_routing_implemented": false,
+    "hidden_admin_console_implemented": false,
+    "phase6_windows_release_implemented": false
+  },
+  "required_evidence": [
+    "released Unicode data materializes and all knowledge authorities agree on its derived count",
+    "Open English WordNet 2025+ materializes with six-figure lexical coverage",
+    "official emoji and EL structural tokens are atomic tokenizer inputs",
+    "common/easy words are known lexically without forcing ambiguous meanings",
+    "synthetic nonsense remains unknown",
+    "no provider coupling exists in Step-1 lexical/token authority",
+    "historical Phase-2 and Phase-3 gates remain green",
+    "44/44 diagnostics remain green",
+    "product-facing vocabulary status no longer presents the historical seed as the emoji count",
+    "Steps 2-5 remain unimplemented on the Step-1 branch"
+  ]
+}
