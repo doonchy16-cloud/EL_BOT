@@ -68,8 +68,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path;New-Item -ItemType Directory -Force -Path 'data\phase6-step4'|Out-Null
-          $f="2`nvehicle powered by pedals with two wheels"|& $env:EL_PYTHON '↔️\⚡' '🔀';$f|Set-Content 'data\phase6-step4\primary-forward.json' -Encoding utf8;$fo=$f|ConvertFrom-Json;if($fo.winner-ne '🚲'-or -not $fo.metrics.forgey_primary_released-or $fo.metrics.provider_calls-ne 0){throw 'STEP4_FORWARD_FAILED'}
-          $r="1`n🚲"|& $env:EL_PYTHON '↔️\⚡' '🔀';$r|Set-Content 'data\phase6-step4\primary-reverse.json' -Encoding utf8;$ro=$r|ConvertFrom-Json;if($ro.winner-ne 'bicycle'-or -not $ro.metrics.forgey_primary_released-or $ro.metrics.provider_calls-ne 0){throw 'STEP4_REVERSE_FAILED'}
+          $f="2`nvehicle powered by pedals with two wheels"|& $env:EL_PYTHON 'scripts\phase6-step4-runtime.py' '🔀';$f|Set-Content 'data\phase6-step4\primary-forward.json' -Encoding utf8;$fo=$f|ConvertFrom-Json;if($fo.winner-ne '🚲'-or -not $fo.metrics.forgey_primary_released-or $fo.metrics.provider_calls-ne 0){throw 'STEP4_FORWARD_FAILED'}
+          $r="1`n🚲"|& $env:EL_PYTHON 'scripts\phase6-step4-runtime.py' '🔀';$r|Set-Content 'data\phase6-step4\primary-reverse.json' -Encoding utf8;$ro=$r|ConvertFrom-Json;if($ro.winner-ne 'bicycle'-or -not $ro.metrics.forgey_primary_released-or $ro.metrics.provider_calls-ne 0){throw 'STEP4_REVERSE_FAILED'}
 
       - name: "📊 Real AI status snapshot"
         shell: powershell
