@@ -88,9 +88,11 @@ def main() -> None:
         " phone keyboard printer camera television radio light bulb battery hammer wrench key lock bell book pencil memo package gift balloon trophy medal"
     ).split()
     unique_easy = tuple(dict.fromkeys(easy_words))
-    resolved = sum(1 for word in unique_easy if resolver.resolve(word, word).resolved)
+    easy_results = {word: resolver.resolve(word, word) for word in unique_easy}
+    missing_easy = tuple(word for word, result in easy_results.items() if not result.resolved)
+    resolved = len(unique_easy) - len(missing_easy)
     rate = resolved / max(1, len(unique_easy))
-    require(rate >= 0.80, f"easy_word_resolution_rate too low: {rate:.3f} ({resolved}/{len(unique_easy)})")
+    require(rate == 1.0, f"curated easy-word gate must be 100%; got {rate:.3f} ({resolved}/{len(unique_easy)}), unresolved={missing_easy}")
 
     abc = load("_phase6_verify_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
     engine = abc.ABCToEmojiEngine()
