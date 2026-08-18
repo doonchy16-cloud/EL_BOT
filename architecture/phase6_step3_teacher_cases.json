@@ -7,21 +7,21 @@
   "provider_may_author_el": false,
   "cases": [
     {
-      "id": "teacher-photo-device",
+      "id": "teacher-tooth-cleaning-tool",
       "direction": "ABC_TO_EL",
-      "source": "photo camera",
-      "canonical_concept": "camera",
-      "trusted_target": "📷",
-      "semantic_terms_any": ["camera", "photograph", "photo"],
+      "source": "tool used to clean teeth",
+      "canonical_concept": "toothbrush",
+      "trusted_target": "🪥",
+      "semantic_terms_any": ["toothbrush", "tooth", "teeth", "brush"],
       "training_eligible": true
     },
     {
-      "id": "teacher-pet-dog",
+      "id": "teacher-automatic-machine",
       "direction": "ABC_TO_EL",
-      "source": "pet dog",
-      "canonical_concept": "dog",
-      "trusted_target": "🐕",
-      "semantic_terms_any": ["dog", "canine", "pet"],
+      "source": "machine that performs tasks automatically",
+      "canonical_concept": "robot",
+      "trusted_target": "🤖",
+      "semantic_terms_any": ["robot", "machine", "automatic", "automation"],
       "training_eligible": true
     },
     {
