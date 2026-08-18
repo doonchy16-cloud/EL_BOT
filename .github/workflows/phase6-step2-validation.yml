@@ -99,7 +99,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output 'data\phase6-step2' --steps 480 --batch-size 28
+          $output = Join-Path (Get-Location) 'data\phase6-step2'
+          & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output $output --steps 480 --batch-size 28
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_TRAIN_FAILED' }
 
       - name: "⚡ Local inference ABC → EL"
