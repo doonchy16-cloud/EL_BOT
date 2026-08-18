@@ -80,7 +80,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_TORCH_INSTALL_FAILED' }
             Set-Content -LiteralPath $marker -Value 'torch 2.13.0 cp312 ready' -Encoding ASCII
           }
-          $env:PYTHONPATH = $torchDir
+          # The embeddable Python distribution uses python312._pth isolation, which
+          # intentionally ignores PYTHONPATH. Register the pinned Torch target in
+          # that path authority itself so every later script process sees it.
+          $pyDir = Split-Path -Parent $env:EL_PYTHON
+          $pth = Join-Path $pyDir 'python312._pth'
+          if (-not (Test-Path -LiteralPath $pth)) { throw 'PHASE6_STEP2_PYTHON_PTH_MISSING' }
+          $lines = @(Get-Content -LiteralPath $pth | Where-Object { $_ -notmatch 'ELTorch\\' })
+          $lines += $torchDir
+          if (-not ($lines -contains 'import site')) { $lines += 'import site' }
+          [System.IO.File]::WriteAllLines($pth,$lines,[System.Text.UTF8Encoding]::new($false))
           & $env:EL_PYTHON -c "import torch; assert torch.__version__.startswith('2.13.0'); print('TORCH_OK', torch.__version__, 'cuda=', torch.cuda.is_available())"
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_TORCH_IMPORT_FAILED' }
           "EL_TORCH_SITE=$torchDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -90,7 +99,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $env:PYTHONPATH = $env:EL_TORCH_SITE
           & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output 'data\phase6-step2' --steps 480 --batch-size 28
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_TRAIN_FAILED' }
 
@@ -99,7 +107,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $env:PYTHONPATH = $env:EL_TORCH_SITE
           $rocket = [char]::ConvertFromUtf32(0x1F680)
           & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'ABC_TO_EL' --text 'rocket' --expected $rocket --evidence 'data\phase6-step2\infer-abc-to-el.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_FORWARD_INFER_FAILED' }
@@ -109,7 +116,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $env:PYTHONPATH = $env:EL_TORCH_SITE
           $rocket = [char]::ConvertFromUtf32(0x1F680)
           & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence 'data\phase6-step2\infer-el-to-abc.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_REVERSE_INFER_FAILED' }
@@ -119,7 +125,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $env:PYTHONPATH = $env:EL_TORCH_SITE
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_AUTHORITY_FAILED' }
 
@@ -142,5 +147,4 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
-          $a = [char]::ConvertFromUtf32(0x1F9EA)
           & $env:EL_PYTHON -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); a=chr(0x1F9EA); p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a); l=importlib.machinery.SourceFileLoader('_p6s2_diag',str(p)); s=importlib.util.spec_from_loader('_p6s2_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s2_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
