@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "step": 2,
+  "name": "Forgey Insta G0/G1 Frozen Benchmark",
+  "frozen": true,
+  "training_replay_forbidden": true,
+  "examples": [
+    {"id":"easy-fox","category":"easy","direction":"ABC_TO_EL","source":"fox","target":"🦊"},
+    {"id":"easy-chair","category":"easy","direction":"ABC_TO_EL","source":"chair","target":"🪑"},
+    {"id":"easy-laptop","category":"easy","direction":"ABC_TO_EL","source":"laptop","target":"💻"},
+    {"id":"easy-robot","category":"easy","direction":"ABC_TO_EL","source":"robot","target":"🤖"},
+
+    {"id":"morph-dogs","category":"morphology","direction":"ABC_TO_EL","source":"dogs","target":"🐕"},
+    {"id":"morph-cars","category":"morphology","direction":"ABC_TO_EL","source":"cars","target":"🚗"},
+
+    {"id":"compound-credit-card","category":"compounds","direction":"ABC_TO_EL","source":"credit card","target":"💳"},
+    {"id":"compound-fire-engine","category":"compounds","direction":"ABC_TO_EL","source":"fire engine","target":"🚒"},
+
+    {"id":"ambiguity-field-mouse","category":"ambiguity","direction":"ABC_TO_EL","source":"field mouse","target":"🐁"},
+    {"id":"ambiguity-computer-mouse","category":"ambiguity","direction":"ABC_TO_EL","source":"computer mouse","target":"🖱️"},
+    {"id":"context-apple-fruit","category":"context","direction":"ABC_TO_EL","source":"apple fruit","target":"🍎"},
+    {"id":"context-school-bus","category":"context","direction":"ABC_TO_EL","source":"school bus","target":"🚌"},
+
+    {"id":"negation-not-approved","category":"negation","direction":"ABC_TO_EL","source":"not approved","target":"❌"},
+    {"id":"negation-not-ready","category":"negation","direction":"ABC_TO_EL","source":"not ready","target":"🟡"},
+
+    {"id":"relationship-io","category":"relationships","direction":"ABC_TO_EL","source":"input to output","target":"📥➡️📤"},
+    {"id":"relationship-test-deploy","category":"relationships","direction":"ABC_TO_EL","source":"test then deploy","target":"🧪➡️🚀"},
+
+    {"id":"time-30-seconds","category":"numbers_time","direction":"ABC_TO_EL","source":"30 seconds","target":"⏱️30"},
+    {"id":"time-5-minutes","category":"numbers_time","direction":"ABC_TO_EL","source":"5 minutes","target":"⏱️5"},
+
+    {"id":"technical-software-bug","category":"technical","direction":"ABC_TO_EL","source":"software bug","target":"🐛"},
+    {"id":"technical-lock-computer","category":"technical","direction":"ABC_TO_EL","source":"lock the computer","target":"🔒💻"},
+
+    {"id":"unknown-zxq","category":"unknown_nonsense","direction":"ABC_TO_EL","source":"zxqvplmno","target":"❓"},
+    {"id":"unknown-flerm","category":"unknown_nonsense","direction":"ABC_TO_EL","source":"flermblat qqq","target":"❓"},
+
+    {"id":"reverse-fox","category":"reverse","direction":"EL_TO_ABC","source":"🦊","target":"fox"},
+    {"id":"reverse-laptop","category":"reverse","direction":"EL_TO_ABC","source":"💻","target":"laptop"},
+    {"id":"reverse-chair","category":"reverse","direction":"EL_TO_ABC","source":"🪑","target":"chair"},
+    {"id":"reverse-credit-card","category":"reverse","direction":"EL_TO_ABC","source":"💳","target":"credit card"},
+    {"id":"reverse-io","category":"reverse","direction":"EL_TO_ABC","source":"📥➡️📤","target":"input to output"},
+    {"id":"reverse-test-deploy","category":"reverse","direction":"EL_TO_ABC","source":"🧪➡️🚀","target":"test then deploy"},
+    {"id":"reverse-time","category":"reverse","direction":"EL_TO_ABC","source":"⏱️30","target":"30 seconds"},
+    {"id":"reverse-lock-computer","category":"reverse","direction":"EL_TO_ABC","source":"🔒💻","target":"lock the computer"},
+    {"id":"reverse-unknown","category":"reverse","direction":"EL_TO_ABC","source":"❓","target":"unknown"}
+  ]
+}
