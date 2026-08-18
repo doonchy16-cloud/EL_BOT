@@ -1,0 +1,414 @@
+"""Phase 6 lexical coverage layer owned by the existing Vocabulary engine.
+
+Uses Unicode emoji-test data for the complete RGI emoji symbol/name inventory and
+Open English WordNet WNDB data for English lemmas, senses, synonyms, morphology,
+and hypernyms. Provider-free. It never promotes learned knowledge or calls AI.
+"""
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+import re
+
+_ROOT = Path(__file__).resolve().parent.parent
+_DATA = _ROOT / "data"
+_WORD = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?", re.I)
+_GENERIC_EMOJI_WORDS = frozenset(
+    "face person people man woman child button symbol sign square circle arrow flag skin tone medium light dark with and of on in up down left right"
+    .split()
+)
+_HYPERNYM_POINTERS = frozenset({"@", "@i"})
+
+
+def normalize_phrase(value: str) -> str:
+    return " ".join(_WORD.findall(str(value).replace("_", "-").replace("-", " ").lower()))
+
+
+def simple_lemmas(word: str) -> tuple[str, ...]:
+    value = normalize_phrase(word)
+    if not value or " " in value:
+        return (value,) if value else ()
+    out = [value]
+    if len(value) > 4 and value.endswith("ies"):
+        out.append(value[:-3] + "y")
+    if len(value) > 5 and value.endswith("ing"):
+        stem = value[:-3]
+        out.append(stem)
+        if len(stem) > 2 and stem[-1:] == stem[-2:-1]:
+            out.append(stem[:-1])
+        out.append(stem + "e")
+    if len(value) > 4 and value.endswith("ed"):
+        stem = value[:-2]
+        out.append(stem)
+        out.append(stem + "e")
+        if len(stem) > 2 and stem[-1:] == stem[-2:-1]:
+            out.append(stem[:-1])
+    if len(value) > 4 and value.endswith("es"):
+        out.append(value[:-2])
+    if len(value) > 3 and value.endswith("s") and not value.endswith("ss"):
+        out.append(value[:-1])
+    if len(value) > 4 and value.endswith("er"):
+        out.append(value[:-2])
+    if len(value) > 5 and value.endswith("est"):
+        out.append(value[:-3])
+    return tuple(dict.fromkeys(item for item in out if item))
+
+
+def _decode_codepoints(field: str) -> str:
+    return "".join(chr(int(piece, 16)) for piece in field.split())
+
+
+@dataclass(frozen=True, slots=True)
+class EmojiLexeme:
+    symbol: str
+    name: str
+    group: str
+    subgroup: str
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class Synset:
+    pos: str
+    offset: int
+    lemmas: tuple[str, ...]
+    hypernyms: tuple[tuple[str, int], ...]
+    gloss: str
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalResolution:
+    surface: str
+    lemma: str
+    expression: str
+    meaning: str
+    status: str
+    confidence: float
+    semantic_loss: float
+    source: str
+    sense: str
+    alternatives: tuple[str, ...] = ()
+
+    @property
+    def resolved(self) -> bool:
+        return self.status == "resolved" and bool(self.expression)
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalMatch:
+    phrase: str
+    expression: str
+    meaning: str
+    start: int
+    end: int
+    confidence: float
+    semantic_loss: float
+    source: str
+
+
+class EmojiNameIndex:
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or (_DATA / "unicode" / "emoji-test.txt")
+        self.version = "missing"
+        self.lexemes: tuple[EmojiLexeme, ...] = ()
+        self.by_symbol: dict[str, EmojiLexeme] = {}
+        self.by_phrase: dict[str, tuple[EmojiLexeme, ...]] = {}
+        self.by_token: dict[str, tuple[EmojiLexeme, ...]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.is_file():
+            return
+        rows: list[EmojiLexeme] = []
+        group = ""
+        subgroup = ""
+        seen: set[str] = set()
+        for raw in self.path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("# Version:"):
+                self.version = line.split(":", 1)[1].strip()
+                continue
+            if line.startswith("# group:"):
+                group = line.split(":", 1)[1].strip()
+                continue
+            if line.startswith("# subgroup:"):
+                subgroup = line.split(":", 1)[1].strip()
+                continue
+            if not line or line.startswith("#") or ";" not in line or "#" not in line:
+                continue
+            left, right = line.split(";", 1)
+            status = right.split("#", 1)[0].strip()
+            if status not in {"fully-qualified", "component"}:
+                continue
+            try:
+                symbol = _decode_codepoints(left.strip())
+            except (ValueError, OverflowError):
+                continue
+            if symbol in seen:
+                continue
+            comment = right.split("#", 1)[1].strip()
+            match = re.match(r"\S+\s+E[0-9.]+\s+(.+)$", comment)
+            name = normalize_phrase(match.group(1) if match else comment)
+            if not name:
+                continue
+            seen.add(symbol)
+            rows.append(EmojiLexeme(symbol, name, group, subgroup, len(rows) + 1))
+        self.lexemes = tuple(rows)
+        self.by_symbol = {row.symbol: row for row in rows}
+        phrase_map: dict[str, list[EmojiLexeme]] = {}
+        token_map: dict[str, list[EmojiLexeme]] = {}
+        for row in rows:
+            phrase_map.setdefault(row.name, []).append(row)
+            for token in _WORD.findall(row.name):
+                for lemma in simple_lemmas(token):
+                    if len(lemma) < 3 or lemma in _GENERIC_EMOJI_WORDS:
+                        continue
+                    token_map.setdefault(lemma, []).append(row)
+        self.by_phrase = {key: tuple(value) for key, value in phrase_map.items()}
+        self.by_token = {key: tuple(value) for key, value in token_map.items()}
+
+    @property
+    def count(self) -> int:
+        return len(self.lexemes)
+
+    @property
+    def units(self) -> tuple[str, ...]:
+        return tuple(row.symbol for row in self.lexemes)
+
+    def meaning(self, symbol: str) -> str | None:
+        row = self.by_symbol.get(symbol)
+        return row.name if row else None
+
+
+class WordNetIndex:
+    POSITIONS = ("noun", "verb", "adj", "adv")
+    POS_CODE = {"noun": "n", "verb": "v", "adj": "a", "adv": "r"}
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root or (_DATA / "oewn")
+        self.files: dict[str, Path] = {}
+        self.index: dict[str, dict[str, tuple[int, ...]]] = {code: {} for code in self.POS_CODE.values()}
+        self.exceptions: dict[str, dict[str, tuple[str, ...]]] = {code: {} for code in self.POS_CODE.values()}
+        self.available = False
+        self._discover()
+        if self.available:
+            self._load_indexes()
+
+    def _discover(self) -> None:
+        if not self.root.exists():
+            return
+        for kind in self.POSITIONS:
+            index = next(self.root.rglob("index." + kind), None)
+            data = next(self.root.rglob("data." + kind), None)
+            if not index or not data:
+                return
+            self.files["index." + kind] = index
+            self.files["data." + kind] = data
+            exc = next(self.root.rglob(kind + ".exc"), None)
+            if exc:
+                self.files[kind + ".exc"] = exc
+        self.available = True
+
+    def _load_indexes(self) -> None:
+        for kind in self.POSITIONS:
+            code = self.POS_CODE[kind]
+            mapping = self.index[code]
+            for raw in self.files["index." + kind].read_text(encoding="utf-8", errors="replace").splitlines():
+                if not raw or raw[0].isspace():
+                    continue
+                parts = raw.split()
+                if len(parts) < 6:
+                    continue
+                try:
+                    lemma = normalize_phrase(parts[0])
+                    synset_count = int(parts[2])
+                    pointer_count = int(parts[3])
+                    offsets_start = 6 + pointer_count
+                    offsets = tuple(int(value) for value in parts[offsets_start:offsets_start + synset_count])
+                except (ValueError, IndexError):
+                    continue
+                if lemma and offsets:
+                    mapping[lemma] = offsets
+            exc_path = self.files.get(kind + ".exc")
+            if exc_path:
+                for raw in exc_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                    parts = raw.split()
+                    if len(parts) >= 2:
+                        self.exceptions[code][normalize_phrase(parts[0])] = tuple(normalize_phrase(x) for x in parts[1:])
+
+    def candidate_lemmas(self, surface: str, pos: str) -> tuple[str, ...]:
+        value = normalize_phrase(surface)
+        values = [value]
+        values.extend(self.exceptions.get(pos, {}).get(value, ()))
+        if " " not in value:
+            values.extend(simple_lemmas(value))
+        return tuple(dict.fromkeys(item for item in values if item))
+
+    def offsets(self, surface: str) -> tuple[tuple[str, str, int], ...]:
+        rows: list[tuple[str, str, int]] = []
+        for pos in ("n", "v", "a", "r"):
+            for lemma in self.candidate_lemmas(surface, pos):
+                for offset in self.index.get(pos, {}).get(lemma, ()):
+                    rows.append((lemma, pos, offset))
+        return tuple(dict.fromkeys(rows))
+
+    @lru_cache(maxsize=32768)
+    def synset(self, pos: str, offset: int) -> Synset | None:
+        kind = {"n": "noun", "v": "verb", "a": "adj", "s": "adj", "r": "adv"}.get(pos)
+        if not kind or "data." + kind not in self.files:
+            return None
+        try:
+            with self.files["data." + kind].open("rb") as handle:
+                handle.seek(int(offset))
+                raw = handle.readline().decode("utf-8", errors="replace").rstrip("\r\n")
+        except (OSError, ValueError):
+            return None
+        if "|" in raw:
+            data_part, gloss = raw.split("|", 1)
+        else:
+            data_part, gloss = raw, ""
+        parts = data_part.split()
+        if len(parts) < 5:
+            return None
+        try:
+            ss_type = parts[2]
+            word_count = int(parts[3], 16)
+            cursor = 4
+            lemmas: list[str] = []
+            for _ in range(word_count):
+                lemmas.append(normalize_phrase(parts[cursor]))
+                cursor += 2
+            pointer_count = int(parts[cursor])
+            cursor += 1
+            hypernyms: list[tuple[str, int]] = []
+            for _ in range(pointer_count):
+                symbol = parts[cursor]
+                target = int(parts[cursor + 1])
+                target_pos = parts[cursor + 2]
+                cursor += 4
+                if symbol in _HYPERNYM_POINTERS:
+                    hypernyms.append((target_pos, target))
+        except (ValueError, IndexError):
+            return None
+        return Synset(ss_type, int(offset), tuple(lemmas), tuple(hypernyms), gloss.strip())
+
+
+class LexicalResolver:
+    """Resolve English surfaces to emoji with explicit loss and ambiguity accounting."""
+
+    def __init__(self) -> None:
+        self.emoji = EmojiNameIndex()
+        self.wordnet = WordNetIndex()
+
+    @property
+    def emoji_count(self) -> int:
+        return self.emoji.count
+
+    def meaning(self, symbol: str) -> str | None:
+        return self.emoji.meaning(symbol)
+
+    def _emoji_hits(self, term: str, *, token_ok: bool) -> tuple[tuple[EmojiLexeme, float, str], ...]:
+        value = normalize_phrase(term)
+        rows: list[tuple[EmojiLexeme, float, str]] = []
+        for item in self.emoji.by_phrase.get(value, ()):
+            rows.append((item, 0.0, "unicode-name-exact"))
+        if token_ok and " " not in value:
+            for lemma in simple_lemmas(value):
+                for item in self.emoji.by_token.get(lemma, ()):
+                    rows.append((item, 0.10, "unicode-name-token"))
+        best: dict[str, tuple[EmojiLexeme, float, str]] = {}
+        for row in rows:
+            old = best.get(row[0].symbol)
+            if old is None or row[1] < old[1]:
+                best[row[0].symbol] = row
+        return tuple(best.values())
+
+    @staticmethod
+    def _context_words(context: str) -> frozenset[str]:
+        return frozenset(normalize_phrase(context).split())
+
+    @lru_cache(maxsize=32768)
+    def _resolve_cached(self, surface: str, context: str) -> LexicalResolution:
+        value = normalize_phrase(surface)
+        if not value:
+            return LexicalResolution(surface, "", "", "", "unresolved", 0.0, 1.0, "none", "")
+
+        direct = self._emoji_hits(value, token_ok=True)
+        exact = [row for row in direct if row[2] == "unicode-name-exact"]
+        if len(exact) == 1:
+            item = exact[0][0]
+            return LexicalResolution(surface, value, item.symbol, item.name, "resolved", 1.0, 0.0, "unicode-emoji-name", "emoji:" + str(item.ordinal))
+
+        context_words = self._context_words(context)
+        scored: dict[str, tuple[float, EmojiLexeme, str, str, str]] = {}
+        starts = self.wordnet.offsets(value) if self.wordnet.available else ()
+        queue = deque((lemma, pos, offset, 0) for lemma, pos, offset in starts)
+        visited: set[tuple[str, int]] = set()
+        while queue:
+            lemma, pos, offset, depth = queue.popleft()
+            key = (pos, offset)
+            if key in visited or depth > 5:
+                continue
+            visited.add(key)
+            synset = self.wordnet.synset(pos, offset)
+            if synset is None:
+                continue
+            gloss_words = frozenset(normalize_phrase(synset.gloss).split())
+            context_overlap = len(context_words.intersection(gloss_words.union(synset.lemmas)))
+            context_bonus = min(0.10, context_overlap * 0.025)
+            for syn_lemma in synset.lemmas:
+                hits = self._emoji_hits(syn_lemma, token_ok=True)
+                for item, match_penalty, match_source in hits:
+                    base_loss = (0.05 if depth == 0 else 0.12 + 0.14 * depth) + match_penalty
+                    loss = max(0.0, min(1.0, base_loss - context_bonus))
+                    old = scored.get(item.symbol)
+                    row = (loss, item, lemma, f"{pos}:{offset}", "oewn-" + match_source)
+                    if old is None or loss < old[0]:
+                        scored[item.symbol] = row
+            if depth < 5:
+                for target_pos, target_offset in synset.hypernyms:
+                    queue.append((lemma, target_pos, target_offset, depth + 1))
+
+        if not scored and direct:
+            for item, penalty, source in direct:
+                scored[item.symbol] = (0.28 + penalty, item, value, "emoji-token", source)
+        if not scored:
+            return LexicalResolution(surface, value, "", "", "unresolved", 0.0, 1.0, "none", "")
+
+        ranked = sorted(scored.values(), key=lambda row: (row[0], row[1].ordinal, row[1].symbol))
+        best = ranked[0]
+        alternatives = tuple(row[1].symbol for row in ranked[1:5])
+        if best[0] > 0.68:
+            return LexicalResolution(surface, best[2], "", "", "unresolved", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], alternatives)
+        if len(ranked) > 1 and ranked[1][1].symbol != best[1].symbol and ranked[1][0] - best[0] < 0.055:
+            return LexicalResolution(surface, best[2], "", "", "ambiguous", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], tuple(row[1].symbol for row in ranked[:5]))
+        return LexicalResolution(surface, best[2], best[1].symbol, best[1].name, "resolved", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], alternatives)
+
+    def resolve(self, surface: str, context: str = "") -> LexicalResolution:
+        return self._resolve_cached(normalize_phrase(surface), normalize_phrase(context))
+
+    def find_matches(self, text: str, occupied_spans: tuple[tuple[int, int], ...] = (), max_words: int = 4) -> tuple[LexicalMatch, ...]:
+        value = str(text)
+        words = tuple(_WORD.finditer(value))
+        occupied = list(occupied_spans)
+        matches: list[LexicalMatch] = []
+        for width in range(min(max_words, len(words)), 0, -1):
+            for index in range(0, len(words) - width + 1):
+                start = words[index].start()
+                end = words[index + width - 1].end()
+                if any(start < right and end > left for left, right in occupied):
+                    continue
+                phrase = value[start:end]
+                resolution = self.resolve(phrase, value)
+                if not resolution.resolved:
+                    continue
+                matches.append(LexicalMatch(phrase, resolution.expression, resolution.meaning, start, end, resolution.confidence, resolution.semantic_loss, resolution.source))
+                occupied.append((start, end))
+        return tuple(sorted(matches, key=lambda row: (row.start, row.end)))
+
+
+@lru_cache(maxsize=1)
+def resolver() -> LexicalResolver:
+    return LexicalResolver()
