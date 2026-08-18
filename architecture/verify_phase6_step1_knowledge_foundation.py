@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "architecture" / "phase6_step1_knowledge_foundation_manifest.json"
 DATA_MANIFEST = ROOT / "data" / "phase6-step1-data-manifest.json"
 STEP2_MANIFEST = ROOT / "architecture" / "phase6_step2_g0_g1_manifest.json"
+STEP3_MANIFEST = ROOT / "architecture" / "phase6_step3_teacher_learning_manifest.json"
 
 
 def load(name: str, path: Path):
@@ -95,14 +96,8 @@ def main() -> None:
     require(not missing, f"easy words absent from lexical knowledge: {missing}")
 
     direct = {
-        "robot": "🤖",
-        "fox": "🦊",
-        "laptop": "💻",
-        "chair": "🪑",
-        "dog": "🐕",
-        "credit card": "💳",
-        "toothbrush": "🪥",
-        "fire engine": "🚒",
+        "robot": "🤖", "fox": "🦊", "laptop": "💻", "chair": "🪑",
+        "dog": "🐕", "credit card": "💳", "toothbrush": "🪥", "fire engine": "🚒",
     }
     for surface, expected in direct.items():
         result = resolver.resolve(surface, surface)
@@ -114,7 +109,6 @@ def main() -> None:
     require(not resolver.is_known("zxqvplmno"), "synthetic nonsense must remain outside lexical knowledge")
     scarcity = resolver.resolve("scarcity", "scarcity of food")
     require(scarcity.expression != "🚗", "substring false-positive mapped scarcity to car")
-
     require(grammar.ELGrammarCompositionEngine.is_canonical_expression("🦊➡️🌲"), "official emoji are not accepted as valid EL composition symbols")
 
     lexical_source = (ROOT / "📚" / "📖").read_text(encoding="utf-8")
@@ -134,9 +128,6 @@ def main() -> None:
     require("query('📚')" in renderer_source and "🔒📚?" in renderer_source, "renderer does not replace neutral vocabulary placeholder dynamically")
     require("materialize-phase6-step1-knowledge.ps1" in launcher_source, "source launcher does not prepare Step-1 knowledge")
 
-    # Historical Step-1 scope proof remains strict before Step 2 exists. Once an
-    # authorized Step-2 manifest is present, the Step-1 gate validates that authority
-    # instead of falsely requiring the later model to disappear.
     step2_state = "ABSENT"
     if STEP2_MANIFEST.is_file():
         step2 = json.loads(STEP2_MANIFEST.read_text(encoding="utf-8"))
@@ -145,18 +136,27 @@ def main() -> None:
         step2_state = "AUTHORIZED"
     else:
         require(not (ROOT / "🧠" / "🤖").exists(), "Step-2 Forgey Insta model leaked into Step 1")
-    require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 training coordinator leaked into Step 1/2")
-    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 release publisher leaked into Step 1/2")
+
+    step3_state = "ABSENT"
+    if STEP3_MANIFEST.is_file():
+        step3 = json.loads(STEP3_MANIFEST.read_text(encoding="utf-8"))
+        require(step3.get("phase") == 6 and step3.get("step") == 3, "unrecognized Step-3 manifest")
+        require(step3.get("status") in {"IMPLEMENTATION_IN_PROGRESS", "PASS"}, "invalid Step-3 authorization state")
+        require((ROOT / "🧑‍🏫" / "🤖").is_file(), "Step-3 manifest exists but teacher coordinator is missing")
+        step3_state = "AUTHORIZED"
+    else:
+        require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 training coordinator leaked without authority")
+
+    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 release publisher leaked before Step 5")
+    runtime_source = (ROOT / "↔️" / "↔️").read_text(encoding="utf-8").lower()
+    require("forgeygenerationregistry" not in runtime_source and "phase6-step3" not in runtime_source, "Step-4 Forgey-first runtime routing leaked during Step 3")
 
     print(
         "PHASE6_STEP1_OK "
-        f"emoji={derived_emoji_count} "
-        f"oewn_index_records={source_index_records} "
-        f"runtime_pos_lexical_keys={runtime_pos_lexical_keys} "
-        f"tokenizer_unique_english={token_snapshot.english_lemma_count} "
-        f"atomic_el={token_snapshot.atomic_el_token_count} "
-        f"semantic_seed={vocab_snapshot.semantic_seed_count} "
-        f"public_501=ABSENT model={step2_state} teacher=ABSENT admin_runtime=ABSENT release=ABSENT"
+        f"emoji={derived_emoji_count} oewn_index_records={source_index_records} "
+        f"runtime_pos_lexical_keys={runtime_pos_lexical_keys} tokenizer_unique_english={token_snapshot.english_lemma_count} "
+        f"atomic_el={token_snapshot.atomic_el_token_count} semantic_seed={vocab_snapshot.semantic_seed_count} "
+        f"public_501=ABSENT model={step2_state} teacher={step3_state} admin_runtime=ABSENT release=ABSENT"
     )
 
 
