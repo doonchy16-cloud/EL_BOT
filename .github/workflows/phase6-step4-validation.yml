@@ -82,7 +82,7 @@ jobs:
 
       - name: "📦 Electron dependencies"
         shell: powershell
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: "🕶️ Two-page hidden console proof"
         shell: powershell
