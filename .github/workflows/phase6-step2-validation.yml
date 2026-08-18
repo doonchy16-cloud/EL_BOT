@@ -1,0 +1,146 @@
+name: "🧠 Phase 6 Step 2 G0-G1 Validation"
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "phase6-step2-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  g0g1:
+    name: "🧠🤖 Forgey Insta G0→G1"
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+    timeout-minutes: 60
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Python 3.12"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10'
+          $exe = Join-Path $dir 'python.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'python.zip'
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          }
+          $pth = Join-Path $dir 'python312._pth'
+          if (Test-Path -LiteralPath $pth) {
+            $text = Get-Content -LiteralPath $pth -Raw
+            if ($text -match '#import site') {
+              $text = $text -replace '#import site','import site'
+              [System.IO.File]::WriteAllText($pth,$text,[System.Text.UTF8Encoding]::new($false))
+            }
+          }
+          & $exe -c "import sys; assert sys.version_info[:2] == (3, 12); print(sys.version)"
+          "EL_PYTHON=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: "📖🌐 Materialize Step 1 knowledge"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-step1-knowledge.ps1'
+
+      - name: "🧪 Step 1 compatibility"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'architecture\verify_phase6_step1_knowledge_foundation.py'
+
+      - name: "🔥 PyTorch 2.13 CPU"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $torchDir = Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312'
+          $marker = Join-Path $torchDir '.ready'
+          if (-not (Test-Path -LiteralPath $marker)) {
+            if (Test-Path -LiteralPath $torchDir) { Remove-Item -LiteralPath $torchDir -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $torchDir | Out-Null
+            $pipDir = Join-Path $env:RUNNER_TOOL_CACHE 'ELPip'
+            $pipz = Join-Path $pipDir 'pip.pyz'
+            New-Item -ItemType Directory -Force -Path $pipDir | Out-Null
+            if (-not (Test-Path -LiteralPath $pipz)) {
+              Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/pip/pip.pyz' -OutFile $pipz
+            }
+            & $env:EL_PYTHON $pipz install --disable-pip-version-check --only-binary=:all: --target $torchDir -r 'requirements-phase6-step2.txt'
+            if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_TORCH_INSTALL_FAILED' }
+            Set-Content -LiteralPath $marker -Value 'torch 2.13.0 cp312 ready' -Encoding ASCII
+          }
+          $env:PYTHONPATH = $torchDir
+          & $env:EL_PYTHON -c "import torch; assert torch.__version__.startswith('2.13.0'); print('TORCH_OK', torch.__version__, 'cuda=', torch.cuda.is_available())"
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_TORCH_IMPORT_FAILED' }
+          "EL_TORCH_SITE=$torchDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: "🏋️ Train G0 → G1"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $env:PYTHONPATH = $env:EL_TORCH_SITE
+          & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output 'data\phase6-step2' --steps 480 --batch-size 28
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_TRAIN_FAILED' }
+
+      - name: "⚡ Local inference ABC → EL"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $env:PYTHONPATH = $env:EL_TORCH_SITE
+          $rocket = [char]::ConvertFromUtf32(0x1F680)
+          & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'ABC_TO_EL' --text 'rocket' --expected $rocket --evidence 'data\phase6-step2\infer-abc-to-el.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_FORWARD_INFER_FAILED' }
+
+      - name: "⚡ Local inference EL → ABC"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $env:PYTHONPATH = $env:EL_TORCH_SITE
+          $rocket = [char]::ConvertFromUtf32(0x1F680)
+          & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence 'data\phase6-step2\infer-el-to-abc.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_REVERSE_INFER_FAILED' }
+
+      - name: "🧪 Step 2 authority"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $env:PYTHONPATH = $env:EL_TORCH_SITE
+          & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_AUTHORITY_FAILED' }
+
+      - name: "🧪 Phase 2 compatibility"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'architecture\verify_phase2_knowledge_foundation.py'
+
+      - name: "🧪 Phase 3 compatibility"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'architecture\verify_phase3_semantic_search.py'
+
+      - name: "🧪 44/44 diagnostics"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $a = [char]::ConvertFromUtf32(0x1F9EA)
+          & $env:EL_PYTHON -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); a=chr(0x1F9EA); p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a); l=importlib.machinery.SourceFileLoader('_p6s2_diag',str(p)); s=importlib.util.spec_from_loader('_p6s2_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s2_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
