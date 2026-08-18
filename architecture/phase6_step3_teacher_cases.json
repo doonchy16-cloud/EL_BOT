@@ -16,12 +16,12 @@
       "training_eligible": true
     },
     {
-      "id": "teacher-space-launch",
+      "id": "teacher-pet-dog",
       "direction": "ABC_TO_EL",
-      "source": "rocket ship",
-      "canonical_concept": "rocket",
-      "trusted_target": "🚀",
-      "semantic_terms_any": ["rocket", "spacecraft", "ship"],
+      "source": "pet dog",
+      "canonical_concept": "dog",
+      "trusted_target": "🐕",
+      "semantic_terms_any": ["dog", "canine", "pet"],
       "training_eligible": true
     },
     {
