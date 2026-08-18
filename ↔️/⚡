@@ -247,7 +247,7 @@ def main() -> int:
     if pair is None or pair[0] not in (1, 2):
         print("❌🔢")
         return 0
-    result = engine.ranked(pair[0], pair[1], emit=True)
+    result = engine.ranked(pair[0], pair[1], emit=action != "🔀")
     if action == "🔀": print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     else: print(str(result.get("winner", "")))
     return 0
