@@ -405,6 +405,13 @@ class LexicalResolver:
         if best[0] > 0.68:
             return LexicalResolution(surface, best[2], "", "", "unresolved", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], alternatives)
         if len(ranked) > 1 and ranked[1][1].symbol != best[1].symbol and ranked[1][0] - best[0] < 0.055:
+            tied = tuple(row for row in ranked if row[0] - best[0] < 0.055)[:4]
+            symbols = tuple(dict.fromkeys(row[1].symbol for row in tied))
+            if len(symbols) >= 2:
+                expression = "🔀".join(symbols)
+                meanings = " or ".join(dict.fromkeys(row[1].name for row in tied))
+                loss = min(1.0, best[0] + 0.12)
+                return LexicalResolution(surface, best[2], expression, meanings, "resolved", max(0.0, 1.0 - loss), loss, "explicit-lexical-ambiguity", "multiple", symbols)
             return LexicalResolution(surface, best[2], "", "", "ambiguous", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], tuple(row[1].symbol for row in ranked[:5]))
         return LexicalResolution(surface, best[2], best[1].symbol, best[1].name, "resolved", max(0.0, 1.0 - best[0]), best[0], best[4], best[3], alternatives)
 
