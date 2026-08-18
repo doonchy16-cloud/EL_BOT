@@ -1,0 +1,201 @@
+"""Phase 6 teacher/student coordinator inside the existing Instructor authority.
+
+The student never calls a provider. This coordinator accepts only already-validated
+lessons from the translation/orchestration layer, records replay evidence, and trains
+the local EL Student model immediately plus a small deterministic replay batch.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import json
+import os
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_student_mod = _load("_el_student_model_for_instructor", _ROOT / "🧠" / "🤖")
+ELStudent1M = _student_mod.ELStudent1M
+StudentPrediction = _student_mod.StudentPrediction
+
+
+@dataclass(frozen=True, slots=True)
+class LessonRecord:
+    lesson_id: str
+    source: str
+    candidate: str
+    semantic_definition: str
+    origin: str
+    provider: str
+    model: str
+    validation_status: str
+    accepted: bool
+
+
+class StudentTeacherCoordinator:
+    """Own validated lesson intake, replay, and local student updates."""
+
+    def __init__(self, *, student=None, replay_path: str | Path | None = None) -> None:
+        self.student = student if student is not None else ELStudent1M()
+        default = Path(os.environ.get("EL_STUDENT_REPLAY", "")).expanduser() if os.environ.get("EL_STUDENT_REPLAY") else Path.home() / ".el-bot" / "student-1m-replay-v1.jsonl"
+        self.replay_path = Path(replay_path).expanduser() if replay_path is not None else default
+        self._records = self._load_replay()
+
+    @staticmethod
+    def _normalize(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    @classmethod
+    def _lesson_id(cls, source: str, candidate: str, origin: str, semantic_definition: str) -> str:
+        raw = "\0".join((cls._normalize(source), str(candidate).strip(), str(origin).strip().lower(), cls._normalize(semantic_definition)))
+        return "lesson:" + sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+    def _load_replay(self) -> list[dict]:
+        if not self.replay_path.is_file():
+            return []
+        rows: list[dict] = []
+        for line in self.replay_path.read_text(encoding="utf-8").splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict) and item.get("lesson_id"):
+                rows.append(item)
+        return rows[-50000:]
+
+    def _append_replay(self, record: LessonRecord) -> None:
+        self.replay_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.replay_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(asdict(record), ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+        self._records.append(asdict(record))
+        if len(self._records) > 50000:
+            self._records = self._records[-50000:]
+
+    def predict(self, source: str) -> StudentPrediction:
+        return self.student.predict(source)
+
+    def _replay_batch(self, lesson_id: str, *, count: int = 4) -> tuple[dict, ...]:
+        accepted = [item for item in self._records if item.get("accepted") is True and item.get("candidate") and item.get("source")]
+        if not accepted or count <= 0:
+            return ()
+        seed = int(sha256(lesson_id.encode("utf-8")).hexdigest()[:16], 16)
+        out: list[dict] = []
+        used: set[int] = set()
+        for step in range(min(count, len(accepted))):
+            seed = (6364136223846793005 * seed + 1442695040888963407) & 0xFFFFFFFFFFFFFFFF
+            index = seed % len(accepted)
+            while index in used and len(used) < len(accepted):
+                index = (index + 1) % len(accepted)
+            used.add(index)
+            out.append(accepted[index])
+        return tuple(out)
+
+    def _train_record(self, record: LessonRecord, *, primary: bool) -> None:
+        if not record.accepted or record.validation_status != "pass" or not record.candidate:
+            return
+        if record.origin == "qwen-teacher":
+            weight, epochs = (1.25, 14) if primary else (0.70, 3)
+        elif record.origin == "user":
+            weight, epochs = (1.50, 16) if primary else (0.80, 4)
+        else:
+            weight, epochs = (0.55, 5) if primary else (0.35, 2)
+        self.student.train(record.source, record.candidate, origin=record.origin, epochs=epochs, weight=weight, save=False)
+
+    def learn_validated(
+        self,
+        *,
+        source: str,
+        candidate: str,
+        semantic_definition: str = "",
+        origin: str,
+        provider: str = "",
+        model: str = "",
+        validation_status: str = "pass",
+        accepted: bool = True,
+    ) -> LessonRecord:
+        normalized_origin = str(origin or "").strip().lower()
+        if normalized_origin not in {"qwen-teacher", "deterministic", "user"}:
+            raise ValueError("unsupported EL Student lesson origin")
+        normalized_status = str(validation_status or "").strip().lower()
+        if normalized_status not in {"pass", "hold", "fail"}:
+            raise ValueError("invalid EL Student validation status")
+        accepted = bool(accepted and normalized_status == "pass" and str(candidate).strip())
+        record = LessonRecord(
+            lesson_id=self._lesson_id(source, candidate, normalized_origin, semantic_definition),
+            source=str(source),
+            candidate=str(candidate).strip(),
+            semantic_definition=self._normalize(semantic_definition),
+            origin=normalized_origin,
+            provider=str(provider),
+            model=str(model),
+            validation_status=normalized_status,
+            accepted=accepted,
+        )
+        self._append_replay(record)
+        if accepted:
+            self._train_record(record, primary=True)
+            for prior in self._replay_batch(record.lesson_id, count=4):
+                replay_record = LessonRecord(
+                    lesson_id=str(prior["lesson_id"]), source=str(prior["source"]), candidate=str(prior["candidate"]),
+                    semantic_definition=str(prior.get("semantic_definition", "")), origin=str(prior["origin"]),
+                    provider=str(prior.get("provider", "")), model=str(prior.get("model", "")),
+                    validation_status=str(prior.get("validation_status", "pass")), accepted=True,
+                )
+                self._train_record(replay_record, primary=False)
+            self.student.save()
+        return record
+
+    def learn_deterministic(self, source: str, candidate: str, quality_status: str) -> LessonRecord | None:
+        if str(quality_status or "").lower() != "pass" or not candidate or "❓" in candidate:
+            return None
+        return self.learn_validated(source=source, candidate=candidate, origin="deterministic", validation_status="pass", accepted=True)
+
+    def learn_qwen(self, *, source: str, candidate: str, semantic_definition: str, accepted: bool, provider: str, model: str, validation_status: str) -> LessonRecord:
+        return self.learn_validated(
+            source=source, candidate=candidate, semantic_definition=semantic_definition, origin="qwen-teacher",
+            provider=provider, model=model, validation_status=validation_status, accepted=accepted,
+        )
+
+    def learn_user(self, source: str, candidate: str) -> LessonRecord:
+        return self.learn_validated(source=source, candidate=candidate, origin="user", validation_status="pass", accepted=True)
+
+    def teacher_confirmations(self, source: str, candidate: str) -> int:
+        key = self._normalize(source)
+        value = str(candidate).strip()
+        return sum(
+            1 for item in self._records
+            if item.get("accepted") is True and item.get("origin") == "qwen-teacher"
+            and self._normalize(str(item.get("source", ""))) == key and str(item.get("candidate", "")).strip() == value
+        )
+
+    def trusted_teacher_definition(self, source: str, candidate: str) -> str:
+        key = self._normalize(source); value = str(candidate).strip()
+        for item in reversed(self._records):
+            if item.get("accepted") is True and item.get("origin") == "qwen-teacher" and self._normalize(str(item.get("source", ""))) == key and str(item.get("candidate", "")).strip() == value:
+                return str(item.get("semantic_definition", ""))
+        return ""
+
+    def stats(self) -> dict:
+        result = self.student.stats()
+        result.update({
+            "replay_records": len(self._records),
+            "accepted_replay_records": sum(1 for item in self._records if item.get("accepted") is True),
+            "qwen_replay_records": sum(1 for item in self._records if item.get("accepted") is True and item.get("origin") == "qwen-teacher"),
+        })
+        return result
