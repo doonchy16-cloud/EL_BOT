@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "⏩🏁"
+      - phase6-lexical-coverage
   workflow_dispatch:
 
 permissions:
@@ -21,7 +22,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - name: "📥"
         uses: actions/checkout@v4
@@ -44,6 +45,15 @@ jobs:
             Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
           }
           & $exe -c "import sys; assert sys.version_info[:2] == (3, 12)"
+
+      - name: "📖🌐📥"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-lexicon.ps1'
+          $m = Get-Content -LiteralPath 'data\phase6-data-manifest.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($m.unicode_emoji_version -ne '17.0' -or [int]$m.unicode_rgi_count -lt 3000 -or $m.oewn_edition -ne '2025') { throw 'Phase-6 lexical data authority failed' }
+          Write-Output "PHASE6_DATA emoji=$($m.unicode_rgi_count) oewn=$($m.oewn_edition)"
 
       - name: "🤖❌↔️"
         shell: powershell
@@ -202,6 +212,7 @@ jobs:
           Write-Output '✅🧪📦🖥️🐍'
 
       - name: "📤9️⃣📦🪟"
+        if: github.ref == 'refs/heads/main'
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
