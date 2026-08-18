@@ -127,12 +127,12 @@ def main() -> None:
         "g1_model_sha256": initial_production_sha,
         "g2_model_sha256": promoted_sha,
         "rejection_policy_fixture": {
-            "fixture_only": true,
+            "fixture_only": True,
             "accepted": fixture_accepted,
             "reasons": list(fixture_reasons),
             "production_pointer_after_fixture": "G1"
         },
-        "immutable_hashes_verified": true,
+        "immutable_hashes_verified": True,
         "history_kinds": [item["kind"] for item in state["history"]],
         "registry_path": str(registry_path),
     }
