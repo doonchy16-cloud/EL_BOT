@@ -13,7 +13,7 @@ function Get-ContentHash([string]$Path) {
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-function Count-WordNetIndex([string]$Path) {
+function Count-WordNetIndexRecords([string]$Path) {
   $count = 0
   foreach ($line in [System.IO.File]::ReadLines($Path)) {
     if ($line -and -not [char]::IsWhiteSpace($line[0])) { $count++ }
@@ -62,17 +62,19 @@ foreach ($name in $required) {
 }
 Set-Content -LiteralPath $readyMarker -Value 'Open English WordNet 2025+ materialized' -Encoding ASCII
 
-$lemmaCounts = [ordered]@{
-  noun = Count-WordNetIndex $resolved['index.noun']
-  verb = Count-WordNetIndex $resolved['index.verb']
-  adjective = Count-WordNetIndex $resolved['index.adj']
-  adverb = Count-WordNetIndex $resolved['index.adv']
+# These are raw source index records. Runtime normalized lexical keys are measured
+# independently because normalization can intentionally collapse equivalent spellings.
+$indexRecordCounts = [ordered]@{
+  noun = Count-WordNetIndexRecords $resolved['index.noun']
+  verb = Count-WordNetIndexRecords $resolved['index.verb']
+  adjective = Count-WordNetIndexRecords $resolved['index.adj']
+  adverb = Count-WordNetIndexRecords $resolved['index.adv']
 }
-$lemmaTotal = [int]$lemmaCounts.noun + [int]$lemmaCounts.verb + [int]$lemmaCounts.adjective + [int]$lemmaCounts.adverb
-if ($lemmaTotal -lt 100000) { throw "Open English WordNet lexical index unexpectedly small: $lemmaTotal" }
+$indexRecordTotal = [int]$indexRecordCounts.noun + [int]$indexRecordCounts.verb + [int]$indexRecordCounts.adjective + [int]$indexRecordCounts.adverb
+if ($indexRecordTotal -lt 100000) { throw "Open English WordNet index unexpectedly small: $indexRecordTotal" }
 
 $manifest = [ordered]@{
-  schema_version = 2
+  schema_version = 3
   phase = 6
   step = 1
   status = 'MATERIALIZED'
@@ -89,10 +91,11 @@ $manifest = [ordered]@{
     edition = $oewnEdition
     source = $oewnUrl
     archive_sha256 = Get-ContentHash $oewnZip
-    lexical_lemma_count = $lemmaTotal
-    lemma_counts = $lemmaCounts
+    index_record_count = $indexRecordTotal
+    index_record_counts = $indexRecordCounts
+    runtime_normalized_lexical_keys = 'measured-by-runtime-verifier'
   }
 }
 $manifestPath = Join-Path $data 'phase6-step1-data-manifest.json'
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
-Write-Output "PHASE6_STEP1_DATA_OK emoji=$rgiCount oewn=$oewnEdition lemmas=$lemmaTotal"
+Write-Output "PHASE6_STEP1_DATA_OK emoji=$rgiCount oewn=$oewnEdition index_records=$indexRecordTotal"
