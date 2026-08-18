@@ -4,6 +4,22 @@
   const badge = preview && preview.querySelector('.previewBadge');
   const processing = document.getElementById('processing');
   const stageMeta = document.getElementById('stageMeta');
+  const footerSpans = [...document.querySelectorAll('footer span')];
+  const vocabularyStatus = footerSpans.find((node) => /^🔒📚/.test(node.textContent || ''));
+
+  if (vocabularyStatus) {
+    // Never leave a stale historical count on screen while authority is loading.
+    vocabularyStatus.textContent = '🔒📚?';
+    const bridge = window['😀'];
+    const query = bridge && bridge['▶️'];
+    if (typeof query === 'function') {
+      Promise.resolve(query('📚')).then((raw) => {
+        const match = String(raw || '').match(/📚(?:🌐)?(\d+)/u);
+        vocabularyStatus.textContent = match ? `🔒📚${match[1]}` : '🔒📚?';
+      }).catch(() => { vocabularyStatus.textContent = '🔒📚?'; });
+    }
+  }
+
   if (preview) {
     preview.tabIndex = 0;
     preview.setAttribute('role', 'button');

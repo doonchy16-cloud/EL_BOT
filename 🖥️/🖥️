@@ -28,6 +28,7 @@ _recovery = _load("_el_recovery", _ROOT / "🧯" / "🧯")
 _reliability = _load("_el_reliability", _ROOT / "🛡️" / "🛡️")
 _identity = _load("_el_identity", _ROOT / "🪪" / "🪪")
 _auth = _load("_el_auth", _ROOT / "🛂" / "🛂")
+_vocab = _load("_el_ui_vocab", _ROOT / "📚" / "📚")
 
 WorkflowEngine = _workflow.WorkflowEngine
 DiagnosticsEngine = _diag.DiagnosticsEngine
@@ -36,6 +37,7 @@ RecoveryEngine = _recovery.RecoveryEngine
 ReliabilityEngine = _reliability.ReliabilityEngine
 IdentityEngine = _identity.IdentityEngine
 AuthenticationEngine = _auth.AuthenticationEngine
+VocabularyEngine = _vocab.VocabularyEngine
 
 
 class UIEngine:
@@ -71,6 +73,8 @@ class UIEngine:
             return self.authentication.process(text)
         if text == "🛡️":
             return self.reliability.assess(self._evidence()).render_el()
+        if text == "📚":
+            return VocabularyEngine.snapshot().render_el_status()
         return self.workflow.process(text)
 
     def process(self, text: str) -> str:

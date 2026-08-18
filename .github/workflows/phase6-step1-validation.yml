@@ -1,0 +1,93 @@
+name: "📚 Phase 6 Step 1 Validation"
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "phase6-step1-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  knowledge:
+    name: "📚🌐 Knowledge Foundation"
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+    timeout-minutes: 20
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Python 3.12"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10'
+          $exe = Join-Path $dir 'python.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'python.zip'
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          }
+          & $exe -c "import sys; assert sys.version_info[:2] == (3, 12)"
+
+      - name: "📖🌐 Materialize released knowledge"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-step1-knowledge.ps1'
+
+      - name: "🧪 Phase 2 compatibility"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe 'architecture\verify_phase2_knowledge_foundation.py'
+
+      - name: "🧪 Phase 3 compatibility"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe 'architecture\verify_phase3_semantic_search.py'
+
+      - name: "🧪 Step 1 authority"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe 'architecture\verify_phase6_step1_knowledge_foundation.py'
+
+      - name: "🧪 44/44 diagnostics"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $exe = Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          & $exe -c "import importlib.machinery,importlib.util,pathlib,sys; root=pathlib.Path('.'); a=chr(0x1F9EA); p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a); l=importlib.machinery.SourceFileLoader('_p6s1_diag',str(p)); s=importlib.util.spec_from_loader('_p6s1_diag',l); m=importlib.util.module_from_spec(s); sys.modules['_p6s1_diag']=m; l.exec_module(m); r=m.DiagnosticsEngine().run(); print(r.render_el()); assert r.passed and len(r.checks)==44"
+
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: "🟩 Renderer syntax"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $spark = [char]::ConvertFromUtf32(0x26A1)
+          $movie = [char]::ConvertFromUtf32(0x1F39E) + [char]0xFE0F
+          $renderer = Join-Path (Join-Path (Get-Location) $spark) $movie
+          if (-not (Test-Path -LiteralPath $renderer)) { throw 'renderer file missing' }
+          node --check $renderer

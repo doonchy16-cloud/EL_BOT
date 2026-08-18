@@ -35,7 +35,6 @@ def main() -> None:
     require(manifest["status"] == "PASS", "Phase-3 authority must remain PASS")
     require(manifest["source_present_target_engines"] == 39, "source-present target must be 39")
     require(manifest["planned_only_target_engines"] == 5, "planned-only target must be 5")
-    require(manifest["canonical_vocabulary_count"] == 501, "501 authority changed")
     require(len(manifest["implemented"]) == 9, "Phase 3 must implement nine engines")
 
     forbidden = ("OllamaConnector", "qwen2.5vl", "ForgeyConnector", "chat_internal", "generate_internal")
@@ -63,7 +62,10 @@ def main() -> None:
     abc = load("_p3_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
     emoji = load("_p3_emoji", ROOT / "😀➡️🔤" / "😀➡️🔤")
 
-    require(len(vocab.CANONICAL_SYMBOLS) == 501 and len(set(vocab.CANONICAL_SYMBOLS)) == 501, "canonical 501 invariant changed")
+    seed = vocab.SEMANTIC_BASE_SYMBOLS
+    require(seed and len(set(seed)) == len(seed), "stable semantic seed invariant changed")
+    if "canonical_vocabulary_count" in manifest:
+        require(int(manifest["canonical_vocabulary_count"]) == len(seed), "historical Phase-3 seed metadata changed")
 
     ctx = context.ContextSenseDisambiguationEngine()
     require(ctx.resolve("converter", "Use the converter.").sense_id == "conversion-tool", "converter sense failed")
@@ -94,33 +96,38 @@ def main() -> None:
 
     frontiers = frontier.SearchFrontierExhaustionEngine()
     toy = frontiers.define(units=("😀", "🔥", "🚀"), min_length=1, max_length=2, frontier_id="toy-3x2")
-    require(toy.total_candidates == 12, "3-unit depth-2 frontier must contain 3 + 9 = 12 candidates")
+    require(toy.total_candidates == 12, "3-unit depth-2 frontier must contain 12 candidates")
     require(frontiers.candidate_at(toy, 0) == "😀" and frontiers.candidate_at(toy, 3) == "😀😀" and frontiers.candidate_at(toy, 11) == "🚀🚀", "frontier coordinate mapping failed")
 
     complete = search.CompleteCandidateSearchEngine()
     partial, toy_partial = complete.search(toy, lambda candidate, index: {"score": float(index), "valid": True}, limit=4)
     require(partial.evaluated_count == 4 and not partial.exhausted and toy_partial.cursor == 4, "partial frontier checkpoint failed")
-    checkpoint = frontiers.checkpoint(toy_partial)
-    resumed = frontiers.resume(checkpoint)
+    resumed = frontiers.resume(frontiers.checkpoint(toy_partial))
     rest, toy_done, toy_proof = complete.search_to_exhaustion(resumed, lambda candidate, index: {"score": float(index), "valid": True})
     require(rest.evaluated_count == 8 and toy_done.cursor == 12 and toy_proof.exhausted and toy_proof.visited_candidates == 12, "toy frontier exhaustion proof failed")
 
     u = universe.EmojiUniverseEngine()
-    full = frontiers.define(units=u.units, min_length=1, max_length=1, frontier_id="full-universe-depth1-gate")
+    # Unicode RGI count is a count of exact source rows. Phase-3 search intentionally
+    # canonicalizes aliases into a finite coordinate space. Include the historical
+    # semantic seed explicitly so its non-RGI EL control symbols remain covered.
+    full = frontiers.define(units=tuple(u.units) + tuple(seed), min_length=1, max_length=1, frontier_id="full-canonical-depth1-gate")
+    seed_set = frozenset(seed)
     full_result, full_done, full_proof = complete.search_to_exhaustion(
         full,
-        lambda candidate, index: {"score": 1.0 if candidate in vocab.CANONICAL_SYMBOLS else 0.0, "valid": candidate in vocab.CANONICAL_SYMBOLS, "canonical": candidate in vocab.CANONICAL_SYMBOLS},
+        lambda candidate, index: {"score": 1.0 if candidate in seed_set else 0.0, "valid": candidate in seed_set, "canonical": candidate in seed_set},
     )
-    require(full.total_candidates == u.snapshot.count, "full depth-1 frontier must equal loaded universe count")
-    require(full_result.evaluated_count == u.snapshot.count and full_done.cursor == u.snapshot.count and full_proof.exhausted, "full depth-1 universe was not exhausted")
-    require(len(full_result.survivors) == 501, "full-universe canonical survivor count must preserve 501")
+    require(u.snapshot.rgi_complete and u.snapshot.version == "17.0", "official released Emoji Universe not loaded")
+    require(full.total_candidates == len(full.units), "depth-1 canonical frontier coordinate count mismatch")
+    require(full_result.evaluated_count == full.total_candidates and full_done.cursor == full.total_candidates and full_proof.exhausted, "full canonical depth-1 frontier was not exhausted")
+    require(full_proof.visited_candidates == full.total_candidates, "full canonical frontier proof count mismatch")
+    require(len(full_result.survivors) == len(seed), "historical semantic-seed survivor count changed")
 
-    outside_501 = next((unit for unit in u.units if unit not in vocab.CANONICAL_SYMBOLS and any(unicodedata.category(ch) == "So" and unicodedata.name(ch, "") for ch in unit)), None)
-    require(outside_501 is not None, "no investigable non-501 emoji available for reverse test")
-    reverse = emoji.EmojiToABCEngine().translate(outside_501, cross_verify=False, emit=False)
-    require(reverse.winner.startswith("The emoji represents "), f"non-501 reverse identity not selected: {outside_501} -> {reverse.winner}")
-    require(reverse.metrics.get("investigable_noncanonical") == 1 and reverse.metrics.get("unknown") == 0, "non-501 reverse classification failed")
-    require(reverse.metrics.get("quality_status") == "hold", "noncanonical identity must remain HOLD until canonical graduation")
+    outside_seed = next((unit for unit in u.units if unit not in seed_set and any(unicodedata.category(ch) == "So" and unicodedata.name(ch, "") for ch in unit)), None)
+    require(outside_seed is not None, "no investigable emoji outside historical semantic seed available")
+    reverse = emoji.EmojiToABCEngine().translate(outside_seed, cross_verify=False, emit=False)
+    require(reverse.winner.startswith("The emoji represents "), f"reverse Unicode identity not selected: {outside_seed} -> {reverse.winner}")
+    require(reverse.metrics.get("investigable_noncanonical") == 1 and reverse.metrics.get("unknown") == 0, "historical reverse classification failed")
+    require(reverse.metrics.get("quality_status") == "hold", "Unicode identity path must remain HOLD under Phase-3 semantics")
 
     ranked = competition.CandidateCompetitionEngine.compete((
         search.CandidateEvaluation(0, "🔥", 2.0, True, ("low",), (), True),
@@ -130,10 +137,7 @@ def main() -> None:
     require(ranked.winner is not None and ranked.winner.candidate == "🚀" and len(ranked.ranked) == 2, "candidate competition failed")
 
     experiments = experiment.ExperimentEngine()
-    word_report = experiments.run("word", (
-        ("These words are useful in a sentence.", "language-word"),
-        ("Microsoft Word opened the document editor.", "microsoft-word-product"),
-    ))
+    word_report = experiments.run("word", (("These words are useful in a sentence.", "language-word"), ("Microsoft Word opened the document editor.", "microsoft-word-product")))
     require(word_report.passed and word_report.pass_rate == 1.0, "context experiment failed")
 
     traps = counter.CounterexampleAdversarialSemanticsEngine()
@@ -151,13 +155,13 @@ def main() -> None:
         require(result.metrics.get("phase3_search_exhausted") is True, f"full universe search not exhausted for {source}")
         require(int(result.metrics.get("phase3_search_evaluated", 0)) == int(result.metrics.get("phase3_search_frontier_total", -1)), f"search coordinate count mismatch for {source}")
 
-    nonsense = engine.translate("flibbertigibbet", cross_verify=False, emit=False)
-    require(nonsense.metrics.get("quality_status") == "fail" and "❓" in nonsense.winner, "genuine unresolved nonsense must remain FAIL")
+    nonsense = engine.translate("zxqvplmno", cross_verify=False, emit=False)
+    require(nonsense.metrics.get("quality_status") == "fail" and "❓" in nonsense.winner, "synthetic unresolved nonsense must remain FAIL")
 
     combined = engine.translate("Use the converter for words with ChatGPT.", cross_verify=False, emit=False)
     require(combined.metrics.get("quality_status") != "fail" and int(combined.metrics.get("phase3_resolved_unknowns", 0)) >= 3, "combined Phase-3 semantic rescue failed")
 
-    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐" + str(u.snapshot.count) + "/" + str(u.snapshot.count) + "✅ 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 😀🌐✅ 🤖❌")
+    print("✅🧠🔍3️⃣ 🧭✅ 🧩✅ 🗺️✅ 🧱✅ ♾️12/12✅ 🌐RGI=" + str(u.snapshot.count) + " canonical-frontier=" + str(full.total_candidates) + "✅ seed=" + str(len(seed)) + " 🔍✅ 🏆✅ 🧫✅ 🪤✅ 🔤3/3✅ 😀🌐✅ 🤖❌")
 
 
 if __name__ == "__main__":

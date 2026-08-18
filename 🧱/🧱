@@ -25,7 +25,6 @@ _ROOT = Path(__file__).resolve().parent.parent
 _vocab = _load("_el_phase3_vocab_grammar", _ROOT / "📚" / "📚")
 _core = _load("_el_phase3_core_grammar", _ROOT / "⚙️" / "⚙️")
 _graph = _load("_el_phase3_graph_grammar", _ROOT / "🗺️" / "🗺️")
-_CANONICAL = frozenset(_vocab.CANONICAL_SYMBOLS)
 _RELATIONS = frozenset({"➡️", "⬅️", "↔️", "➕", "🔀", "🚦", "🔗", "🚦➡️", "🚦⬅️", "🚦❌", "🔗➡️"})
 
 
@@ -51,12 +50,8 @@ _SENSE_TEMPLATES: dict[str, tuple[tuple[str, str, float], ...]] = {
         ("conversational-ai", "🤖➕💬", 0.96),
         ("conversational-reasoning-ai", "🤖➕🧠➕💬", 1.0),
     ),
-    "language-word": (
-        ("language-word", "🔤", 1.0),
-    ),
-    "microsoft-word-product": (
-        ("document-software", "⚙️➕📄", 0.9),
-    ),
+    "language-word": (("language-word", "🔤", 1.0),),
+    "microsoft-word-product": (("document-software", "⚙️➕📄", 0.9),),
     "translation-tool": (
         ("translation-flow", "📥➡️↔️➡️📤", 1.0),
         ("translation-tool", "⚙️➕↔️", 0.85),
@@ -87,7 +82,7 @@ _COMPONENT_SYMBOLS = {
 
 
 class ELGrammarCompositionEngine:
-    """Construct canonical EL templates from semantic components; never ranks."""
+    """Construct EL templates from semantic components; never ranks."""
 
     def __init__(self) -> None:
         self.graph = _graph.SemanticGraphEngine()
@@ -96,7 +91,8 @@ class ELGrammarCompositionEngine:
     def is_canonical_expression(expression: str) -> bool:
         graphemes = _core.split_graphemes(expression)
         meaningful = [g for g in graphemes if not g.isspace() and g not in {".", ",", ";", ":", "!", "?", "-"}]
-        return bool(meaningful) and all(g in _CANONICAL or g in _RELATIONS or g.isdigit() for g in meaningful)
+        checker = getattr(_vocab, "is_valid_el_symbol", lambda value: value in _vocab.CANONICAL_SYMBOLS)
+        return bool(meaningful) and all(checker(g) or g in _RELATIONS or g.isdigit() for g in meaningful)
 
     def compose(self, decomposition) -> tuple[ELCompositionTemplate, ...]:
         if not getattr(decomposition, "resolved", False):
