@@ -1,4 +1,9 @@
-"""N01: deterministic investigable Emoji Universe foundation."""
+"""N01: deterministic Emoji Universe authority.
+
+Phase 6 prefers the materialized official Unicode emoji-test dataset. The previous
+broad assigned-symbol scan remains only as an explicit offline fallback and is never
+reported as the actual Unicode emoji count.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,16 +32,9 @@ _vocab = _load("_el_vocab_universe", _ROOT / "📚" / "📚")
 _canon = _load("_el_canonicalization_universe", _ROOT / "🧷" / "🧷")
 CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
 EmojiCanonicalizationEngine = _canon.EmojiCanonicalizationEngine
+_OFFICIAL_EMOJI_TEST = _ROOT / "data" / "unicode" / "emoji-test.txt"
 
-# Broad assigned-symbol candidate ranges. This is deliberately a superset and is
-# NOT advertised as the Unicode RGI set. Exact RGI inventory can be loaded from
-# the official Unicode emoji-test.txt format through from_emoji_test().
-_BROAD_RANGES = (
-    (0x2300, 0x23FF),
-    (0x2500, 0x27BF),
-    (0x2B00, 0x2BFF),
-    (0x1F000, 0x1FAFF),
-)
+_BROAD_RANGES = ((0x2300, 0x23FF), (0x2500, 0x27BF), (0x2B00, 0x2BFF), (0x1F000, 0x1FAFF))
 
 
 def _assigned_symbol(char: str) -> bool:
@@ -73,7 +71,12 @@ class EmojiUniverseSnapshot:
 class EmojiUniverseEngine:
     """Own the finite candidate-unit inventory; never assigns semantic meaning."""
 
-    def __init__(self, units: tuple[str, ...] | list[str] | None = None, *, version: str = "builtin-v1", source_kind: str = "broad-assigned-symbol-superset", rgi_complete: bool = False, fully_qualified_count: int = 0, component_count: int = 0) -> None:
+    def __init__(self, units: tuple[str, ...] | list[str] | None = None, *, version: str = "builtin-fallback", source_kind: str = "broad-assigned-symbol-superset", rgi_complete: bool = False, fully_qualified_count: int = 0, component_count: int = 0) -> None:
+        if units is None and _OFFICIAL_EMOJI_TEST.is_file():
+            official = type(self).from_emoji_test(_OFFICIAL_EMOJI_TEST.read_text(encoding="utf-8"))
+            self._snapshot = official.snapshot
+            self._set = frozenset(self._snapshot.units)
+            return
         canonicalizer = EmojiCanonicalizationEngine()
         if units is None:
             generated: list[str] = list(CANONICAL_SYMBOLS)
@@ -92,24 +95,11 @@ class EmojiUniverseEngine:
             seen.add(result.canonical)
             normalized.append(result.canonical)
         canonical_coverage = sum(1 for symbol in CANONICAL_SYMBOLS if symbol in seen)
-        self._snapshot = EmojiUniverseSnapshot(
-            version=str(version),
-            source_kind=str(source_kind),
-            units=tuple(normalized),
-            canonical_coverage=canonical_coverage,
-            rgi_complete=bool(rgi_complete),
-            fully_qualified_count=int(fully_qualified_count),
-            component_count=int(component_count),
-        )
+        self._snapshot = EmojiUniverseSnapshot(str(version), str(source_kind), tuple(normalized), canonical_coverage, bool(rgi_complete), int(fully_qualified_count), int(component_count))
         self._set = frozenset(self._snapshot.units)
 
     @classmethod
     def from_emoji_test(cls, source: str) -> "EmojiUniverseEngine":
-        """Parse the official Unicode emoji-test.txt format.
-
-        RGI corresponds to component + fully-qualified rows in that file. The
-        parser intentionally ignores minimally-qualified and unqualified rows.
-        """
         if not isinstance(source, str) or not source.strip():
             raise ValueError("emoji-test source must be non-empty")
         version = "unknown"
@@ -138,14 +128,7 @@ class EmojiUniverseEngine:
                 components += 1
         if not units:
             raise ValueError("emoji-test contained no RGI rows")
-        return cls(
-            units,
-            version=version,
-            source_kind="unicode-emoji-test",
-            rgi_complete=True,
-            fully_qualified_count=fully,
-            component_count=components,
-        )
+        return cls(units, version=version, source_kind="unicode-emoji-test", rgi_complete=True, fully_qualified_count=fully, component_count=components)
 
     @property
     def snapshot(self) -> EmojiUniverseSnapshot:
