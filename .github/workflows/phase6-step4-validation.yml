@@ -64,6 +64,11 @@ jobs:
         run: |
           $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step3_teacher_learning.py';if($LASTEXITCODE-ne 0){throw 'STEP3_REGRESSION_FAILED'}
 
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: "⚡ Forgey primary forward + reverse"
         shell: powershell
         run: |
