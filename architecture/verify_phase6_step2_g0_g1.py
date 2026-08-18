@@ -15,6 +15,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "architecture" / "phase6_step2_g0_g1_manifest.json"
+STEP3_MANIFEST = ROOT / "architecture" / "phase6_step3_teacher_learning_manifest.json"
 BENCHMARK = ROOT / "architecture" / "phase6_step2_frozen_benchmark.json"
 STEP1_DATA = ROOT / "data" / "phase6-step1-data-manifest.json"
 ARTIFACT = ROOT / "data" / "phase6-step2"
@@ -62,7 +63,7 @@ def main() -> None:
     require(manifest.get("phase") == 6 and manifest.get("step") == 2, "wrong Step-2 manifest")
     require(manifest.get("status") in {"IMPLEMENTATION_IN_PROGRESS", "PASS"}, "invalid Step-2 manifest status")
     require(manifest.get("engine_count") == 44 and manifest.get("new_engine_count") == 0, "Step 2 must not add engine #45")
-    require(all(value is False for value in manifest.get("scope_guards", {}).values()), "Step 2 scope guard claims later implementation")
+    require(all(value is False for value in manifest.get("scope_guards", {}).values()), "Step 2 historical scope guard claims later implementation")
 
     require(STEP1_DATA.is_file(), "Step-1 materialized data missing")
     step1 = json.loads(STEP1_DATA.read_text(encoding="utf-8-sig"))
@@ -115,7 +116,7 @@ def main() -> None:
     require(report.candidates, "BPE compression candidates missing")
     best_tokens = min(item.encoded_token_count for item in report.candidates)
     eligible = [item for item in report.candidates if item.encoded_token_count <= best_tokens * 1.025]
-    require(eligible and report.chosen_merge_count == eligible[0].merge_count, "BPE vocabulary was not selected by the declared measured near-best rule")
+    require(eligible and report.chosen_merge_count == eligible[0].merge_count, "BPE vocabulary was not selected by declared measured near-best rule")
     require(tokenizer.vocab_size == len(tokenizer.special_tokens) + len(tokenizer.atomic_el_tokens) + 256 + len(tokenizer.merges), "tokenizer vocabulary arithmetic mismatch")
 
     proof = json.loads(TRAIN_PROOF.read_text(encoding="utf-8"))
@@ -172,7 +173,7 @@ def main() -> None:
     require(int(forward.get("trainable_parameters")) == parameter_report.trainable_parameters, "forward inference loaded wrong model graph")
     require(int(reverse.get("trainable_parameters")) == parameter_report.trainable_parameters, "reverse inference loaded wrong model graph")
 
-    # Source-level boundary proof: Step 2 cannot quietly become Steps 3-5.
+    # Step-2 implementation itself must remain provider-free forever.
     guarded_sources = {
         "tokenizer": (ROOT / "📚" / "✂️").read_text(encoding="utf-8"),
         "model": (ROOT / "🧠" / "🤖").read_text(encoding="utf-8"),
@@ -185,12 +186,23 @@ def main() -> None:
         lowered = source.lower()
         for forbidden in ("qwen2.5vl", "ollamaconnector", "forgeyconnector", "chat_internal", "generate_internal", "urllib.request"):
             require(forbidden not in lowered, f"later-step/provider coupling leaked into Step-2 {name}: {forbidden}")
-    require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 teacher/training coordinator leaked into Step 2")
-    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 publisher leaked into Step 2")
+
+    step3_state = "ABSENT"
+    if STEP3_MANIFEST.is_file():
+        step3 = json.loads(STEP3_MANIFEST.read_text(encoding="utf-8"))
+        require(step3.get("phase") == 6 and step3.get("step") == 3, "unrecognized Step-3 manifest")
+        require(step3.get("status") in {"IMPLEMENTATION_IN_PROGRESS", "PASS"}, "invalid Step-3 state")
+        require((ROOT / "🧑‍🏫" / "🤖").is_file(), "Step-3 manifest exists but teacher coordinator missing")
+        step3_state = "AUTHORIZED"
+    else:
+        require(not (ROOT / "🧑‍🏫" / "🤖").exists(), "Step-3 teacher/training coordinator leaked without authority")
+
+    require(not (ROOT / "scripts" / "publish-phase6-release.ps1").exists(), "Step-5 publisher leaked before Step 5")
     runtime_source = (ROOT / "↔️" / "↔️").read_text(encoding="utf-8")
     orchestration_source = (ROOT / "✦" / "✦").read_text(encoding="utf-8")
-    require("forgeyinsta" not in runtime_source.lower(), "Step-4 primary routing leaked into translation runtime")
-    require("forgeyinsta" not in orchestration_source.lower(), "Step-4 primary routing leaked into orchestration")
+    for name, source in (("runtime", runtime_source), ("orchestration", orchestration_source)):
+        lowered = source.lower()
+        require("forgeygenerationregistry" not in lowered and "phase6-step3" not in lowered, f"Step-4 primary routing leaked into {name}")
 
     if manifest.get("status") == "PASS":
         evidence = manifest.get("evidence_basis", {})
@@ -203,7 +215,7 @@ def main() -> None:
         f"params={parameter_report.trainable_parameters} vocab={tokenizer.vocab_size} merges={len(tokenizer.merges)} "
         f"train={float(early):.4f}->{float(late):.4f} benchmark={float(g0_loss):.4f}->{float(g1_loss):.4f} "
         f"smoke={proof['g1']['smoke_exact_count']}/{proof['g1']['smoke_total']} "
-        "local=ABC_TO_EL+EL_TO_ABC provider=0 step3=ABSENT step4=ABSENT step5=ABSENT",
+        f"local=ABC_TO_EL+EL_TO_ABC provider=0 step3={step3_state} step4=ABSENT step5=ABSENT",
         flush=True,
     )
 
