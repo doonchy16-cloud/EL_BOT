@@ -1,8 +1,8 @@
 """N01: deterministic Emoji Universe authority.
 
-Phase 6 prefers the materialized official Unicode emoji-test dataset. The previous
-broad assigned-symbol scan remains only as an explicit offline fallback and is never
-reported as the actual Unicode emoji count.
+Phase 6 prefers the materialized official Unicode emoji-test dataset. Official RGI
+rows are preserved exactly so the reported count equals the source dataset. The
+previous broad assigned-symbol scan remains only as an explicit offline fallback.
 """
 from __future__ import annotations
 
@@ -33,7 +33,6 @@ _canon = _load("_el_canonicalization_universe", _ROOT / "🧷" / "🧷")
 CANONICAL_SYMBOLS = _vocab.CANONICAL_SYMBOLS
 EmojiCanonicalizationEngine = _canon.EmojiCanonicalizationEngine
 _OFFICIAL_EMOJI_TEST = _ROOT / "data" / "unicode" / "emoji-test.txt"
-
 _BROAD_RANGES = ((0x2300, 0x23FF), (0x2500, 0x27BF), (0x2B00, 0x2BFF), (0x1F000, 0x1FAFF))
 
 
@@ -76,7 +75,9 @@ class EmojiUniverseEngine:
             official = type(self).from_emoji_test(_OFFICIAL_EMOJI_TEST.read_text(encoding="utf-8"))
             self._snapshot = official.snapshot
             self._set = frozenset(self._snapshot.units)
+            self._normalized_set = official._normalized_set
             return
+
         canonicalizer = EmojiCanonicalizationEngine()
         if units is None:
             generated: list[str] = list(CANONICAL_SYMBOLS)
@@ -86,6 +87,23 @@ class EmojiUniverseEngine:
                     if _assigned_symbol(char):
                         generated.append(char)
             units = generated
+
+        if rgi_complete:
+            # emoji-test fully-qualified/component rows are the authority. Preserve
+            # every distinct official row exactly; do not collapse presentation or
+            # sequence variants and thereby falsify the dataset's actual count.
+            exact_units = tuple(dict.fromkeys(str(unit) for unit in units if unit))
+            normalized_aliases: set[str] = set(exact_units)
+            for unit in exact_units:
+                result = canonicalizer.canonicalize_unit(unit)
+                if result.valid and result.canonical:
+                    normalized_aliases.add(result.canonical)
+            canonical_coverage = sum(1 for symbol in CANONICAL_SYMBOLS if symbol in normalized_aliases)
+            self._snapshot = EmojiUniverseSnapshot(str(version), str(source_kind), exact_units, canonical_coverage, True, int(fully_qualified_count), int(component_count))
+            self._set = frozenset(exact_units)
+            self._normalized_set = frozenset(normalized_aliases)
+            return
+
         normalized: list[str] = []
         seen: set[str] = set()
         for unit in units:
@@ -95,8 +113,9 @@ class EmojiUniverseEngine:
             seen.add(result.canonical)
             normalized.append(result.canonical)
         canonical_coverage = sum(1 for symbol in CANONICAL_SYMBOLS if symbol in seen)
-        self._snapshot = EmojiUniverseSnapshot(str(version), str(source_kind), tuple(normalized), canonical_coverage, bool(rgi_complete), int(fully_qualified_count), int(component_count))
+        self._snapshot = EmojiUniverseSnapshot(str(version), str(source_kind), tuple(normalized), canonical_coverage, False, int(fully_qualified_count), int(component_count))
         self._set = frozenset(self._snapshot.units)
+        self._normalized_set = self._set
 
     @classmethod
     def from_emoji_test(cls, source: str) -> "EmojiUniverseEngine":
@@ -139,8 +158,10 @@ class EmojiUniverseEngine:
         return self._snapshot.units
 
     def contains(self, unit: str) -> bool:
+        if unit in self._set:
+            return True
         result = EmojiCanonicalizationEngine().canonicalize_unit(unit)
-        return result.valid and result.canonical in self._set
+        return result.valid and bool(result.canonical) and result.canonical in self._normalized_set
 
     def process(self, text: str) -> str:
         if text == "🌐":
