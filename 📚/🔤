@@ -1,0 +1,125 @@
+"""Phase 6 Step 1 token authority for future Forgey Insta:EL-Bot tokenizer training.
+
+This is NOT the trained tokenizer. It defines the immutable inputs the future tokenizer
+must respect: every released RGI emoji is atomic, EL structural/control symbols are
+atomic, direction/model control tokens are reserved, and the English corpus comes
+from the materialized lexical authority rather than a hand-written word ceiling.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+import sys
+
+
+def _load(name: str, path: Path):
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = SourceFileLoader(name, str(path))
+    spec = spec_from_loader(name, loader)
+    if spec is None:
+        raise RuntimeError("module spec unavailable")
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
+
+
+_ROOT = Path(__file__).resolve().parent.parent
+_lexical = _load("_el_token_authority_lexical", _ROOT / "📚" / "📖")
+
+# Non-output control tokens reserved for the future bidirectional neural tokenizer.
+MODEL_SPECIAL_TOKENS = (
+    "<PAD>",
+    "<BOS>",
+    "<EOS>",
+    "<ABC_TO_EL>",
+    "<EL_TO_ABC>",
+    "<UNK>",
+)
+
+# Atomic EL syntax/control roles. Most are also official emoji and therefore reuse
+# the exact same future token identity; non-RGI EL symbols remain explicitly atomic.
+EL_RELATION_TOKENS = (
+    "➡️", "⬅️", "↔️", "➕", "➖", "🔀", "🔗", "🚦", "↩️", "↪️",
+)
+EL_STATE_TOKENS = (
+    "✅", "🟡", "❌", "❓", "🔒", "⚠️", "🛑", "⏸️", "▶️", "⏹️",
+)
+EL_FLOW_TOKENS = (
+    "📥", "📤", "🔁", "🔄", "🔂", "⏱️", "🔤", "🔢", "🔣", "📍", "📐",
+)
+EL_CUSTOM_TOKENS = ("✦",)
+EL_STRUCTURAL_TOKENS = tuple(dict.fromkeys(EL_RELATION_TOKENS + EL_STATE_TOKENS + EL_FLOW_TOKENS + EL_CUSTOM_TOKENS))
+
+
+@dataclass(frozen=True, slots=True)
+class TokenAuthoritySnapshot:
+    emoji_version: str
+    official_emoji_count: int
+    structural_token_count: int
+    custom_non_rgi_count: int
+    reserved_model_token_count: int
+    atomic_el_token_count: int
+    english_lemma_count: int
+    wordnet_available: bool
+
+    def render_el_status(self) -> str:
+        return f"✅🔤🌐{self.official_emoji_count}📖{self.english_lemma_count}"
+
+
+class ELTokenAuthority:
+    """Own tokenizer source inventories without training a tokenizer or neural model."""
+
+    def __init__(self) -> None:
+        self.lexical = _lexical.resolver()
+        self._emoji = tuple(self.lexical.emoji.units)
+        self._emoji_set = frozenset(self._emoji)
+        self._custom = tuple(token for token in EL_STRUCTURAL_TOKENS if token not in self._emoji_set)
+        self._atomic_el = tuple(dict.fromkeys(self._emoji + self._custom))
+
+    @property
+    def atomic_emoji_tokens(self) -> tuple[str, ...]:
+        return self._emoji
+
+    @property
+    def atomic_el_tokens(self) -> tuple[str, ...]:
+        return self._atomic_el
+
+    @property
+    def structural_tokens(self) -> tuple[str, ...]:
+        return EL_STRUCTURAL_TOKENS
+
+    @property
+    def model_special_tokens(self) -> tuple[str, ...]:
+        return MODEL_SPECIAL_TOKENS
+
+    def is_atomic_el(self, token: str) -> bool:
+        return token in self._atomic_el
+
+    def iter_english_lemmas(self):
+        """Yield unique released lexical lemmas for future byte-BPE corpus building."""
+        seen: set[str] = set()
+        for pos in ("n", "v", "a", "r"):
+            for lemma in self.lexical.wordnet.index.get(pos, {}):
+                if lemma and lemma not in seen:
+                    seen.add(lemma)
+                    yield lemma
+
+    def snapshot(self) -> TokenAuthoritySnapshot:
+        english_count = sum(1 for _ in self.iter_english_lemmas()) if self.lexical.wordnet.available else 0
+        return TokenAuthoritySnapshot(
+            emoji_version=str(self.lexical.emoji.version),
+            official_emoji_count=len(self._emoji),
+            structural_token_count=len(EL_STRUCTURAL_TOKENS),
+            custom_non_rgi_count=len(self._custom),
+            reserved_model_token_count=len(MODEL_SPECIAL_TOKENS),
+            atomic_el_token_count=len(self._atomic_el),
+            english_lemma_count=english_count,
+            wordnet_available=bool(self.lexical.wordnet.available),
+        )
+
+    def render_el_status(self) -> str:
+        return self.snapshot().render_el_status()
