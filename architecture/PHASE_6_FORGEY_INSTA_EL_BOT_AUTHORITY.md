@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 LOCKED PLAN — STEP 1 PASS / STEP 2 PASS+MERGED / STEP 3 IMPLEMENTATION AUTHORIZED / STEPS 4–5 PAUSED
+**Status:** 🔒 LOCKED PLAN — STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS / STEP 4 PAUSED / STEP 5 PAUSED
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -59,7 +59,7 @@ Permanent boundaries:
 
 ## Model authority
 
-The implemented G0/G1 model is one bidirectional encoder-decoder Transformer with `<ABC_TO_EL>` and `<EL_TO_ABC>` direction controls, 128 model width, 4 attention heads, 3 encoder layers, 3 decoder layers, 384 feed-forward width, 128-token context, shared/tied vocabulary weights, random initialization, and no pretrained semantic weights. The trainable parameter count is derived from the actual tensor graph and must remain inside the owner-locked approximately 1–3 million target unless a later separately approved architecture change says otherwise.
+The implemented Forgey Insta model family is one bidirectional encoder-decoder Transformer with `<ABC_TO_EL>` and `<EL_TO_ABC>` direction controls, 128 model width, 4 attention heads, 3 encoder layers, 3 decoder layers, 384 feed-forward width, 128-token context, shared/tied vocabulary weights, random initialization, and no pretrained semantic weights. The trainable parameter count is derived from the actual tensor graph and must remain inside the owner-locked approximately 1–3 million target unless a later separately approved architecture change says otherwise.
 
 ## Step 1 — Knowledge Foundation ✅ PASS / MERGED
 
@@ -85,27 +85,25 @@ Step-2 merge commit: `cc49045e8933d43aae285add3ade480fe64e9a89`.
 
 Observed Step-2 evidence included 1,788,672 trainable parameters, measured 4,536-token model vocabulary with 320 BPE merges, broad training loss 6.7869→4.1417, final frozen-benchmark loss materially below G0, 8/8 trusted rehearsal probes, exact fresh-process `rocket → 🚀` and `🚀 → rocket`, provider calls 0, Phase 2 PASS, Phase 3 PASS, and 44/44 diagnostics PASS. These are evidence, not runtime constants.
 
-## Step 3 — Teacher + Learning System 🔥 AUTHORIZED
+## Step 3 — Teacher + Learning System ✅ PASS
 
-Step 3 is the **only implementation currently authorized**.
+Step 3 is implemented on its verified branch and remains unmerged until owner approval.
 
 ### Teacher lesson boundary
 
-A teacher lesson may be requested only through the existing provider-neutral connector boundary. The temporary provider is Ollama `qwen2.5vl:7b`.
+A teacher lesson is requested only through the existing provider-neutral `🔌` boundary. The temporary provider is Ollama `qwen2.5vl:7b`.
 
-Qwen may supply **semantic evidence only**. It may not supply authoritative EL output. Raw provider prose must be reduced to a strict structured lesson before it crosses the connector boundary.
+Qwen supplies **semantic evidence only**. It does not supply authoritative EL output. Provider output is reduced to a strict bounded structured lesson before admission. Positive training truth requires an EL target independently anchored by trusted Step-1/Step-2 authority; rejected provider output becomes negative evidence only.
 
-A provider lesson is eligible for positive training truth only after deterministic admission proves:
-1. the provider was actually called and the provider/model identity is recorded;
-2. the lesson schema is exact and bounded;
-3. the semantic definition contains no EL/emoji output;
-4. the source case is not from the frozen Step-2 benchmark;
-5. the deterministic target is independently derived/declared by trusted Step-1/Step-2 authority, never copied from provider prose;
-6. provenance and trust evidence are persisted;
-7. deterministic validation accepts the target/relationship;
-8. no rejected provider lesson or unverified self-output is admitted as positive truth.
-
-Rejected provider output becomes negative evidence only.
+The verified teacher admission path proves:
+1. actual provider invocation and provider/model identity evidence;
+2. exact bounded lesson schema;
+3. semantic definition without provider-authored EL;
+4. frozen Step-2 benchmark exclusion;
+5. independent trusted EL target authority;
+6. provenance/trust persistence;
+7. deterministic admission/rejection;
+8. rejected provider output and unverified self-output never become positive neural truth.
 
 ### Generation lifecycle
 
@@ -124,34 +122,52 @@ train isolated candidate generation
 + 🧾 deterministic validation
   ↓
 measurably better AND no protected regression?
-  ├─ YES → promotion decision may advance production generation pointer
-  └─ NO  → reject candidate; keep current production generation
+  ├─ YES → promote generation pointer
+  └─ NO  → reject candidate; keep production generation
 ```
 
-Production weights never mutate in place. Every candidate has an immutable generation ID, parent generation, model hash, tokenizer hash, lesson/replay fingerprint, metrics, and decision evidence.
+Production weights never mutate in place. Every generation carries immutable lineage and artifact evidence. Previous verified generations remain rollback targets, and rollback changes the selected pointer to an already-verified exact-hash artifact rather than retraining or rewriting old weights.
 
-Previous passing generations remain available for rollback. Rollback changes the generation pointer to an already-verified prior artifact; it does not retrain or rewrite old weights.
+### Verified candidate evidence
 
-### Step-3 required proof
+Candidate head: `35e85a898f0c2e5359f905342498f6fa06616bd4`.
 
-Step 3 must implement and prove:
-- teacher lesson coordinator under existing Instructor ownership, not engine #45;
-- actual Qwen/Ollama teacher invocation through `🔌` with provider identity/evidence;
-- strict semantic-only lesson parsing and deterministic admission/rejection;
-- positive/negative evidence persistence through existing provenance/trust learning infrastructure;
-- versioned replay dataset with frozen-benchmark exclusion and no self-output truth;
-- isolated G2 candidate training from G1 + admitted evidence + protected replay;
-- immutable generation registry with hashes and parent linkage;
-- deterministic promotion policy requiring measurable improvement and protected non-regression;
-- deterministic rejection path that leaves production untouched;
-- rollback proof restoring a prior verified generation pointer/hash;
-- fresh-process local inference from the selected generation;
-- Step-1 + Step-2 + Phase-2 + Phase-3 + 44/44 regression gates.
+Exact candidate workflows on that SHA:
+- Step-1 regression run #40 / ID `32182064506`: SUCCESS;
+- Step-2 regression run #24 / ID `32182064458`: SUCCESS;
+- Step-3 teacher/learning run #15 / ID `32182064476`: SUCCESS.
+
+Observed Step-3 run #15 evidence:
+- Qwen teacher: Ollama `qwen2.5vl:7b`, reachable and present;
+- teacher calls: 5;
+- deterministically admitted lessons: 3;
+- rejected/negative lessons: 2;
+- provider-authored EL positive truth: 0;
+- unverified self-output positive truth: 0;
+- frozen benchmark training overlap: 0;
+- G1→G2 teacher exactness: 0/3 → 3/3;
+- G1→G2 teacher token loss: 4.4057 → 0.0990;
+- frozen benchmark: 4.8178 → 4.5608;
+- protected Step-2 probes: 8/8;
+- admitted teacher round-trip: 3/3;
+- protected reverse teacher replay: 3/3;
+- real measured promotion: G1 → G2;
+- rejection-policy fixture: deterministic validation failure correctly rejected without moving the production pointer;
+- rollback: G2 → G1 → G2 with exact artifact-hash verification;
+- selected-generation fresh-process `vehicle powered by pedals with two wheels → 🚲`: exact;
+- selected-generation fresh-process `🚲 → bicycle`: exact;
+- Phase 2: PASS;
+- Phase 3: PASS;
+- diagnostics: 44/44 PASS;
+- Step 4: ABSENT;
+- Step 5: ABSENT.
+
+These numbers are historical evidence, not runtime constants. The generation registry and promotion policy operate on the actual measured artifacts, hashes, replay fingerprints, and metrics produced by each run.
 
 ### Explicitly NOT Step 3
 
-Step 3 must not implement:
-- Forgey-Insta-first production translation routing;
+Step 3 does not implement:
+- Forgey-Insta-first user translation routing;
 - hidden/admin console runtime;
 - normal user-facing teacher invocation;
 - packaging, installer, updater, or Phase-6 release publishing.
@@ -162,7 +178,7 @@ Those remain Steps 4–5.
 
 1. 📚 **Knowledge Foundation** — ✅ PASS / MERGED.
 2. 🧠 **Forgey Insta G0/G1** — ✅ PASS / MERGED.
-3. 🦙 **Teacher + Learning System** — 🔥 **CURRENTLY AUTHORIZED**.
+3. 🦙 **Teacher + Learning System** — ✅ **PASS ON VERIFIED BRANCH; awaiting owner merge approval**.
 4. ⚡ **Primary Runtime + Hidden Console Integration** — **PAUSED**.
 5. 🧪 **Proof, Packaging & Release** — **PAUSED**.
 
@@ -172,4 +188,4 @@ Phase 6 cannot be marked PASS merely because a model exists. Final evidence must
 
 ## Current implementation gate
 
-**Step 3 only is authorized. Steps 4–5 remain implementation-paused until separately approved by the owner.**
+**Step 3 is PASS on its verified branch. Step 4 remains implementation-paused until separately approved by the owner.**
