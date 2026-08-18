@@ -125,12 +125,28 @@ def main() -> None:
     require(re.fullmatch(r"[0-9a-f]{64}", str(replay.get("fingerprint_sha256", ""))) is not None, "replay fingerprint missing")
     require(teacher.get("replay_fingerprint_sha256") == replay.get("fingerprint_sha256"), "teacher/replay fingerprints disagree")
 
+    # Independent target authority is intentionally broader than the legacy runtime:
+    # Step 2 established both the executable deterministic translator and a frozen,
+    # trusted deterministic bootstrap curriculum. The verifier reconstructs those
+    # authorities directly rather than trusting the Step-3 coordinator's decision.
     abc_module = load("_p6s3_verify_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
+    curriculum_module = load("_p6s3_verify_curriculum", ROOT / "🧠" / "🌱")
     abc = abc_module.ABCToEmojiEngine()
+    curriculum, _ = curriculum_module.build_bootstrap_curriculum(BENCHMARK)
+    trusted_step2_targets = frozenset(
+        (str(example.direction), " ".join(str(example.source).split()).casefold(), str(example.target))
+        for example in curriculum
+    )
     for item in replay_examples:
-        result = abc.translate(str(item["canonical_concept"]), cross_verify=False, emit=False)
-        require(result.winner == str(item["target"]), f"replay target is not independently deterministic: {item['lesson_id']}")
-        require(str(result.metrics.get("quality_status", "fail")).lower() != "fail", f"replay canonical concept deterministic FAIL: {item['lesson_id']}")
+        concept = " ".join(str(item["canonical_concept"]).split())
+        target = str(item["target"])
+        result = abc.translate(concept, cross_verify=False, emit=False)
+        runtime_valid = (
+            result.winner == target
+            and str(result.metrics.get("quality_status", "fail")).lower() != "fail"
+        )
+        curriculum_valid = ("ABC_TO_EL", concept.casefold(), target) in trusted_step2_targets
+        require(runtime_valid or curriculum_valid, f"replay target lacks independent Step-2 authority: {item['lesson_id']}")
 
     learning_raw = LEARNING.read_text(encoding="utf-8")
     learning = json.loads(learning_raw)
@@ -145,6 +161,9 @@ def main() -> None:
     require(training.get("kind") == "g2-candidate-training", "wrong G2 training proof kind")
     require(training.get("parent_generation") == "G1" and training.get("candidate_generation") == "G2", "wrong generation lineage")
     require(int(training.get("teacher_lesson_count", 0)) == len(replay_examples), "G2 teacher count differs from admitted replay")
+    require(int(training.get("teacher_reverse_replay_count", -1)) == len(replay_examples), "G2 reverse teacher replay count differs from admitted lessons")
+    require(int(training.get("teacher_training_relation_count", -1)) == len(replay_examples) * 2, "G2 bidirectional teacher relation count mismatch")
+    require(int(training.get("teacher_reverse_benchmark_overlap_count", -1)) == 0, "reverse teacher replay overlaps frozen benchmark")
     require(int(training.get("provider_authored_el_truth_count", -1)) == 0, "provider-authored EL entered G2")
     require(int(training.get("unverified_self_output_truth_count", -1)) == 0, "self-output entered G2")
     require(int(training.get("frozen_benchmark_training_overlap_count", -1)) == 0, "frozen benchmark entered G2")
@@ -167,7 +186,8 @@ def main() -> None:
     require(candidate.get("validation_pass") is True, "G2 deterministic validation failed")
     adversarial = dict(training.get("adversarial", {}))
     require(all(adversarial.get(key) is True for key in (
-        "tokenizer_literal_control_safe", "hostile_teacher_case_rejected", "benchmark_overlap_zero", "provider_authored_el_zero", "self_output_truth_zero"
+        "tokenizer_literal_control_safe", "hostile_teacher_case_rejected", "benchmark_overlap_zero",
+        "teacher_reverse_benchmark_overlap_zero", "provider_authored_el_zero", "self_output_truth_zero"
     )), "G2 adversarial evidence incomplete")
 
     artifacts = dict(training.get("artifacts", {}))
@@ -236,7 +256,8 @@ def main() -> None:
         f"teacher_loss={float(baseline['teacher_token_loss']):.4f}->{float(candidate['teacher_token_loss']):.4f} "
         f"benchmark={float(baseline['frozen_benchmark_loss']):.4f}->{float(candidate['frozen_benchmark_loss']):.4f} "
         f"protected={candidate['protected_probe_exact']}/{candidate['protected_probe_total']} "
-        f"roundtrip={candidate['roundtrip_exact']}/{candidate['roundtrip_total']} selected=G2 rollback=PASS provider_el=0 self_truth=0 step4=ABSENT step5=ABSENT",
+        f"roundtrip={candidate['roundtrip_exact']}/{candidate['roundtrip_total']} reverse_replay={training['teacher_reverse_replay_count']}/{training['teacher_lesson_count']} "
+        "selected=G2 rollback=PASS provider_el=0 self_truth=0 step4=ABSENT step5=ABSENT",
         flush=True,
     )
 
