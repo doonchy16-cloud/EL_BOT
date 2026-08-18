@@ -1,5 +1,10 @@
-"""Canonical 501-symbol Emoji Language authority plus explicit Owner compounds."""
+"""Emoji Language symbol authority.
 
+Phase 6 removes the historical fixed-size vocabulary ceiling. The original semantic
+seed remains available for stable meanings/control symbols, while every RGI emoji
+present in the official Unicode emoji-test dataset is accepted as a first-class EL
+symbol. Public emoji counts come from that dataset, never from a magic constant.
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from importlib.machinery import SourceFileLoader
@@ -24,18 +29,45 @@ def _load(name: str, path: Path):
 _ROOT = Path(__file__).resolve().parent.parent
 _core = _load("_el_core", _ROOT / "⚙️" / "⚙️")
 _compounds = _load("_el_compounds", _ROOT / "📚" / "🧩")
+_lexical = _load("_el_lexical_vocab", _ROOT / "📚" / "📖")
 ParseResult = _core.ParseResult
 Token = _core.Token
 TokenKind = _core.TokenKind
 ValidationStatus = _core.ValidationStatus
 
-_CANONICAL_SYMBOL_STREAM = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭🦙"
-CANONICAL_SYMBOLS: tuple[str, ...] = _core.split_graphemes(_CANONICAL_SYMBOL_STREAM)
+# Historical semantic seed. Its size is deliberately NOT a product limit or public
+# emoji count. Existing engine meanings continue to use this stable order.
+_SEMANTIC_SEED_STREAM = "🔥⚙️🖥️🤖🧠📡🧪🧯🔌🧾🛡️💾🚀🔒✅🪪🖱️📸👁️📗❌🔍🔐🏁📚🕵️🔁✦⚪🔵🟢🟡🔴🟣🎛️🎞️🔔🧩🗃️🧱🧰🌐📜📋📎🧷🧹🧭⏱️📈🧬🧵⭐🏆💎👑🎯🥇💡🛠️🔧🔨🏗️🧑‍💻🧑‍🏫🧑‍🔬🧑‍⚖️🧿🛰️📶🔗⛓️🪢🕸️🚦🚧⚠️‼️❗❓⁉️🆘🛑⛔📴🟰➕➖✏️📝📄📑🗂️📂🗄️🗑️🕰️🆕♻️🔄⬆️⬇️📥📤⬅️➡️🔀🔃⏸️▶️⏹️⏭️⏮️⏳⌛🕒📅🗓️🧮📊📉🎚️🪜🧲💭🗣️💬📨📩✉️📣📢🔕🗯️🎙️🔊🔇🎥🖼️🎨🪄✨🌟💫🌈🎭🖌️📐📏🏛️🗺️🌳🌱🌿🌲🔑🗝️🛂🧑‍🚒🩹❤️‍🩹🪫🔋⚡🐌🧊🌡️💻📱🖨️⌨️🎮🕹️🥽🎧☁️🖧🤝🫱🏻‍🫲🏼🧑‍🤝‍🧑👥👤🧑‍💼🏢🏠🏭🏦💰💵🛒💳📦🎁🚚🧳🚪🛫🛬🎉🥳💥💪🧨☢️🏷️#️⃣🆔🔢🔤🔣🧼🪣🧺📬🚥🔘⚫🟤🩶🩵🩷💜🖤🤍🔶🔷🔸🔹♦️◼️◻️🏅🎖️🥈🥉🎗️🎟️🎫🎬🎤🎼🎵🎶🎹🎸🥁🎻🎺🎷🪗💯💢👍👎👌✌️🤞🤟🤘🤙👈👉👆👇☝️✋🤚🖐️🖖👋👏🙌🫶👐🤲🙏✍️🫂🙋🙆🙅🤷🤦🧑‍🎨🧑‍🔧🧑‍🏭🧑‍🚀🧑‍⚕️🧑‍🌾🧑‍🍳🧑‍🎓🧑‍🎤🧑‍✈️👨‍👩‍👧‍👦👪🦾🦿💼🎓🏫🏥🏪🏬🏨🏡🏘️🏟️🏰🏯🏤🏣💴💶💷🪙💹🏧🪛🔩🪚⚒️⛏️🪓🪤🖲️💽💿📀📼📷📹📺📻📞☎️📟📠🗒️📒📓📔📕📖📘📙📰🗞️📃📇📁🔖📌📍✂️🖇️🖊️🖋️🖍️🔬🔭⚗️🧫🩻🩺💊💉🩸🩼🦽🦼🔓🔏☑️✔️✖️❎❕❔🚨♨️🆗🆒🆙🆓🆖🆚⏯️⏺️⏏️⏩⏪🔂↩️↪️↔️↕️↖️↗️↘️↙️⤴️⤵️🔼🔽🟥🟧🟨🟩🟦🟪🟫⬛⬜🔲🔳▪️▫️◾◽🌍🌎🌏🌞🌝🌚🌙☀️🌤️⛅🌥️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨🌪️🌫️🌊💧💦☔🌂🌋🏔️⛰️🏕️🏖️🏜️🏝️🏞️🚗🚙🚌🚎🏎️🚓🚑🚒🚐🛻🚛🚜🏍️🛵🚲🛴🛹🛼🚁✈️🛩️🚂🚆🚇🚊🚉🚢⛵🛥️🚤🛳️⛽🚏🛣️🛤️👾🎲♟️🃏🎰📧📮📪📫📭🦙"
+SEMANTIC_BASE_SYMBOLS: tuple[str, ...] = _core.split_graphemes(_SEMANTIC_SEED_STREAM)
+if not SEMANTIC_BASE_SYMBOLS or len(set(SEMANTIC_BASE_SYMBOLS)) != len(SEMANTIC_BASE_SYMBOLS):
+    raise RuntimeError("EL semantic seed invariant violated")
 
-if len(CANONICAL_SYMBOLS) != 501 or len(set(CANONICAL_SYMBOLS)) != 501:
-    raise RuntimeError("EL authority invariant violated")
+# Backward-compatible name for engines whose meanings are tied to the semantic seed.
+# New code must not interpret len(CANONICAL_SYMBOLS) as the Unicode emoji count.
+CANONICAL_SYMBOLS = SEMANTIC_BASE_SYMBOLS
+_SEMANTIC_ORDINAL = {symbol: index for index, symbol in enumerate(SEMANTIC_BASE_SYMBOLS, start=1)}
 
-_CANONICAL_ORDINAL = {symbol: index for index, symbol in enumerate(CANONICAL_SYMBOLS, start=1)}
+
+def _official_authority() -> tuple[dict[str, int], int, str]:
+    resolver = _lexical.resolver()
+    mapping = {unit: index for index, unit in enumerate(resolver.emoji.units, start=1)}
+    return mapping, len(mapping), resolver.emoji.version
+
+
+def official_emoji_count() -> int:
+    return _official_authority()[1]
+
+
+def official_emoji_version() -> str:
+    return _official_authority()[2]
+
+
+def is_official_emoji(symbol: str) -> bool:
+    return symbol in _official_authority()[0]
+
+
+def is_valid_el_symbol(symbol: str) -> bool:
+    return symbol in _SEMANTIC_ORDINAL or is_official_emoji(symbol)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,12 +110,15 @@ class VocabularyEngine:
             raise TypeError("parsed must be a ParseResult")
 
         compound_meaning = _compounds.lookup_compound(parsed.source)
+        official, _, _ = _official_authority()
         resolved: list[SymbolAuthority] = []
         unknown_emoji: list[Token] = []
         for token in parsed.tokens:
-            ordinal = _CANONICAL_ORDINAL.get(token.text)
+            ordinal = _SEMANTIC_ORDINAL.get(token.text)
             if ordinal is not None:
                 resolved.append(SymbolAuthority(token.text, ordinal))
+            elif token.text in official:
+                resolved.append(SymbolAuthority(token.text, len(SEMANTIC_BASE_SYMBOLS) + official[token.text]))
             elif token.kind is TokenKind.EMOJI:
                 unknown_emoji.append(token)
 
@@ -99,20 +134,18 @@ class VocabularyEngine:
         else:
             status = ValidationStatus.PASS
 
-        return VocabularyResult(
-            parsed,
-            tuple(resolved),
-            tuple(unknown_emoji),
-            status,
-            compound_meaning,
-        )
+        return VocabularyResult(parsed, tuple(resolved), tuple(unknown_emoji), status, compound_meaning)
 
     @staticmethod
     def lookup(symbol: str) -> SymbolAuthority | None:
-        ordinal = _CANONICAL_ORDINAL.get(symbol)
-        if ordinal is None:
+        ordinal = _SEMANTIC_ORDINAL.get(symbol)
+        if ordinal is not None:
+            return SymbolAuthority(symbol, ordinal)
+        official, _, _ = _official_authority()
+        official_ordinal = official.get(symbol)
+        if official_ordinal is None:
             return None
-        return SymbolAuthority(symbol, ordinal)
+        return SymbolAuthority(symbol, len(SEMANTIC_BASE_SYMBOLS) + official_ordinal)
 
     @staticmethod
     def lookup_compound(source: str) -> str | None:
