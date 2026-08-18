@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 LOCKED PLAN — STEP 1 IMPLEMENTATION AUTHORIZED
+**Status:** 🔒 LOCKED PLAN — STEP 1 PASS / STEP 2 IMPLEMENTATION AUTHORIZED
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -71,11 +71,9 @@ From scratch means:
 
 The locked G0 design direction is a small bidirectional encoder-decoder Transformer using direction tokens for ABC→EL and EL→ABC, approximately 128-dimensional embeddings, 4 attention heads, 3 encoder layers, 3 decoder layers, a roughly 384–512 feed-forward width, and an initial context target around 128 tokens. The exact derived parameter count is recorded from the implemented architecture rather than hard-coded.
 
-## Knowledge foundation — Step 1
+## Knowledge foundation — Step 1 ✅ PASS
 
-Step 1 is the **only implementation currently authorized**.
-
-It establishes:
+Step 1 is merged into `main` and established:
 - released official Unicode Emoji data as the emoji inventory/name/sequence authority;
 - a dataset-derived emoji count, with no fixed historical product ceiling;
 - Open English WordNet 2025+ as a broad released English lexical/sense/morphology/taxonomy foundation;
@@ -84,9 +82,28 @@ It establishes:
 - the historical semantic symbol set retained only as backward-compatible meanings/order for old engines, never as the public vocabulary or emoji count;
 - truthful product-facing knowledge status.
 
-Step 1 must not implement the neural model, Qwen teaching/training loop, Forgey-first runtime routing, hidden admin runtime, packaging, or Phase-6 release.
+Step 1 merge commit: `902a79fec235f77c1bf3b4c7edf82b9a0127b900`.
 
-## Learning authority for later Steps 2–3
+## Forgey Insta G0/G1 — Step 2 🔥 AUTHORIZED
+
+Step 2 is the **only implementation currently authorized**.
+
+It must implement and prove:
+- the locked G0 encoder-decoder Transformer architecture from random initialization;
+- one shared bidirectional model controlled by `<ABC_TO_EL>` and `<EL_TO_ABC>`;
+- from-scratch byte-level BPE for English using the Step-1 tokenizer-source authority;
+- atomic official emoji/EL structural tokens with no Unicode-codepoint splitting;
+- measured tokenizer vocabulary selection rather than a magic size;
+- an initial trusted bootstrap curriculum with no Qwen/provider-generated training truth;
+- a frozen held-out benchmark excluded from training/replay;
+- a reproducibly trained G1 candidate;
+- local checkpoint reload and local inference in both directions;
+- real derived parameter count in the locked approximately 1–3 million target;
+- Step-1/Phase-2/Phase-3/44-engine compatibility.
+
+Step 2 must **not** implement teacher/Qwen lesson ingestion, generation promotion/rollback policy, Forgey-first production routing, hidden admin runtime, packaging, or Phase-6 release publishing.
+
+## Learning authority for later Step 3
 
 Forgey Insta is intended to keep learning when useful evidence appears, but production weights must never mutate blindly after every prediction.
 
@@ -110,8 +127,8 @@ Unverified self-predictions and rejected teacher outputs cannot become positive 
 
 ## Five-step Phase-6 implementation plan
 
-1. 📚 **Knowledge Foundation** — CURRENTLY AUTHORIZED.
-2. 🧠 **Forgey Insta G0/G1** — model, tokenizer, initial curriculum, local inference. PAUSED.
+1. 📚 **Knowledge Foundation** — ✅ PASS / MERGED.
+2. 🧠 **Forgey Insta G0/G1** — 🔥 CURRENTLY AUTHORIZED: model, tokenizer, initial curriculum, local inference.
 3. 🦙 **Teacher + Learning System** — validated Qwen lessons, training evidence, generations/promotion. PAUSED.
 4. ⚡ **Primary Runtime + Hidden Console Integration** — Forgey-first semantic routing and protected admin console. PAUSED.
 5. 🧪 **Proof, Packaging & Release** — full regression, package smoke, exact-final-SHA CI/release. PAUSED.
@@ -122,4 +139,4 @@ Phase 6 cannot be marked PASS merely because a model exists. Final evidence must
 
 ## Current implementation gate
 
-**Only Step 1 is authorized. Steps 2–5 remain implementation-paused until separately approved by the owner.**
+**Step 2 only is authorized. Steps 3–5 remain implementation-paused until separately approved by the owner.**
