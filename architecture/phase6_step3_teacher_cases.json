@@ -9,7 +9,7 @@
     {
       "id": "teacher-photo-device",
       "direction": "ABC_TO_EL",
-      "source": "device used to take photographs",
+      "source": "photo camera",
       "canonical_concept": "camera",
       "trusted_target": "📷",
       "semantic_terms_any": ["camera", "photograph", "photo"],
@@ -18,10 +18,10 @@
     {
       "id": "teacher-space-launch",
       "direction": "ABC_TO_EL",
-      "source": "vehicle launched into space",
+      "source": "rocket ship",
       "canonical_concept": "rocket",
       "trusted_target": "🚀",
-      "semantic_terms_any": ["rocket", "spacecraft", "launch"],
+      "semantic_terms_any": ["rocket", "spacecraft", "ship"],
       "training_eligible": true
     },
     {
