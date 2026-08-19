@@ -1,0 +1,163 @@
+name: "🚀 Phase 6 Step 5 Proof + Packaging + Release"
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "phase6-step5-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  step5:
+    name: "🚀📦 Forgey Windows Release Gate"
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 140
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: "🐍 Python 3.12"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe'
+          if(-not(Test-Path $exe)){$zip=Join-Path $env:RUNNER_TEMP 'python.zip';New-Item -ItemType Directory -Force -Path $dir|Out-Null;Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip;Expand-Archive $zip $dir -Force}
+          $pth=Join-Path $dir 'python312._pth';if(Test-Path $pth){$t=Get-Content $pth -Raw;if($t -match '#import site'){$t=$t -replace '#import site','import site';[IO.File]::WriteAllText($pth,$t,[Text.UTF8Encoding]::new($false))}}
+          & $exe -c "import sys;assert sys.version_info[:2]==(3,12);print(sys.version)"
+          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: "📖 Materialize knowledge"
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-step1-knowledge.ps1'
+
+      - name: "🔥 PyTorch 2.13 CPU for build-time training"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';$marker=Join-Path $torchDir '.ready'
+          if(-not(Test-Path $marker)){if(Test-Path $torchDir){Remove-Item $torchDir -Recurse -Force};New-Item -ItemType Directory -Force -Path $torchDir|Out-Null;$pipDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPip';$pipz=Join-Path $pipDir 'pip.pyz';New-Item -ItemType Directory -Force -Path $pipDir|Out-Null;if(-not(Test-Path $pipz)){Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/pip/pip.pyz' -OutFile $pipz};& $env:EL_PYTHON $pipz install --disable-pip-version-check --only-binary=:all: --target $torchDir -r 'requirements-phase6-step2.txt';if($LASTEXITCODE-ne 0){throw 'TORCH_INSTALL_FAILED'};Set-Content $marker 'ready' -Encoding ASCII}
+          $pyDir=Split-Path -Parent $env:EL_PYTHON;$pth=Join-Path $pyDir 'python312._pth';$lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false));& $env:EL_PYTHON -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
+
+      - name: "🧠 Reconstruct verified G1"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$step2=Join-Path (Get-Location) 'data\phase6-step2'
+          & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output $step2 --steps 480 --batch-size 28;if($LASTEXITCODE-ne 0){throw 'G1_TRAIN_FAILED'}
+          & $env:EL_PYTHON 'scripts\phase6-step2-rehearse-g1.py' --artifact-dir $step2 --steps 240 --batch-size 32;if($LASTEXITCODE-ne 0){throw 'G1_REHEARSE_FAILED'}
+
+      - name: "🦙 Reconstruct teacher + verified G2"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$step2=Join-Path (Get-Location) 'data\phase6-step2';$step3=Join-Path (Get-Location) 'data\phase6-step3'
+          & $env:EL_PYTHON 'scripts\phase6-step3-teach.py' --output $step3;if($LASTEXITCODE-ne 0){throw 'TEACH_FAILED'}
+          & $env:EL_PYTHON 'scripts\phase6-step3-train-g2.py' --step2-artifact $step2 --step3-artifact $step3 --steps 360 --batch-size 40;if($LASTEXITCODE-ne 0){throw 'G2_TRAIN_FAILED'}
+          & $env:EL_PYTHON 'scripts\phase6-step3-promote.py' --step2-artifact $step2 --step3-artifact $step3;if($LASTEXITCODE-ne 0){throw 'G2_PROMOTE_FAILED'}
+          $bicycle=[char]::ConvertFromUtf32(0x1F6B2);$registry=Join-Path $step3 'generation-registry.json'
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'ABC_TO_EL' --text 'vehicle powered by pedals with two wheels' --expected $bicycle --evidence (Join-Path $step3 'infer-selected-forward.json');if($LASTEXITCODE-ne 0){throw 'G2_FORWARD_EVIDENCE_FAILED'}
+          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'EL_TO_ABC' --text $bicycle --expected 'bicycle' --evidence (Join-Path $step3 'infer-selected-reverse.json');if($LASTEXITCODE-ne 0){throw 'G2_REVERSE_EVIDENCE_FAILED'}
+
+      - name: "🧪 Step 3 regression"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step3_teacher_learning.py';if($LASTEXITCODE-ne 0){throw 'STEP3_REGRESSION_FAILED'}
+
+      - name: "📦 Node/Electron dependencies"
+        shell: powershell
+        run: npm install --no-audit --no-fund
+
+      - name: "⚡ Step 4 runtime/status/auth/console regression"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path
+          node 'scripts\phase6-step4-runtime-proof.js';if($LASTEXITCODE-ne 0){throw 'STEP4_RUNTIME_PROOF_FAILED'}
+          node 'scripts\phase6-step4-status-proof.js';if($LASTEXITCODE-ne 0){throw 'STEP4_STATUS_PROOF_FAILED'}
+          node 'scripts\phase6-step4-auth-proof.js' 'data\phase6-step4\auth-proof.json';if($LASTEXITCODE-ne 0){throw 'STEP4_AUTH_PROOF_FAILED'}
+          & '.\node_modules\.bin\electron.cmd' 'scripts\phase6-step4-console-proof.js' 'data\phase6-step4\console-proof.json';if($LASTEXITCODE-ne 0){throw 'STEP4_CONSOLE_PROOF_FAILED'}
+          & $env:EL_PYTHON 'architecture\verify_phase6_step4_runtime_console.py';if($LASTEXITCODE-ne 0){throw 'STEP4_AUTHORITY_FAILED'}
+
+      - name: "📸🎞️ Phase 5 real-rendered visual regression"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          npm run proof:visual
+          $proof=Get-Content -LiteralPath 'proof\phase5\proof.json' -Raw -Encoding UTF8|ConvertFrom-Json
+          $angles=$proof.sampled_angles_degrees
+          if($proof.fps-ne 30 -or $proof.rendered_frames-ne 168 -or [math]::Abs([double]$angles.start)-gt 1.5 -or [math]::Abs([double]$angles.inverted-180.0)-gt 2.0 -or [math]::Abs([double]$angles.returned)-gt 2.0){throw 'Phase-5 rendered visual contract failed'}
+          if(-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered){throw 'Phase-5 warning/zoom proof failed'}
+
+      - name: "📦🧠 Materialize relocatable G1/G2 runtime"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'scripts\materialize-phase6-runtime.py';if($LASTEXITCODE-ne 0){throw 'PHASE6_RUNTIME_MATERIALIZE_FAILED'}
+          $env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path
+          node 'scripts\phase6-step4-runtime-proof.js';if($LASTEXITCODE-ne 0){throw 'PORTABLE_REGISTRY_RUNTIME_FAILED'}
+
+      - name: "🐍🔥 Materialize embedded Python + Torch"
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-python.ps1'
+          if($LASTEXITCODE-ne 0){throw 'PHASE6_EMBEDDED_RUNTIME_FAILED'}
+          & '.\python\python.exe' -c "import sys,torch;assert sys.version_info[:2]==(3,12);assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
+
+      - name: "🧪 Step 5 static authority"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step5_release.py';if($LASTEXITCODE-ne 0){throw 'STEP5_AUTHORITY_FAILED'}
+
+      - name: "9️⃣📦🪟 Build Setup + Portable"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          npm run build:windows
+          if(-not(Test-Path -LiteralPath 'dist\win-unpacked\EL-Bot.exe')){throw 'unpacked packaged executable missing'}
+          if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.6.0-x64.exe')){throw 'Phase-6 NSIS installer missing'}
+          if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.6.0-x64.exe')){throw 'Phase-6 portable executable missing'}
+          $app='dist\win-unpacked\resources\app'
+          foreach($required in @('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','architecture\phase6_step4_runtime_console_manifest.json')){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
+
+      - name: "🧪📦🖥️ Existing packaged UI/Python smoke"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $smoke=Join-Path $env:RUNNER_TEMP 'el-bot-package-smoke.json';Remove-Item -LiteralPath $smoke -Force -ErrorAction SilentlyContinue
+          $env:EL_PACKAGE_SMOKE_FILE=$smoke;Remove-Item Env:EL_PYTHON -ErrorAction SilentlyContinue
+          $process=Start-Process -FilePath (Resolve-Path 'dist\win-unpacked\EL-Bot.exe') -PassThru
+          if(-not $process.WaitForExit(120000)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;throw 'packaged UI smoke timed out'}
+          if($process.ExitCode-ne 0){throw "packaged UI smoke exit $($process.ExitCode)"}
+          if(-not(Test-Path -LiteralPath $smoke)){throw 'packaged UI smoke evidence missing'}
+          $e=Get-Content -LiteralPath $smoke -Raw -Encoding UTF8|ConvertFrom-Json
+          if(-not $e.app_is_packaged -or -not $e.rendered -or -not $e.polished -or -not $e.bundled_python -or -not $e.python_exec){throw 'packaged UI/Python smoke failed'}
+          Copy-Item -LiteralPath $smoke -Destination 'dist\package-smoke.json' -Force
+
+      - name: "🧠📦 Real packaged Forgey G2 proof"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'scripts\phase6-step5-package-forgey-proof.py';if($LASTEXITCODE-ne 0){throw 'PACKAGED_FORGEY_PROOF_FAILED'}
+          $p=Get-Content -LiteralPath 'dist\phase6-package-forgey-proof.json' -Raw -Encoding UTF8|ConvertFrom-Json
+          if($p.selected_generation-ne 'G2' -or $p.forward_provider_calls-ne 0 -or $p.reverse_provider_calls-ne 0 -or $p.diagnostics-ne '44/44'){throw 'packaged Forgey evidence contract failed'}
+
+      - name: "🧪 Phase 2 + Phase 3 + 44/44 final regression"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase2_knowledge_foundation.py';if($LASTEXITCODE-ne 0){throw 'PHASE2_FAILED'};& $env:EL_PYTHON 'architecture\verify_phase3_semantic_search.py';if($LASTEXITCODE-ne 0){throw 'PHASE3_FAILED'};& $env:EL_PYTHON -c "import importlib.machinery,importlib.util,pathlib,sys;root=pathlib.Path('.');a=chr(0x1F9EA);p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a);l=importlib.machinery.SourceFileLoader('_p6s5_diag',str(p));s=importlib.util.spec_from_loader('_p6s5_diag',l);m=importlib.util.module_from_spec(s);sys.modules['_p6s5_diag']=m;l.exec_module(m);r=m.DiagnosticsEngine().run();print(r.render_el());assert r.passed and len(r.checks)==44"
+
+      - name: "🚀 Publish exact-main Phase 6 release"
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\publish-phase6-release.ps1'
+          if($LASTEXITCODE-ne 0){throw 'PHASE6_RELEASE_PUBLISH_FAILED'}
