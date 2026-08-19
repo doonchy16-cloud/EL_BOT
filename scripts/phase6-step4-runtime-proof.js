@@ -14,11 +14,13 @@ if (!fs.existsSync(python)) throw new Error('EL_PYTHON does not exist');
 if (!registry || !fs.existsSync(registry)) throw new Error('EL_FORGEY_REGISTRY is required');
 if (!fs.existsSync(launcher)) throw new Error('Step-4 runtime launcher is missing');
 
-function semanticFold(value) {
+function conceptFold(value) {
   return Array.from(String(value || '').normalize('NFKC'))
     .filter((char) => !/\p{Cf}/u.test(char))
     .join('')
     .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/[.!?]+$/u, '')
     .trim()
     .toLocaleLowerCase('en-US');
 }
@@ -26,7 +28,7 @@ function codePoints(value) {
   return Array.from(String(value || '')).map((char) => `U+${char.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')}`).join(' ');
 }
 
-function infer(input, expectedWinner, evidenceName, { caseInsensitive = false } = {}) {
+function infer(input, expectedWinner, evidenceName, { conceptExact = false } = {}) {
   const run = spawnSync(python, [launcher, '🔀'], {
     cwd: ROOT,
     input,
@@ -44,10 +46,11 @@ function infer(input, expectedWinner, evidenceName, { caseInsensitive = false } 
   catch (error) { throw new Error(`runtime JSON parse failed: ${error.message}`); }
   const metrics = payload && payload.metrics || {};
   const winner = String(payload && payload.winner || '');
-  const winnerMatches = caseInsensitive ? semanticFold(winner) === semanticFold(expectedWinner) : winner === expectedWinner;
+  const winnerMatches = conceptExact ? conceptFold(winner) === conceptFold(expectedWinner) : winner === expectedWinner;
   if (!winnerMatches) {
     throw new Error(`winner mismatch: expected ${JSON.stringify(expectedWinner)} [${codePoints(expectedWinner)}], got ${JSON.stringify(winner)} [${codePoints(winner)}]`);
   }
+  if (conceptExact && Number(metrics.roundtrip) !== 1) throw new Error(`reverse concept matched but deterministic round-trip was not exact: ${metrics.roundtrip}`);
   if (metrics.forgey_primary_released !== true) throw new Error('Forgey primary was not released');
   if (Number(metrics.provider_calls) !== 0) throw new Error('provider call occurred on successful Forgey-primary inference');
   if (metrics.forgey_generation !== 'G2') throw new Error(`selected generation is not G2: ${metrics.forgey_generation}`);
@@ -57,18 +60,19 @@ function infer(input, expectedWinner, evidenceName, { caseInsensitive = false } 
 }
 
 const forward = infer('2\nvehicle powered by pedals with two wheels', '🚲', 'primary-forward.json');
-const reverse = infer('1\n🚲', 'bicycle', 'primary-reverse.json', { caseInsensitive: true });
+const reverse = infer('1\n🚲', 'bicycle', 'primary-reverse.json', { conceptExact: true });
 const streamProof = {
   schema_version: 1,
   stdout_json_exact: true,
   stdout_stderr_separated: true,
   forward_winner: forward.payload.winner,
   reverse_winner: reverse.payload.winner,
-  reverse_semantic_fold_exact: reverse.winnerMatches,
+  reverse_concept_exact: reverse.winnerMatches,
+  reverse_roundtrip_exact: Number(reverse.payload.metrics.roundtrip) === 1,
   generation: forward.payload.metrics.forgey_generation,
   provider_calls: forward.payload.metrics.provider_calls,
   forward_stderr_bytes: forward.stderrBytes,
   reverse_stderr_bytes: reverse.stderrBytes,
 };
 fs.writeFileSync(path.join(evidenceDir, 'runtime-stream-proof.json'), JSON.stringify(streamProof, null, 2) + '\n', 'utf8');
-console.log(`PHASE6_STEP4_RUNTIME_OK forward=🚲 reverse=${JSON.stringify(reverse.payload.winner)} generation=G2 provider=0`);
+console.log(`PHASE6_STEP4_RUNTIME_OK forward=🚲 reverse=${JSON.stringify(reverse.payload.winner)} concept=bicycle roundtrip=1 generation=G2 provider=0`);
