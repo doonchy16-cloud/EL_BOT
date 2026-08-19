@@ -59,6 +59,7 @@ def main() -> None:
     tokens = load("_p6s1_tokens", ROOT / "📚" / "🔤")
     universe = load("_p6s1_universe", ROOT / "🌐" / "🌐")
     grammar = load("_p6s1_grammar", ROOT / "🧱" / "🧱")
+    abc = load("_p6s1_abc", ROOT / "🔤➡️😀" / "🔤➡️😀")
 
     resolver = lexical.resolver()
     require(resolver.emoji.version == "17.0", "lexical emoji authority version mismatch")
@@ -111,9 +112,24 @@ def main() -> None:
     require(scarcity.expression != "🚗", "substring false-positive mapped scarcity to car")
     require(grammar.ELGrammarCompositionEngine.is_canonical_expression("🦊➡️🌲"), "official emoji are not accepted as valid EL composition symbols")
 
+    translator = abc.ABCToEmojiEngine()
+    translator_direct = {
+        "fox": "🦊",
+        "laptop": "💻",
+        "chair": "🪑",
+        "robot": "🤖",
+        "credit card": "💳",
+    }
+    for surface, expected in translator_direct.items():
+        translated = translator.translate(surface, cross_verify=False, emit=False)
+        require(expected in translated.winner, f"full translator missed lexical mapping {surface}: {translated.winner}")
+        require(int(translated.metrics.get("unknown_count", -1)) == 0, f"full translator left lexical input unknown: {surface}")
+        require(int(translated.metrics.get("phase6_lexical_resolutions", 0)) >= 1, f"full translator did not use Phase-6 lexical path: {surface}")
+
     lexical_source = (ROOT / "📚" / "📖").read_text(encoding="utf-8")
     token_source = (ROOT / "📚" / "🔤").read_text(encoding="utf-8")
     vocab_source = (ROOT / "📚" / "📚").read_text(encoding="utf-8")
+    bridge_source = (ROOT / "🔤➡️😀" / "🧠").read_text(encoding="utf-8")
     renderer_source = (ROOT / "⚡" / "🎞️").read_text(encoding="utf-8")
     html_source = (ROOT / "⚡" / "🖥️").read_text(encoding="utf-8")
     launcher_source = (ROOT / "▶️.cmd").read_text(encoding="utf-8")
@@ -123,6 +139,8 @@ def main() -> None:
             require(forbidden not in lowered, f"provider coupling leaked into Step-1 {source_name} authority: {forbidden}")
     require("len(CANONICAL_SYMBOLS) !=" not in vocab_source and "len(CANONICAL_SYMBOLS) ==" not in vocab_source, "fixed-size Vocabulary invariant remains")
     require("official_emoji_count" in vocab_source and "is_valid_el_symbol" in vocab_source, "dynamic Vocabulary authority missing")
+    require("_el_phase6_lexical_bridge" in bridge_source, "ABC-to-EL bridge no longer loads Phase-6 lexical authority")
+    require("self.lexical.resolve" in bridge_source and "phase6_lexical_resolutions" in bridge_source, "ABC-to-EL bridge lost lexical-first translation integration")
     require("🔒📚501" not in html_source, "stale public 501 count remains in UI source")
     require("🔒📚?" in html_source, "neutral vocabulary placeholder missing from UI source")
     require("query('📚')" in renderer_source and "🔒📚?" in renderer_source, "renderer does not replace neutral vocabulary placeholder dynamically")
@@ -156,7 +174,7 @@ def main() -> None:
         f"emoji={derived_emoji_count} oewn_index_records={source_index_records} "
         f"runtime_pos_lexical_keys={runtime_pos_lexical_keys} tokenizer_unique_english={token_snapshot.english_lemma_count} "
         f"atomic_el={token_snapshot.atomic_el_token_count} semantic_seed={vocab_snapshot.semantic_seed_count} "
-        f"public_501=ABSENT model={step2_state} teacher={step3_state} admin_runtime=ABSENT release=ABSENT"
+        f"public_501=ABSENT lexical_runtime=PASS model={step2_state} teacher={step3_state} admin_runtime=ABSENT release=ABSENT"
     )
 
 
