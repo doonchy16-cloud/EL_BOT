@@ -110,7 +110,6 @@ def _colored_shape(image: Tensor, rng: random.Random, x: Tensor, y: Tensor, item
     if item.family == "circle":
         mask = (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2
     else:
-        mask = (x - cx).abs() <= radius and False
         mask = ((x - cx).abs() <= radius) & ((y - cy).abs() <= radius)
     _paint(image, mask, color.clamp(0.0, 1.0))
 
@@ -123,8 +122,7 @@ def _warning(image: Tensor, rng: random.Random, x: Tensor, y: Tensor) -> None:
     t = ((y - top) / max(bottom - top, 1.0)).clamp(0.0, 1.0)
     triangle = (y >= top) & (y <= bottom) & ((x - cx).abs() <= half * t)
     _paint(image, triangle, _COLORS["yellow"])
-    bar = (x - cx).abs() <= 2.2
-    bar &= (y >= top + 14.0) & (y <= bottom - 12.0)
+    bar = ((x - cx).abs() <= 2.2) & (y >= top + 14.0) & (y <= bottom - 12.0)
     dot = (x - cx) ** 2 + (y - (bottom - 6.5)) ** 2 <= 2.8 ** 2
     _paint(image, bar | dot, _COLORS["black"])
 
@@ -195,7 +193,8 @@ def probe_examples() -> tuple[VisualExample, ...]:
 
 
 def _collate_targets(tokenizer: Any, examples: Iterable[VisualExample], device: torch.device) -> tuple[Tensor, Tensor]:
-    encoded = [tokenizer.encode_target(item.target) for item in examples]
+    rows = tuple(examples)
+    encoded = [tokenizer.encode_target(item.target) for item in rows]
     length = max(len(decoder) for decoder, _ in encoded)
     decoder = torch.full((len(encoded), length), tokenizer.pad_id, dtype=torch.long, device=device)
     labels = torch.full((len(encoded), length), -100, dtype=torch.long, device=device)
@@ -250,10 +249,8 @@ def train_visual_adapter(
         raise RuntimeError("Forgey Insta visual adapter parameters are unavailable")
 
     original_requires = {id(parameter): bool(parameter.requires_grad) for parameter in model.parameters()}
-    for parameter in model.parameters():
-        parameter.requires_grad_(False)
-    for parameter in visual_parameters:
-        parameter.requires_grad_(True)
+    for parameter in model.parameters(): parameter.requires_grad_(False)
+    for parameter in visual_parameters: parameter.requires_grad_(True)
 
     optimizer = torch.optim.AdamW(visual_parameters, lr=float(learning_rate), betas=(0.9, 0.98), weight_decay=0.005)
     losses: list[float] = []
@@ -276,8 +273,7 @@ def train_visual_adapter(
             if step == 0 or (step + 1) % 90 == 0:
                 print(f"FORGEY_VISION_TRAIN step={step + 1}/{steps} loss={losses[-1]:.6f}", flush=True)
     finally:
-        for parameter in model.parameters():
-            parameter.requires_grad_(original_requires[id(parameter)])
+        for parameter in model.parameters(): parameter.requires_grad_(original_requires[id(parameter)])
 
     model.eval()
     probes = evaluate_visual_probes(model, tokenizer, target_device)
@@ -317,36 +313,25 @@ def decode_png(data: bytes) -> Tensor:
         kind = raw[offset + 4:offset + 8]
         payload = raw[offset + 8:offset + 8 + length]
         crc = raw[offset + 8 + length:offset + 12 + length]
-        if len(payload) != length or len(crc) != 4:
-            raise ValueError("truncated PNG")
-        expected_crc = binascii.crc32(kind + payload) & 0xFFFFFFFF
-        if struct.unpack(">I", crc)[0] != expected_crc:
-            raise ValueError("PNG CRC mismatch")
+        if len(payload) != length or len(crc) != 4: raise ValueError("truncated PNG")
+        if struct.unpack(">I", crc)[0] != (binascii.crc32(kind + payload) & 0xFFFFFFFF): raise ValueError("PNG CRC mismatch")
         offset += 12 + length
-        if kind == b"IHDR":
-            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", payload)
+        if kind == b"IHDR": width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", payload)
         elif kind == b"IDAT": compressed.extend(payload)
         elif kind == b"IEND": break
-    if not width or not height or bit_depth != 8 or interlace != 0:
-        raise ValueError("unsupported PNG geometry/bit depth/interlace")
+    if not width or not height or bit_depth != 8 or interlace != 0: raise ValueError("unsupported PNG geometry/bit depth/interlace")
     channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(color_type)
-    if channels is None:
-        raise ValueError(f"unsupported PNG color type: {color_type}")
-    inflated = zlib.decompress(bytes(compressed))
-    stride = int(width) * channels
-    expected = int(height) * (stride + 1)
-    if len(inflated) != expected:
-        raise ValueError("PNG decompressed size mismatch")
-    rows: list[bytearray] = []
-    previous = bytearray(stride); cursor = 0
+    if channels is None: raise ValueError(f"unsupported PNG color type: {color_type}")
+    inflated = zlib.decompress(bytes(compressed)); stride = int(width) * channels
+    if len(inflated) != int(height) * (stride + 1): raise ValueError("PNG decompressed size mismatch")
+    rows: list[bytearray] = []; previous = bytearray(stride); cursor = 0
     for _ in range(int(height)):
         filter_type = inflated[cursor]; cursor += 1
         scan = bytearray(inflated[cursor:cursor + stride]); cursor += stride
         reconstructed = bytearray(stride)
         for index, value in enumerate(scan):
             left = reconstructed[index - channels] if index >= channels else 0
-            up = previous[index]
-            up_left = previous[index - channels] if index >= channels else 0
+            up = previous[index]; up_left = previous[index - channels] if index >= channels else 0
             if filter_type == 0: result = value
             elif filter_type == 1: result = (value + left) & 255
             elif filter_type == 2: result = (value + up) & 255
@@ -355,8 +340,8 @@ def decode_png(data: bytes) -> Tensor:
             else: raise ValueError(f"unsupported PNG filter: {filter_type}")
             reconstructed[index] = result
         rows.append(reconstructed); previous = reconstructed
-    tensor = torch.empty((3, int(height), int(width)), dtype=torch.float32)
-    for yy, row in enumerate(rows):
+    rgb = bytearray(int(width) * int(height) * 3); out = 0
+    for row in rows:
         for xx in range(int(width)):
             base = xx * channels
             if color_type == 0:
@@ -367,24 +352,20 @@ def decode_png(data: bytes) -> Tensor:
                 r, g, b = row[base:base + 3]
             else:
                 r0, g0, b0, alpha = row[base:base + 4]
-                r = int((r0 * alpha + 255 * (255 - alpha)) / 255)
-                g = int((g0 * alpha + 255 * (255 - alpha)) / 255)
-                b = int((b0 * alpha + 255 * (255 - alpha)) / 255)
-            tensor[0, yy, xx] = r / 255.0; tensor[1, yy, xx] = g / 255.0; tensor[2, yy, xx] = b / 255.0
+                r = int((r0 * alpha + 255 * (255 - alpha)) / 255); g = int((g0 * alpha + 255 * (255 - alpha)) / 255); b = int((b0 * alpha + 255 * (255 - alpha)) / 255)
+            rgb[out:out + 3] = bytes((r, g, b)); out += 3
+    tensor = torch.frombuffer(rgb, dtype=torch.uint8).clone().reshape(int(height), int(width), 3).permute(2, 0, 1).to(torch.float32) / 255.0
     return tensor
 
 
 def encode_png(image: Tensor) -> bytes:
     value = image.detach().to(dtype=torch.float32, device="cpu")
-    if value.ndim != 3 or value.size(0) != 3:
-        raise ValueError("PNG encoder expects [3,height,width]")
+    if value.ndim != 3 or value.size(0) != 3: raise ValueError("PNG encoder expects [3,height,width]")
     value = (value.clamp(0.0, 1.0) * 255.0).round().to(torch.uint8)
-    height, width = int(value.size(1)), int(value.size(2))
-    scan = bytearray()
+    height, width = int(value.size(1)), int(value.size(2)); scan = bytearray()
     for yy in range(height):
         scan.append(0)
-        for xx in range(width):
-            scan.extend((int(value[0, yy, xx]), int(value[1, yy, xx]), int(value[2, yy, xx])))
+        for xx in range(width): scan.extend((int(value[0, yy, xx]), int(value[1, yy, xx]), int(value[2, yy, xx])))
     def chunk(kind: bytes, payload: bytes) -> bytes:
         return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", binascii.crc32(kind + payload) & 0xFFFFFFFF)
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
