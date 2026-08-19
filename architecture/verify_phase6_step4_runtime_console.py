@@ -6,7 +6,6 @@ ROOT=Path(__file__).resolve().parent.parent
 
 def req(c,m):
     if not c: raise AssertionError(m)
-
 def read(path): return Path(path).read_text(encoding='utf-8')
 def load(path): return json.loads(Path(path).read_text(encoding='utf-8'))
 def concept_fold(value):
@@ -34,18 +33,15 @@ def main():
     req('forgey_primary_released' in runtime and 'provider_calls": 0' in runtime and 'SelectedGeneration' in runtime,'Forgey-first evidence missing')
     req('deterministic-authority-conflict' in runtime and 'deterministic-roundtrip-failed' in runtime,'neural validation boundary missing')
 
-    # Historical Step-4 boundary: a Step-5 publisher is forbidden unless a valid,
-    # later Step-5 authority manifest is present. This keeps Step 4 strict while
-    # allowing the explicitly authorized next phase to exist after Step 4 merged.
     step5_manifest_path=ROOT/'architecture'/'phase6_step5_release_manifest.json'
-    publisher_path=ROOT/'scripts'/'publish-phase6-release.ps1'
+    publisher_path=ROOT/'scripts'/'publish-step5-main-release.ps1'
     step5_state='ABSENT'
     if step5_manifest_path.exists():
         step5=load(step5_manifest_path)
         req(step5.get('phase')==6 and step5.get('step')==5,'invalid later Step5 manifest')
         req(step5.get('status') in {'IMPLEMENTATION_IN_PROGRESS','PASS'},'invalid later Step5 status')
         req(step5.get('base_main_sha')=='e0ed1b2ac91ae1f9a716abfc0e93904469b91422','Step5 does not descend from merged Step4')
-        req(publisher_path.exists(),'authorized Step5 manifest exists without publisher')
+        req(publisher_path.exists(),'authorized Step5 manifest exists without Step5-owned publisher')
         step5_state=str(step5.get('status'))
     else:
         req(not publisher_path.exists(),'Step5 publisher leaked into Step4 without Step5 authority')
