@@ -20,7 +20,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - name: "📥 Source"
         uses: actions/checkout@v4
@@ -152,13 +152,15 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir 'data\phase6-step2' --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence 'data\phase6-step2\infer-image-to-abc.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_IMAGE_TO_ABC_FAILED' }
 
-      - name: "🧪 Step 2 authority"
+      - name: "🧪 Step 2 text + native-vision authority"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_AUTHORITY_FAILED' }
+          & $env:EL_PYTHON 'architecture\verify_phase6_step2_native_vision.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_NATIVE_VISION_AUTHORITY_FAILED' }
 
       - name: "🧪 Phase 2 compatibility"
         shell: powershell
