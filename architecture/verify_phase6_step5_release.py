@@ -69,6 +69,8 @@ def main():
     req("verify_phase1_architecture.py" not in workflow,"obsolete fixed-501 Phase-1 release verifier reintroduced into Step 5")
     req("LEGACY_RELEASE_ENGINE_REGRESSION_FAILED" not in workflow,"obsolete legacy release-engine gate reintroduced into Step 5")
     req("github.event_name == 'push'" in workflow and "refs/heads/main" in workflow,"publisher is not main-only in workflow")
+    req("ConvertFromUtf32(0x1F9E0)" in workflow and "ConvertFromUtf32(0x1F916)" in workflow and "ConvertFromUtf32(0x1F441)" in workflow,"Windows package runtime checks do not construct Unicode paths from ASCII-safe codepoints")
+    req("'🧠\\🤖'" not in workflow and "'🧠\\👁️'" not in workflow,"literal emoji filesystem paths reintroduced into Windows PowerShell package step")
 
     req("STEP 4 PASS+MERGED" in phase6,"Phase-6 authority does not record Step-4 merge")
     req("native vision" in phase6.lower(),"Phase-6 authority does not record Owner native-vision correction")
