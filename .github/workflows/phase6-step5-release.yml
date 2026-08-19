@@ -1,4 +1,5 @@
 name: "🚀 Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion"
+run-name: "Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion — checkpointed final"
 
 on:
   push:
@@ -15,25 +16,33 @@ concurrency:
 
 jobs:
   cleanup:
-    name: "🧹 Clean stale runs + branches"
+    name: "🧹 Single-run cleanup"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: "🧹 Cancel stale runs and delete non-main branches"
+      - name: "🧹 Cancel other active runs + verify main-only branches"
         uses: actions/github-script@v7
         with:
           github-token: ${{ github.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const staleRunIds = [32303280449, 32303280324, 32303280332, 32303280353, 32303280401, 32309418860, 32309443318, 32309447311, 32309455880];
-            for (const run_id of staleRunIds) {
+            const currentRun = context.runId;
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
+            for (const run of runs) {
+              if (run.id === currentRun || !active.has(run.status)) continue;
               try {
-                await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id });
-                core.info(`Cancel requested for stale run ${run_id}`);
+                await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id: run.id });
+                core.info(`Cancel requested for other active run ${run.id} (${run.name})`);
               } catch (error) {
                 if (error.status === 404 || error.status === 409) {
-                  core.info(`Stale run ${run_id} is already gone or no longer cancellable (${error.status})`);
+                  core.info(`Run ${run.id} already gone or no longer cancellable (${error.status})`);
                 } else {
                   throw error;
                 }
@@ -47,20 +56,12 @@ jobs:
             });
             for (const branch of branches) {
               if (branch.name === 'main') continue;
-              try {
-                await github.rest.git.deleteRef({
-                  owner,
-                  repo,
-                  ref: `heads/${branch.name}`,
-                });
-                core.info(`Deleted stale branch ${branch.name}`);
-              } catch (error) {
-                if (error.status === 404) {
-                  core.info(`Branch ${branch.name} is already gone`);
-                } else {
-                  throw error;
-                }
-              }
+              await github.rest.git.deleteRef({
+                owner,
+                repo,
+                ref: `heads/${branch.name}`,
+              });
+              core.info(`Deleted stale branch ${branch.name}`);
             }
 
             const remaining = await github.paginate(github.rest.repos.listBranches, {
@@ -75,19 +76,14 @@ jobs:
               core.info('Repository branch cleanup verified: main only');
             }
 
-  step5:
-    name: "🚀📦 Forgey Windows Final Completion Gate"
+  foundation:
+    name: "1️⃣📖 Knowledge + lexical checkpoint"
     needs: cleanup
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 180
+    timeout-minutes: 20
     steps:
       - name: "📥 Source"
         uses: actions/checkout@v4
-
-      - name: "🟩 Node 24"
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
 
       - name: "🐍 Python 3.12"
         shell: powershell
@@ -110,12 +106,52 @@ jobs:
           & $env:EL_PYTHON 'architecture\verify_phase6_step1_knowledge_foundation.py'
           if($LASTEXITCODE-ne 0){throw 'STEP1_LEXICAL_RUNTIME_REGRESSION_FAILED'}
 
-      - name: "🔥 PyTorch 2.13 CPU for build-time training"
+      - name: "📦 Save foundation checkpoint"
         shell: powershell
         run: |
-          $ErrorActionPreference='Stop';$torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';$marker=Join-Path $torchDir '.ready'
-          if(-not(Test-Path $marker)){if(Test-Path $torchDir){Remove-Item $torchDir -Recurse -Force};New-Item -ItemType Directory -Force -Path $torchDir|Out-Null;$pipDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPip';$pipz=Join-Path $pipDir 'pip.pyz';New-Item -ItemType Directory -Force -Path $pipDir|Out-Null;if(-not(Test-Path $pipz)){Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/pip/pip.pyz' -OutFile $pipz};& $env:EL_PYTHON $pipz install --disable-pip-version-check --only-binary=:all: --target $torchDir -r 'requirements-phase6-step2.txt';if($LASTEXITCODE-ne 0){throw 'TORCH_INSTALL_FAILED'};Set-Content $marker 'ready' -Encoding ASCII}
-          $pyDir=Split-Path -Parent $env:EL_PYTHON;$pth=Join-Path $pyDir 'python312._pth';$lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false));& $env:EL_PYTHON -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-foundation.zip'
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload foundation checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-foundation-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-foundation.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  g1:
+    name: "2️⃣🧠👁️ G1 checkpoint"
+    needs: foundation
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Python 3.12 + Torch 2.13 CPU"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe'
+          if(-not(Test-Path $exe)){$zip=Join-Path $env:RUNNER_TEMP 'python.zip';New-Item -ItemType Directory -Force -Path $dir|Out-Null;Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip;Expand-Archive $zip $dir -Force}
+          $pth=Join-Path $dir 'python312._pth';if(Test-Path $pth){$t=Get-Content $pth -Raw;if($t -match '#import site'){$t=$t -replace '#import site','import site';[IO.File]::WriteAllText($pth,$t,[Text.UTF8Encoding]::new($false))}}
+          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';$marker=Join-Path $torchDir '.ready'
+          if(-not(Test-Path $marker)){if(Test-Path $torchDir){Remove-Item $torchDir -Recurse -Force};New-Item -ItemType Directory -Force -Path $torchDir|Out-Null;$pipDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPip';$pipz=Join-Path $pipDir 'pip.pyz';New-Item -ItemType Directory -Force -Path $pipDir|Out-Null;if(-not(Test-Path $pipz)){Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/pip/pip.pyz' -OutFile $pipz};& $exe $pipz install --disable-pip-version-check --only-binary=:all: --target $torchDir -r 'requirements-phase6-step2.txt';if($LASTEXITCODE-ne 0){throw 'TORCH_INSTALL_FAILED'};Set-Content $marker 'ready' -Encoding ASCII}
+          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
+          & $exe -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
+
+      - name: "⬇️ Restore foundation checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-foundation-${{ github.sha }}
+          path: ${{ runner.temp }}\foundation
+      - name: "📂 Expand foundation checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\foundation\phase6-foundation.zip' -DestinationPath . -Force
 
       - name: "🧠👁️ Reconstruct verified multimodal G1"
         shell: powershell
@@ -131,6 +167,47 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir $step2 --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence (Join-Path $step2 'infer-image-to-abc.json');if($LASTEXITCODE-ne 0){throw 'G1_IMAGE_ABC_FAILED'}
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py';if($LASTEXITCODE-ne 0){throw 'G1_AUTHORITY_FAILED'}
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_native_vision.py';if($LASTEXITCODE-ne 0){throw 'G1_VISION_AUTHORITY_FAILED'}
+
+      - name: "📦 Save G1 checkpoint"
+        shell: powershell
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-g1.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload G1 checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-g1-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-g1.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  g2:
+    name: "3️⃣🦙👁️ G2 checkpoint"
+    needs: g1
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "🐍 Python 3.12 + Torch 2.13 CPU"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
+          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AFTER_G1'}
+          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AFTER_G1'}
+          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
+          & $exe -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
+      - name: "⬇️ Restore G1 checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-g1-${{ github.sha }}
+          path: ${{ runner.temp }}\g1
+      - name: "📂 Expand G1 checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\g1\phase6-g1.zip' -DestinationPath . -Force
 
       - name: "🦙👁️ Reconstruct teacher + verified multimodal G2"
         shell: powershell
@@ -153,6 +230,47 @@ jobs:
           & $env:EL_PYTHON 'architecture\verify_phase6_step3_teacher_learning.py';if($LASTEXITCODE-ne 0){throw 'STEP3_REGRESSION_FAILED'}
           & $env:EL_PYTHON 'architecture\verify_phase6_step3_native_vision.py';if($LASTEXITCODE-ne 0){throw 'STEP3_VISION_REGRESSION_FAILED'}
 
+      - name: "📦 Save G2 checkpoint"
+        shell: powershell
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-g2.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload G2 checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-g2-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-g2.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  runtime_visual:
+    name: "4️⃣⚡📸 Runtime + visual checkpoint"
+    needs: g2
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: "🐍 Restore cached Python + Torch"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
+          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AFTER_G2'};"EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AFTER_G2'}
+          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
+      - name: "⬇️ Restore G2 checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-g2-${{ github.sha }}
+          path: ${{ runner.temp }}\g2
+      - name: "📂 Expand G2 checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\g2\phase6-g2.zip' -DestinationPath . -Force
       - name: "📦 Node/Electron dependencies"
         shell: powershell
         run: npm install --no-audit --no-fund
@@ -188,6 +306,70 @@ jobs:
           if($proof.fps-ne 30 -or $proof.rendered_frames-ne 168 -or [math]::Abs([double]$angles.start)-gt 1.5 -or [math]::Abs([double]$angles.inverted-180.0)-gt 2.0 -or [math]::Abs([double]$angles.returned)-gt 2.0){throw 'Phase-5 rendered visual contract failed'}
           if(-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered){throw 'Phase-5 warning/zoom proof failed'}
 
+      - name: "📦 Save runtime/visual checkpoint"
+        shell: powershell
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-runtime-visual.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'data','proof' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload runtime/visual checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-runtime-visual-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-runtime-visual.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  authority:
+    name: "5️⃣🧪 Step-5 static authority"
+    needs: runtime_visual
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "🐍 Restore cached Python"
+        shell: powershell
+        run: |
+          $exe=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_AUTHORITY'}
+          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: "🧪 Step 5 static authority"
+        shell: powershell
+        run: |
+          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step5_release.py';if($LASTEXITCODE-ne 0){throw 'STEP5_AUTHORITY_FAILED'}
+
+  package:
+    name: "6️⃣📦🪟 Windows package checkpoint"
+    needs: authority
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "🟩 Node 24"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: "🐍 Restore cached Python + Torch"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
+          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_PACKAGE'};"EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AT_PACKAGE'}
+          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
+      - name: "⬇️ Restore runtime/visual checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-runtime-visual-${{ github.sha }}
+          path: ${{ runner.temp }}\runtime
+      - name: "📂 Expand runtime/visual checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\runtime\phase6-runtime-visual.zip' -DestinationPath . -Force
+      - name: "📦 Node/Electron dependencies"
+        shell: powershell
+        run: npm install --no-audit --no-fund
+
       - name: "📦🧠 Materialize relocatable G1/G2 runtime"
         shell: powershell
         run: |
@@ -204,11 +386,6 @@ jobs:
           if($LASTEXITCODE-ne 0){throw 'PHASE6_EMBEDDED_RUNTIME_FAILED'}
           & '.\python\python.exe' -c "import sys,torch;assert sys.version_info[:2]==(3,12);assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
 
-      - name: "🧪 Step 5 static authority"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step5_release.py';if($LASTEXITCODE-ne 0){throw 'STEP5_AUTHORITY_FAILED'}
-
       - name: "9️⃣📦🪟 Build Setup + Portable"
         shell: powershell
         run: |
@@ -220,6 +397,43 @@ jobs:
           $brain=[char]::ConvertFromUtf32(0x1F9E0);$robot=[char]::ConvertFromUtf32(0x1F916);$eye=([char]::ConvertFromUtf32(0x1F441)+[char]0xFE0)
           $requiredPaths=@('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','scripts\phase6-vision-infer.py',(Join-Path $brain $robot),(Join-Path $brain $eye),'architecture\phase6_step4_runtime_console_manifest.json')
           foreach($required in $requiredPaths){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
+
+      - name: "📦 Save Windows package checkpoint"
+        shell: powershell
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-package.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'dist','data','proof' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload Windows package checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-package-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-package.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  certify:
+    name: "7️⃣🧠👁️📦 Package proof + final regression"
+    needs: package
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "🐍 Restore cached Python"
+        shell: powershell
+        run: |
+          $exe=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
+          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_CERTIFY'}
+          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: "⬇️ Restore Windows package checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-package-${{ github.sha }}
+          path: ${{ runner.temp }}\package
+      - name: "📂 Expand Windows package checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\package\phase6-package.zip' -DestinationPath . -Force
 
       - name: "🧪📦🖥️ Existing packaged UI/Python smoke"
         shell: powershell
@@ -245,6 +459,36 @@ jobs:
         run: |
           $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase2_knowledge_foundation.py';if($LASTEXITCODE-ne 0){throw 'PHASE2_FAILED'};& $env:EL_PYTHON 'architecture\verify_phase3_semantic_search.py';if($LASTEXITCODE-ne 0){throw 'PHASE3_FAILED'};& $env:EL_PYTHON -c "import importlib.machinery,importlib.util,pathlib,sys;root=pathlib.Path('.');a=chr(0x1F9EA);p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a);l=importlib.machinery.SourceFileLoader('_p6s5_diag',str(p));s=importlib.util.spec_from_loader('_p6s5_diag',l);m=importlib.util.module_from_spec(s);sys.modules['_p6s5_diag']=m;l.exec_module(m);r=m.DiagnosticsEngine().run();print(r.render_el());assert r.passed and len(r.checks)==44"
 
+      - name: "📦 Save certified release checkpoint"
+        shell: powershell
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'phase6-certified.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'dist','data','proof' -DestinationPath $zip -CompressionLevel Fastest
+      - name: "⬆️ Upload certified release checkpoint"
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-certified-${{ github.sha }}
+          path: ${{ runner.temp }}\phase6-certified.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  release:
+    name: "8️⃣🚀 Publish exact-main v0.6.0"
+    needs: certify
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - name: "📥 Source"
+        uses: actions/checkout@v4
+      - name: "⬇️ Restore certified release checkpoint"
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-certified-${{ github.sha }}
+          path: ${{ runner.temp }}\certified
+      - name: "📂 Expand certified release checkpoint"
+        shell: powershell
+        run: Expand-Archive -LiteralPath '${{ runner.temp }}\certified\phase6-certified.zip' -DestinationPath . -Force
       - name: "🚀 Publish exact-main Phase 6 release"
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         shell: powershell
