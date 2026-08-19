@@ -51,11 +51,13 @@ def main():
     req("pull_request:" in workflow and "push:" in workflow and "branches: [main]" in workflow,"Step-5 PR/main workflow topology missing")
     for marker in (
         "phase6-step2-train-g1.py","phase6-step3-teach.py","phase6-step3-train-g2.py","phase6-step3-promote.py",
-        "phase6-step4-runtime-proof.js","phase6-step4-console-proof.js","ci-screenshot-vision.ps1","LEGACY_COMPLETE_REGRESSION_FAILED","LEGACY_RELEASE_ENGINE_REGRESSION_FAILED",
+        "phase6-step4-runtime-proof.js","phase6-step4-console-proof.js","ci-screenshot-vision.ps1","CURRENT_COMPLETE_REGRESSION_FAILED",
         "materialize-phase6-runtime.py","materialize-phase6-python.ps1","proof:visual","build:windows",
         "package-smoke.json","phase6-step5-package-forgey-proof.py","verify_phase6_step5_release.py","publish-step5-main-release.ps1",
     ):
         req(marker in workflow,f"Step-5 workflow missing {marker}")
+    req("verify_phase1_architecture.py" not in workflow,"obsolete fixed-501 Phase-1 release verifier reintroduced into Step 5")
+    req("LEGACY_RELEASE_ENGINE_REGRESSION_FAILED" not in workflow,"obsolete legacy release-engine gate reintroduced into Step 5")
     req("github.event_name == 'push'" in workflow and "refs/heads/main" in workflow,"publisher is not main-only in workflow")
 
     req("STEP 4 PASS+MERGED" in phase6,"Phase-6 authority does not record Step-4 merge")
@@ -64,6 +66,6 @@ def main():
     req("Phase 6 becomes PASS only when" in step5,"exact-main final acceptance missing")
     req(not (ROOT/".github"/"workflows"/"🧪.yml").exists(),"legacy Phase-5 main auto-release workflow still active")
 
-    print("PHASE6_STEP5_AUTHORITY_OK version=0.6.0 python=3.12.10 torch=2.13 G2=PACKAGED G1=ROLLBACK phase4_5=REGRESSED release=MAIN_ONLY engines=44")
+    print("PHASE6_STEP5_AUTHORITY_OK version=0.6.0 python=3.12.10 torch=2.13 G2=PACKAGED G1=ROLLBACK current44=REGRESSED phase4_5=REGRESSED release=MAIN_ONLY engines=44")
 
 if __name__=="__main__": main()
