@@ -1,19 +1,30 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phase": 6,
   "step": 4,
-  "name": "Forgey Insta Primary Runtime + Hidden Control Room",
+  "name": "Forgey Insta Multimodal Primary Runtime + Hidden Control Room",
   "status": "PASS",
   "base_main_sha": "2e40519e89ce0c8a412d5f0f47ad18fa7407ee09",
   "engine_count": 44,
   "new_engine_count": 0,
+  "post_pass_owner_extension": {
+    "date": "2026-08-19",
+    "requirement": "Native Forgey vision must be present, Forgey-first for screenshots, and truthfully visible in the existing two-page control room before Phase-6 release.",
+    "release_blocking": true
+  },
   "runtime": {
     "forgey_insta_primary_semantic_path": true,
+    "forgey_insta_native_vision_path": true,
+    "native_vision_attempted_before_complex_screenshot_provider": true,
+    "native_vision_release_limited_to_validated_domain": true,
+    "complex_screenshot_qwen_sensor_fallback_retained": true,
     "selected_generation_registry_required_for_neural_release": true,
     "deterministic_support_and_validation_retained": true,
-    "qwen_role": "teacher/fallback-semantic-evidence-only",
+    "qwen_role": "teacher/fallback-semantic-and-complex-vision-evidence-only",
     "provider_authored_el_release_forbidden": true,
-    "provider_free_selected_generation_inference": true
+    "provider_authored_native_vision_positive_truth_forbidden": true,
+    "provider_free_selected_generation_inference": true,
+    "provider_free_native_vision_inference": true
   },
   "hidden_control_room": {
     "entry": "existing far-left header robot clicked 5 times within 3 seconds",
@@ -40,6 +51,7 @@
     "selected_generation": true,
     "primary_runtime_counters": true,
     "latest_inference_metadata_without_user_content": true,
+    "native_vision_available": true,
     "knowledge_and_diagnostics": true,
     "teacher_dependency": true,
     "auth_session_state": true
@@ -48,6 +60,10 @@
     "actual_model_file_size": true,
     "actual_tokenizer_file_size": true,
     "runtime_derived_parameter_count_when_loadable": true,
+    "native_vision_parameter_count": true,
+    "modalities": true,
+    "native_vision_image_and_patch_geometry": true,
+    "native_vision_promotion_metrics": true,
     "architecture_and_context": true,
     "vocabulary_size": true,
     "generation_lineage_and_hashes": true,
@@ -71,18 +87,19 @@
   },
   "required_evidence": [
     "Step 3 remains compatible and 44/44 diagnostics stay green",
-    "normal translation attempts registry-selected Forgey Insta before supporting translation logic when a verified generation is available",
+    "normal text translation attempts registry-selected Forgey Insta before supporting translation logic when verified generation is available",
+    "native screenshot path attempts registry-selected Forgey Insta before Qwen sensor fallback",
+    "native visual output releases only inside the validated deterministic visual domain and successful native release has provider_calls=0",
+    "complex/OCR-heavy screenshots safely fall through to Qwen sensor rather than receiving an unsupported native guess",
     "selected neural output cannot release without deterministic structural and round-trip validation",
-    "provider calls remain zero on successful selected-generation inference",
-    "Qwen remains behind the existing connector as semantic teacher/fallback evidence and cannot author released EL",
+    "Qwen remains behind the existing connector and cannot author released EL or native visual positive truth",
     "hidden robot entry has five-click/three-second silent gesture with no visual discovery clue",
     "admin password is not hard-coded or committed and is verified by salted scrypt",
     "failed auth attempts are rate-limited and sessions expire/restart-invalidated",
     "control room has exactly two primary pages: Current Status and Training Center",
-    "Current Status reports real app/model activity and runtime counters without storing user translation content",
-    "Training Center reports real current model sizes, runtime-derived parameter count when available, architecture, vocabulary, hashes, metrics, teacher evidence and generation history",
-    "unavailable data is labeled unavailable instead of synthesized",
-    "Step 5 remains absent"
+    "Current Status reports native-vision availability alongside real app/model activity",
+    "Training Center reports real model sizes, runtime-derived total/vision parameters, text+image modalities, vision geometry, hashes, text/vision metrics, teacher evidence and generation history",
+    "unavailable data is labeled unavailable instead of synthesized"
   ],
   "final_exact_head_ci_required": true
 }
