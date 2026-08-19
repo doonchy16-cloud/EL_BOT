@@ -26,7 +26,7 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const staleRunIds = [32303280449, 32303280324, 32303280332, 32303280353, 32303280401];
+            const staleRunIds = [32303280449, 32303280324, 32303280332, 32303280353, 32303280401, 32309418860, 32309443318, 32309447311, 32309455880];
             for (const run_id of staleRunIds) {
               try {
                 await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id });
