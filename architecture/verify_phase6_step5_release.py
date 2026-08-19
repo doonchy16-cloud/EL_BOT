@@ -57,7 +57,7 @@ def main():
     req("phase6-release-manifest.json" in publisher and "runtime-package-manifest.json" in publisher,"release evidence assets incomplete")
     req(not (ROOT/"scripts"/"publish-phase6-release.ps1").exists(),"historical Step-1/2/3 publisher sentinel was reused")
 
-    req("pull_request:" in workflow and "push:" in workflow and "branches: [main]" in workflow,"Step-5 PR/main workflow topology missing")
+    req("push:" in workflow and "branches: [main]" in workflow and "workflow_dispatch:" in workflow and "pull_request:" not in workflow,"Step-5 workflow must be single main/manual completion authority")
     for marker in (
         "phase6-step2-train-g1.py","phase6-step2-train-vision.py","verify_phase6_step2_native_vision.py",
         "phase6-step3-teach.py","phase6-step3-train-g2.py","phase6-step3-refresh-vision.py","phase6-step3-promote.py","verify_phase6_step3_native_vision.py",
