@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS+MERGED / STEP 4 AUTHORIZED+IN PROGRESS / STEP 5 PAUSED
+**Status:** 🔒 STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS+MERGED / STEP 4 PASS / STEP 5 PAUSED
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -50,15 +50,23 @@ Step 3 proved the teacher/learning/generation lifecycle:
 
 Verified Step-3 evidence included 5 Qwen calls, 3 admitted lessons, 2 rejected/negative lessons, provider-authored EL truth 0, self-output truth 0, benchmark overlap 0, G1→G2 teacher exactness 0/3→3/3, protected probes 8/8, teacher round-trip 3/3, promotion G1→G2, rollback G2→G1→G2, exact bicycle forward/reverse inference, Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS.
 
-## Step 4 — Primary Runtime + Hidden Control Room ⚡ AUTHORIZED / IN PROGRESS
+## Step 4 — Primary Runtime + Hidden Control Room ✅ PASS / AWAITING OWNER MERGE
 
 Owner authorization date: **2026-08-18**.
 
 Step-4 branch starts from exact merged Step-3 main SHA `2e40519e89ce0c8a412d5f0f47ad18fa7407ee09`.
 
+Verified implementation head before governance closeout: `e530934efbde45b9f9f5d1d1d3d5ffb2ac6c4116`.
+
+Exact implementation-head workflows all completed successfully:
+- Step 1 Validation run `32201562506` — SUCCESS;
+- Step 2 G0-G1 Validation run `32201562397` — SUCCESS;
+- Step 3 Teacher + Learning Validation run `32201562403` — SUCCESS;
+- Step 4 Runtime + Control Room Validation run `32201562514` — SUCCESS.
+
 ### Primary runtime
 
-Normal translation now targets a Step-4 facade that attempts the registry-selected Forgey Insta generation first when a verified runtime generation is available. A neural candidate may release only after deterministic canonical/integrity/round-trip checks. Successful Forgey-primary release must remain provider-free.
+Normal translation now targets a Step-4 facade that attempts the registry-selected Forgey Insta generation first when a verified runtime generation is available. A neural candidate may release only after deterministic canonical/integrity/round-trip checks. Successful Forgey-primary release remains provider-free.
 
 If Forgey is unavailable or its candidate is rejected, the existing deterministic/support path remains available. Only unresolved semantics may reach Qwen behind orchestration/connector boundaries, and Qwen remains semantic teacher/fallback evidence rather than an EL author.
 
@@ -68,19 +76,19 @@ The hidden entry remains the existing far-left header 🤖 clicked **5 times wit
 
 Authentication uses a local salted slow scrypt verifier, short-lived in-memory sessions, rate limiting, password rotation, no committed/hard-coded/plaintext Owner password, no backdoor password, and no remote admin endpoint.
 
-The Owner explicitly locked the hidden console to exactly **two primary pages**:
+The Owner explicitly locked and Step 4 verified the hidden console to exactly **two primary pages**:
 
 1. **📊 Current Status** — live app/model active time, selected generation, Forgey-primary counters/share, teacher dependency, latest inference metadata without user content, knowledge/diagnostics, runtime readiness, and session/security state.
 2. **🏋️ Training Center** — actual current model/tokenizer sizes, runtime-derived parameter count, vocabulary, architecture, hashes, generation lineage, training/benchmark metrics, teacher/negative evidence, replay/learning counts, promotion/rollback history, validation, and truthful training capability state.
 
 No fake data is permitted. Unavailable data must be labeled unavailable.
 
-### Step-4 acceptance direction
+### Step-4 verified acceptance
 
-Step 4 must prove all of the following on a final exact candidate head:
+Step 4 proved on its verified implementation candidate:
 - selected verified G2 is used as the primary path in both directions;
 - successful selected-generation inference makes zero provider calls;
-- deterministic support/round-trip gates can reject unsafe neural output;
+- deterministic support/round-trip gates remain in the neural release boundary;
 - old deterministic and Step-3 behavior remains compatible;
 - hidden gesture has no visible clue and opens only authentication;
 - auth verifier contains no plaintext credential and passes bootstrap/login/rate-limit/session/rotation tests;
@@ -90,10 +98,12 @@ Step 4 must prove all of the following on a final exact candidate head:
 - Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS;
 - Step 5 remains absent.
 
+A final exact-head CI cycle is still required after this governance closeout commit before PR #6 may be marked merge-ready.
+
 ## Step 5 — Proof, Packaging & Release 🔒 PAUSED
 
-Step 5 will own final Phase-6 Windows packaging, runtime artifact materialization, installer/updater/release publishing, and exact-final-main-SHA release evidence. Step 4 must not publish the Phase-6 release.
+Step 5 will own final Phase-6 Windows packaging, runtime artifact materialization, installer/updater/release publishing, and exact-final-main-SHA release evidence. Step 4 does not publish the Phase-6 release.
 
 ## Current implementation gate
 
-**Step 4 implementation is authorized. Step 5 remains paused until Step 4 is proven and closed.**
+**Step 4 is PASS on its branch and is awaiting final exact-head closeout CI plus Owner merge approval. Step 5 remains paused.**
