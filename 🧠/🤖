@@ -1,18 +1,21 @@
-"""Forgey Insta:EL-Bot G0/G1 neural model.
+"""Forgey Insta:EL-Bot multimodal neural model.
 
-One from-scratch encoder-decoder Transformer serves both ABC→EL and EL→ABC.
-Direction is supplied as a tokenizer control token. This module contains no provider
-connector and no production routing; Step 4 owns eventual app integration.
+One from-scratch encoder-decoder Transformer serves ABC→EL, EL→ABC, image→EL,
+and image→ABC. Text uses the shared byte-BPE/EL vocabulary. Images use a learned
+pixel patch projection and learned visual source embeddings before entering the same
+Transformer encoder. This module contains no provider connector and no production
+routing.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 import math
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +29,10 @@ class ForgeyInstaConfig:
     max_context: int = 128
     dropout: float = 0.10
     pad_id: int = 0
+    vision_enabled: bool = True
+    vision_image_size: int = 64
+    vision_patch_size: int = 8
+    vision_channels: int = 3
 
     def validate(self) -> None:
         if self.vocab_size <= 0:
@@ -42,6 +49,22 @@ class ForgeyInstaConfig:
             raise ValueError("G0 context authority is 128 tokens")
         if self.d_model % self.nhead:
             raise ValueError("d_model must divide evenly across attention heads")
+        if self.vision_enabled:
+            if self.vision_channels != 3:
+                raise ValueError("Forgey Insta vision authority is RGB/3-channel")
+            if self.vision_image_size != 64:
+                raise ValueError("Forgey Insta vision authority is 64x64 normalized input")
+            if self.vision_patch_size != 8:
+                raise ValueError("Forgey Insta vision patch authority is 8x8")
+            if self.vision_image_size % self.vision_patch_size:
+                raise ValueError("vision image size must divide evenly by patch size")
+            if self.visual_token_count + 1 > self.max_context:
+                raise ValueError("visual source exceeds Transformer context")
+
+    @property
+    def visual_token_count(self) -> int:
+        side = self.vision_image_size // self.vision_patch_size
+        return side * side
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +74,7 @@ class ParameterReport:
     vocabulary_size: int
     shared_embedding_parameters: int
     positional_parameters: int
+    vision_parameters: int
     target_minimum: int = 1_000_000
     target_maximum: int = 3_000_000
 
@@ -60,6 +84,8 @@ class ParameterReport:
 
 
 class ForgeyInstaTransformer(nn.Module):
+    VISION_DIRECTIONS = {"IMAGE_TO_EL": 0, "IMAGE_TO_ABC": 1}
+
     def __init__(self, config: ForgeyInstaConfig) -> None:
         super().__init__()
         config.validate()
@@ -78,10 +104,24 @@ class ForgeyInstaTransformer(nn.Module):
             norm_first=True,
         )
         self.output_projection = nn.Linear(config.d_model, config.vocab_size, bias=False)
-        # One unified vocabulary is shared across encoder, decoder and output. Tying
-        # the output matrix is intentional and keeps the G0 specialist inside its
-        # owner-approved parameter envelope without introducing a second model.
         self.output_projection.weight = self.token_embedding.weight
+
+        if config.vision_enabled:
+            self.vision_patch_projection = nn.Conv2d(
+                config.vision_channels,
+                config.d_model,
+                kernel_size=config.vision_patch_size,
+                stride=config.vision_patch_size,
+                bias=True,
+            )
+            self.vision_position_embedding = nn.Embedding(config.visual_token_count, config.d_model)
+            self.vision_direction_embedding = nn.Embedding(len(self.VISION_DIRECTIONS), config.d_model)
+            self.vision_modality_embedding = nn.Parameter(torch.zeros(1, 1, config.d_model))
+        else:
+            self.vision_patch_projection = None
+            self.vision_position_embedding = None
+            self.vision_direction_embedding = None
+            self.register_parameter("vision_modality_embedding", None)
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -95,21 +135,50 @@ class ForgeyInstaTransformer(nn.Module):
             elif isinstance(module, nn.LayerNorm):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
-        # The output projection is weight-tied to token_embedding. Keep PAD neutral
-        # only after all initialization so no later initializer can repopulate it.
+        if self.config.vision_enabled:
+            assert self.vision_patch_projection is not None
+            assert self.vision_position_embedding is not None
+            assert self.vision_direction_embedding is not None
+            nn.init.xavier_uniform_(self.vision_patch_projection.weight)
+            nn.init.zeros_(self.vision_patch_projection.bias)
+            nn.init.normal_(self.vision_position_embedding.weight, mean=0.0, std=0.02)
+            nn.init.normal_(self.vision_direction_embedding.weight, mean=0.0, std=0.02)
+            with torch.no_grad():
+                self.vision_modality_embedding.normal_(mean=0.0, std=0.02)
         with torch.no_grad():
             if 0 <= self.config.pad_id < self.token_embedding.num_embeddings:
                 self.token_embedding.weight[self.config.pad_id].zero_()
 
+    def vision_parameters(self) -> tuple[nn.Parameter, ...]:
+        if not self.config.vision_enabled:
+            return ()
+        assert self.vision_patch_projection is not None
+        assert self.vision_position_embedding is not None
+        assert self.vision_direction_embedding is not None
+        values: list[nn.Parameter] = []
+        values.extend(self.vision_patch_projection.parameters())
+        values.extend(self.vision_position_embedding.parameters())
+        values.extend(self.vision_direction_embedding.parameters())
+        values.append(self.vision_modality_embedding)
+        unique: list[nn.Parameter] = []
+        seen: set[int] = set()
+        for parameter in values:
+            if id(parameter) not in seen:
+                unique.append(parameter)
+                seen.add(id(parameter))
+        return tuple(unique)
+
     def parameter_report(self) -> ParameterReport:
         trainable = sum(parameter.numel() for parameter in self.parameters() if parameter.requires_grad)
         total = sum(parameter.numel() for parameter in self.parameters())
+        vision = sum(parameter.numel() for parameter in self.vision_parameters())
         return ParameterReport(
             trainable_parameters=int(trainable),
             total_parameters=int(total),
             vocabulary_size=self.config.vocab_size,
             shared_embedding_parameters=self.config.vocab_size * self.config.d_model,
             positional_parameters=self.config.max_context * self.config.d_model,
+            vision_parameters=int(vision),
         )
 
     def _positions(self, tokens: Tensor) -> Tensor:
@@ -125,14 +194,15 @@ class ForgeyInstaTransformer(nn.Module):
     def _causal_mask(length: int, device: torch.device) -> Tensor:
         return torch.triu(torch.ones((length, length), device=device, dtype=torch.bool), diagonal=1)
 
-    def forward(self, source_ids: Tensor, decoder_input_ids: Tensor) -> Tensor:
-        if source_ids.ndim != 2 or decoder_input_ids.ndim != 2:
-            raise ValueError("Forgey Insta expects [batch, tokens] integer tensors")
-        source_padding = source_ids.eq(self.config.pad_id)
+    def _decode(self, source_hidden: Tensor, decoder_input_ids: Tensor, source_padding: Tensor | None = None) -> Tensor:
+        if decoder_input_ids.ndim != 2:
+            raise ValueError("Forgey Insta decoder expects [batch, tokens]")
         target_padding = decoder_input_ids.eq(self.config.pad_id)
         target_mask = self._causal_mask(decoder_input_ids.size(1), decoder_input_ids.device)
+        if source_padding is None:
+            source_padding = torch.zeros(source_hidden.shape[:2], dtype=torch.bool, device=source_hidden.device)
         hidden = self.transformer(
-            src=self._embed(source_ids),
+            src=source_hidden,
             tgt=self._embed(decoder_input_ids),
             tgt_mask=target_mask,
             src_key_padding_mask=source_padding,
@@ -140,6 +210,65 @@ class ForgeyInstaTransformer(nn.Module):
             memory_key_padding_mask=source_padding,
         )
         return self.output_projection(hidden)
+
+    def forward(self, source_ids: Tensor, decoder_input_ids: Tensor) -> Tensor:
+        if source_ids.ndim != 2 or decoder_input_ids.ndim != 2:
+            raise ValueError("Forgey Insta text path expects [batch, tokens] integer tensors")
+        source_padding = source_ids.eq(self.config.pad_id)
+        return self._decode(self._embed(source_ids), decoder_input_ids, source_padding)
+
+    def _prepare_images(self, images: Tensor) -> Tensor:
+        if not self.config.vision_enabled:
+            raise RuntimeError("Forgey Insta vision path is disabled")
+        if images.ndim == 3:
+            images = images.unsqueeze(0)
+        if images.ndim != 4 or images.size(1) != self.config.vision_channels:
+            raise ValueError("Forgey Insta vision expects [batch,3,height,width] RGB tensors")
+        value = images.to(dtype=torch.float32)
+        if float(value.detach().max().item()) > 1.5:
+            value = value / 255.0
+        value = value.clamp(0.0, 1.0)
+        if value.size(2) != self.config.vision_image_size or value.size(3) != self.config.vision_image_size:
+            value = F.interpolate(
+                value,
+                size=(self.config.vision_image_size, self.config.vision_image_size),
+                mode="bilinear",
+                align_corners=False,
+            )
+        return value
+
+    def _vision_direction_ids(self, direction: str | Iterable[str], batch: int, device: torch.device) -> Tensor:
+        if isinstance(direction, str):
+            directions = [direction] * batch
+        else:
+            directions = [str(value) for value in direction]
+        if len(directions) != batch:
+            raise ValueError("vision direction count does not match image batch")
+        ids: list[int] = []
+        for value in directions:
+            normalized = str(value).strip().upper()
+            if normalized not in self.VISION_DIRECTIONS:
+                raise ValueError(f"unsupported Forgey Insta vision direction: {value}")
+            ids.append(self.VISION_DIRECTIONS[normalized])
+        return torch.tensor(ids, dtype=torch.long, device=device)
+
+    def visual_source(self, images: Tensor, direction: str | Iterable[str]) -> Tensor:
+        value = self._prepare_images(images)
+        assert self.vision_patch_projection is not None
+        assert self.vision_position_embedding is not None
+        assert self.vision_direction_embedding is not None
+        patches = self.vision_patch_projection(value).flatten(2).transpose(1, 2)
+        if patches.size(1) != self.config.visual_token_count:
+            raise RuntimeError("visual patch count changed unexpectedly")
+        positions = torch.arange(patches.size(1), dtype=torch.long, device=patches.device)
+        patches = patches + self.vision_position_embedding(positions).unsqueeze(0) + self.vision_modality_embedding
+        direction_ids = self._vision_direction_ids(direction, patches.size(0), patches.device)
+        direction_hidden = self.vision_direction_embedding(direction_ids).unsqueeze(1) + self.vision_modality_embedding
+        return torch.cat((direction_hidden, patches), dim=1)
+
+    def forward_image(self, images: Tensor, direction: str | Iterable[str], decoder_input_ids: Tensor) -> Tensor:
+        source_hidden = self.visual_source(images, direction)
+        return self._decode(source_hidden, decoder_input_ids, None)
 
     @torch.no_grad()
     def greedy_generate(
@@ -162,23 +291,53 @@ class ForgeyInstaTransformer(nn.Module):
             decoder = torch.tensor([generated], dtype=torch.long, device=model_device)
             logits = self(source_ids, decoder)
             next_id = int(torch.argmax(logits[0, -1], dim=-1).item())
-            if next_id == tokenizer.eos_id:
-                break
-            if next_id == tokenizer.pad_id:
-                # PAD is never a valid released text token; stop instead of leaking
-                # padding into a user-visible candidate.
+            if next_id == tokenizer.eos_id or next_id == tokenizer.pad_id:
                 break
             generated.append(next_id)
             if len(generated) >= self.config.max_context:
                 break
         return tokenizer.decode(generated[1:]).strip()
 
+    @torch.no_grad()
+    def greedy_generate_image(
+        self,
+        tokenizer: Any,
+        direction: str,
+        image: Tensor,
+        *,
+        max_new_tokens: int = 64,
+        device: str | torch.device | None = None,
+        return_confidence: bool = False,
+    ) -> str | tuple[str, float]:
+        self.eval()
+        model_device = next(self.parameters()).device if device is None else torch.device(device)
+        images = image.to(model_device)
+        if images.ndim == 3:
+            images = images.unsqueeze(0)
+        source_hidden = self.visual_source(images, direction)
+        generated = [tokenizer.bos_id]
+        probabilities: list[float] = []
+        for _ in range(min(int(max_new_tokens), self.config.max_context - 1)):
+            decoder = torch.tensor([generated], dtype=torch.long, device=model_device)
+            logits = self._decode(source_hidden, decoder, None)
+            probs = torch.softmax(logits[0, -1], dim=-1)
+            next_id = int(torch.argmax(probs, dim=-1).item())
+            probabilities.append(float(probs[next_id].item()))
+            if next_id == tokenizer.eos_id or next_id == tokenizer.pad_id:
+                break
+            generated.append(next_id)
+            if len(generated) >= self.config.max_context:
+                break
+        output = tokenizer.decode(generated[1:]).strip()
+        confidence = sum(probabilities) / len(probabilities) if probabilities else 0.0
+        return (output, confidence) if return_confidence else output
+
     def save_checkpoint(self, path: Path, *, metadata: dict[str, Any] | None = None) -> None:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "kind": "forgey-insta-g1",
                 "config": asdict(self.config),
                 "state_dict": self.state_dict(),
