@@ -3,7 +3,7 @@
   "phase": 6,
   "step": 4,
   "name": "Forgey Insta Primary Runtime + Hidden Control Room",
-  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "status": "PASS",
   "base_main_sha": "2e40519e89ce0c8a412d5f0f47ad18fa7407ee09",
   "engine_count": 44,
   "new_engine_count": 0,
@@ -58,7 +58,17 @@
     "validation_control": true,
     "unsupported_controls_must_report_unavailable": true
   },
-  "scope_guards": {"phase6_windows_release_implemented": false, "step5_release_publisher_implemented": false},
+  "scope_guards": {
+    "phase6_windows_release_implemented": false,
+    "step5_release_publisher_implemented": false
+  },
+  "verified_implementation_head": "e530934efbde45b9f9f5d1d1d3d5ffb2ac6c4116",
+  "verified_implementation_runs": {
+    "step1": 32201562506,
+    "step2": 32201562397,
+    "step3": 32201562403,
+    "step4": 32201562514
+  },
   "required_evidence": [
     "Step 3 remains compatible and 44/44 diagnostics stay green",
     "normal translation attempts registry-selected Forgey Insta before supporting translation logic when a verified generation is available",
