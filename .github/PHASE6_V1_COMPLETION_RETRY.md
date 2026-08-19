@@ -5,3 +5,5 @@ This non-runtime completion marker intentionally triggers a fresh exact-main Pha
 Product release version remains v0.6.0 for this completion attempt.
 
 Release acceptance remains unchanged: exact-main Step 5 must complete successfully, publish the SHA-bound v0.6.0 GitHub Release, and re-verify the required Setup, Portable, runtime, native-vision, package-smoke, and proof assets before Phase 6 is called PASS.
+
+Delivery trigger: use a real GitHub PR merge so the exact-main push event is generated through the already-proven merge path; no Forgey model, runtime, package, or release semantics are changed by this marker.
