@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Rehearse G1 on trusted non-benchmark probes while retaining broad replay.
+"""Rehearse G1 on trusted probes and the deterministic native-vision semantic bridge.
 
-This is still Phase-6 Step 2 bootstrap training. It uses only the deterministic
-curriculum already admitted by 🧠/🌱; there is no provider/teacher or self-output
-learning path here.
+This is still Phase-6 Step 2 bootstrap training. It uses only deterministic trusted
+truth: the existing Step-2 curriculum plus the independently-known visual concepts
+from the native-vision curriculum. There is no provider/teacher or self-output
+learning path here. The pixel adapter is trained only after this decoder bridge is
+proven exact.
 """
 from __future__ import annotations
 
@@ -44,6 +46,20 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _predict_pairs(model, tokenizer, expected, device):
+    rows = []
+    for (direction, source), target in expected.items():
+        prediction = model.greedy_generate(tokenizer, direction, source, max_new_tokens=24, device=device)
+        rows.append({
+            "direction": direction,
+            "source": source,
+            "expected": target,
+            "prediction": prediction,
+            "exact": prediction.casefold() == target.casefold(),
+        })
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", default=str(ROOT / "data" / "phase6-step2"))
@@ -61,6 +77,7 @@ def main() -> None:
 
     tokenizer_module = load("_p6s2_rehearse_tokenizer", ROOT / "📚" / "✂️")
     curriculum_module = load("_p6s2_rehearse_curriculum", ROOT / "🧠" / "🌱")
+    vision_module = load("_p6s2_rehearse_vision", ROOT / "🧠" / "👁️")
     model_module = load("_p6s2_rehearse_model", ROOT / "🧠" / "🤖")
     trainer_module = load("_p6s2_rehearse_trainer", ROOT / "scripts" / "phase6-step2-train-g1.py")
 
@@ -87,28 +104,52 @@ def main() -> None:
         ("EL_TO_ABC", "📷"): "camera",
         ("EL_TO_ABC", "🔑"): "key",
     }
+    bridge_expected = {}
+    for item in vision_module.CONCEPTS:
+        bridge_expected[("ABC_TO_EL", item.abc)] = item.el
+        bridge_expected[("EL_TO_ABC", item.el)] = item.abc
+    overlap = tuple(key for key in bridge_expected if key in forbidden_keys)
+    if overlap:
+        raise RuntimeError(f"native-vision semantic bridge overlaps frozen benchmark: {overlap}")
 
     encoded_by_key = {}
     replay_rows = []
     replay_weights = []
+    required_expected = {**smoke_expected, **bridge_expected}
     for example in curriculum:
         encoded = trainer_module.encode_example(tokenizer, example.direction, example.source, example.target, model.config.max_context)
         if encoded is None:
             continue
         replay_rows.append(encoded)
         replay_weights.append(max(1, int(example.weight)))
-        expected = smoke_expected.get(example.key)
+        expected = required_expected.get(example.key)
         if expected is not None and example.target.casefold() == expected.casefold():
             current = encoded_by_key.get(example.key)
             if current is None or int(example.weight) > current[0]:
                 encoded_by_key[example.key] = (int(example.weight), encoded)
 
-    missing = tuple(key for key in smoke_expected if key not in encoded_by_key)
-    if missing:
-        raise RuntimeError(f"trusted rehearsal probes absent from curriculum: {missing}")
-    smoke_rows = [encoded_by_key[key][1] for key in smoke_expected]
+    # Some deterministic visual phrases intentionally normalize official Unicode names
+    # (for example "check mark"). They are still independently-known Step-2 truth and
+    # may be encoded directly when that exact normalized pair is not present in 🌱.
+    for key, expected in required_expected.items():
+        if key in encoded_by_key:
+            continue
+        encoded = trainer_module.encode_example(tokenizer, key[0], key[1], expected, model.config.max_context)
+        if encoded is not None:
+            encoded_by_key[key] = (1, encoded)
+
+    missing_smoke = tuple(key for key in smoke_expected if key not in encoded_by_key)
+    missing_bridge = tuple(key for key in bridge_expected if key not in encoded_by_key)
+    if missing_smoke:
+        raise RuntimeError(f"trusted rehearsal probes unavailable: {missing_smoke}")
+    if missing_bridge:
+        raise RuntimeError(f"deterministic visual semantic bridge unavailable: {missing_bridge}")
     if not replay_rows:
         raise RuntimeError("broad replay set is empty")
+
+    smoke_rows = [encoded_by_key[key][1] for key in smoke_expected]
+    bridge_rows = [encoded_by_key[key][1] for key in bridge_expected]
+    focus_rows = smoke_rows + bridge_rows
 
     benchmark_rows = []
     for item in benchmark_items:
@@ -123,47 +164,80 @@ def main() -> None:
     rng = random.Random(args.seed)
     losses: list[float] = []
     model.train()
-    smoke_batch = max(8, int(args.batch_size) // 2)
-    replay_batch = max(1, int(args.batch_size) - smoke_batch)
+    requested_steps = max(1, int(args.steps))
+    smoke_batch = max(8, int(args.batch_size) // 4)
+    bridge_batch = max(12, int(args.batch_size) // 2)
+    if smoke_batch + bridge_batch >= int(args.batch_size):
+        bridge_batch = max(1, int(args.batch_size) - smoke_batch - 1)
+    replay_batch = max(1, int(args.batch_size) - smoke_batch - bridge_batch)
 
-    for step in range(int(args.steps)):
-        selected_smoke = [smoke_rows[index] for index in rng.choices(range(len(smoke_rows)), k=smoke_batch)]
-        selected_replay = [replay_rows[index] for index in rng.choices(range(len(replay_rows)), weights=replay_weights, k=replay_batch)]
-        rows = selected_smoke + selected_replay
-        rng.shuffle(rows)
-        source, decoder, labels = trainer_module.collate(rows, tokenizer.pad_id, device)
+    def train_step(selected_rows):
+        source, decoder, labels = trainer_module.collate(selected_rows, tokenizer.pad_id, device)
         optimizer.zero_grad(set_to_none=True)
         logits = model(source, decoder)
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1), ignore_index=-100)
         if not torch.isfinite(loss):
-            raise RuntimeError(f"non-finite rehearsal loss at step {step + 1}")
+            raise RuntimeError("non-finite rehearsal loss")
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         losses.append(float(loss.item()))
+
+    for step in range(requested_steps):
+        selected_smoke = [smoke_rows[index] for index in rng.choices(range(len(smoke_rows)), k=smoke_batch)]
+        selected_bridge = [bridge_rows[index] for index in rng.choices(range(len(bridge_rows)), k=bridge_batch)]
+        selected_replay = [replay_rows[index] for index in rng.choices(range(len(replay_rows)), weights=replay_weights, k=replay_batch)]
+        rows = selected_smoke + selected_bridge + selected_replay
+        rng.shuffle(rows)
+        train_step(rows)
         if (step + 1) % 60 == 0 or step == 0:
-            print(f"G1_REHEARSE step={step + 1}/{args.steps} loss={losses[-1]:.6f}", flush=True)
+            print(f"G1_REHEARSE step={step + 1}/{requested_steps} loss={losses[-1]:.6f}", flush=True)
 
+    # Exact semantic readiness is a prerequisite for pixel grounding. If the normal
+    # rehearsal did not lock every trusted pair, run a bounded deterministic repair
+    # curriculum while retaining broad replay. This teaches the decoder; it does not
+    # see pixels and cannot use model self-output as truth.
+    repair_limit = 360
+    repair_used = 0
     model.eval()
-    post_benchmark = trainer_module.token_loss(model, benchmark_rows, tokenizer.pad_id, device)
-    smoke_predictions = []
-    for (direction, source), expected in smoke_expected.items():
-        prediction = model.greedy_generate(tokenizer, direction, source, max_new_tokens=24, device=device)
-        smoke_predictions.append({
-            "direction": direction,
-            "source": source,
-            "expected": expected,
-            "prediction": prediction,
-            "exact": prediction.casefold() == expected.casefold(),
-        })
+    smoke_predictions = _predict_pairs(model, tokenizer, smoke_expected, device)
+    bridge_predictions = _predict_pairs(model, tokenizer, bridge_expected, device)
+    while (not all(row["exact"] for row in smoke_predictions + bridge_predictions)) and repair_used < repair_limit:
+        model.train()
+        for _ in range(min(60, repair_limit - repair_used)):
+            focus_batch = max(1, int(args.batch_size) - 4)
+            selected_focus = [focus_rows[index] for index in rng.choices(range(len(focus_rows)), k=focus_batch)]
+            selected_replay = [replay_rows[index] for index in rng.choices(range(len(replay_rows)), weights=replay_weights, k=4)]
+            rows = selected_focus + selected_replay
+            rng.shuffle(rows)
+            train_step(rows)
+            repair_used += 1
+        model.eval()
+        smoke_predictions = _predict_pairs(model, tokenizer, smoke_expected, device)
+        bridge_predictions = _predict_pairs(model, tokenizer, bridge_expected, device)
+        exact_smoke = sum(1 for row in smoke_predictions if row["exact"])
+        exact_bridge = sum(1 for row in bridge_predictions if row["exact"])
+        print(f"G1_SEMANTIC_BRIDGE repair={repair_used}/{repair_limit} smoke={exact_smoke}/{len(smoke_predictions)} visual={exact_bridge}/{len(bridge_predictions)}", flush=True)
 
+    if not all(row["exact"] for row in smoke_predictions):
+        for row in smoke_predictions:
+            if not row["exact"]: print("G1_SMOKE_MISS", json.dumps(row, ensure_ascii=False, sort_keys=True), flush=True)
+        raise RuntimeError("trusted rehearsal probes are not all exact after bounded repair")
+    if not all(row["exact"] for row in bridge_predictions):
+        for row in bridge_predictions:
+            if not row["exact"]: print("G1_VISUAL_SEMANTIC_MISS", json.dumps(row, ensure_ascii=False, sort_keys=True), flush=True)
+        raise RuntimeError("deterministic visual semantic bridge is not exact after bounded repair")
+
+    post_benchmark = trainer_module.token_loss(model, benchmark_rows, tokenizer.pad_id, device)
     previous_steps = int(metadata.get("training_steps") or proof.get("g1", {}).get("training_steps") or 0)
+    actual_steps = requested_steps + repair_used
     metadata.update({
         "generation": "G1",
-        "training_steps": previous_steps + int(args.steps),
+        "training_steps": previous_steps + actual_steps,
         "broad_training_steps": previous_steps,
-        "rehearsal_steps": int(args.steps),
+        "rehearsal_steps": actual_steps,
         "rehearsal_seed": int(args.seed),
+        "visual_semantic_bridge_exact": f"{len(bridge_predictions)}/{len(bridge_predictions)}",
     })
     model.save_checkpoint(checkpoint_path, metadata=metadata)
     checkpoint_sha = file_sha256(checkpoint_path)
@@ -174,9 +248,11 @@ def main() -> None:
     g0_benchmark = float(proof["g0"]["frozen_benchmark_loss"])
     g1 = proof["g1"]
     g1.update({
-        "training_steps": previous_steps + int(args.steps),
+        "training_steps": previous_steps + actual_steps,
         "broad_training_steps": previous_steps,
-        "rehearsal_steps": int(args.steps),
+        "rehearsal_steps": actual_steps,
+        "rehearsal_requested_steps": requested_steps,
+        "semantic_bridge_repair_steps": repair_used,
         "rehearsal_seed": int(args.seed),
         "pre_rehearsal_benchmark_loss": pre_benchmark,
         "rehearsal_early_loss": rehearsal_early,
@@ -194,10 +270,21 @@ def main() -> None:
         "provider_generated_truth_count": 0,
         "unverified_self_output_truth_count": 0,
         "benchmark_source_overlap_count": 0,
-        "steps": int(args.steps),
+        "steps": actual_steps,
+        "requested_steps": requested_steps,
+        "semantic_bridge_repair_steps": repair_used,
         "batch_size": int(args.batch_size),
         "smoke_examples_per_batch": smoke_batch,
+        "visual_semantic_examples_per_batch": bridge_batch,
         "broad_replay_examples_per_batch": replay_batch,
+    }
+    proof["visual_semantic_bridge"] = {
+        "truth_source": "deterministic native-vision concept authority",
+        "provider_generated_truth_count": 0,
+        "unverified_self_output_truth_count": 0,
+        "pair_total": len(bridge_predictions),
+        "pair_exact_count": sum(1 for row in bridge_predictions if row["exact"]),
+        "predictions": bridge_predictions,
     }
     proof_path.write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -205,7 +292,9 @@ def main() -> None:
         "PHASE6_STEP2_REHEARSED "
         f"benchmark={pre_benchmark:.4f}->{post_benchmark:.4f} "
         f"rehearsal={rehearsal_early:.4f}->{rehearsal_late:.4f} "
-        f"smoke={g1['smoke_exact_count']}/{g1['smoke_total']}",
+        f"smoke={g1['smoke_exact_count']}/{g1['smoke_total']} "
+        f"visual_semantic={proof['visual_semantic_bridge']['pair_exact_count']}/{proof['visual_semantic_bridge']['pair_total']} "
+        f"repair={repair_used}",
         flush=True,
     )
 
