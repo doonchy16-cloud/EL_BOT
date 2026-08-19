@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "step": 5,
+  "name": "Forgey Insta Proof, Packaging & Release",
+  "status": "IMPLEMENTATION_IN_PROGRESS",
+  "base_main_sha": "e0ed1b2ac91ae1f9a716abfc0e93904469b91422",
+  "version": "0.6.0",
+  "engine_count": 44,
+  "new_engine_count": 0,
+  "windows": {
+    "architectures": ["x64"],
+    "targets": ["nsis", "portable"],
+    "setup_required": true,
+    "portable_required": true
+  },
+  "embedded_runtime": {
+    "python": "3.12.10",
+    "torch": "2.13.0 CPU",
+    "separate_python_install_required": false,
+    "separate_torch_install_required": false,
+    "ollama_bundled": false,
+    "qwen_bundled": false
+  },
+  "forgey_package": {
+    "selected_generation": "G2",
+    "rollback_generation": "G1",
+    "portable_registry_paths": true,
+    "model_hashes_preserved": true,
+    "tokenizer_hashes_preserved": true,
+    "provider_calls_on_success": 0,
+    "packaged_forward_required": true,
+    "packaged_reverse_required": true,
+    "packaged_44_diagnostics_required": true
+  },
+  "regressions": {
+    "phase5_real_rendered_visual_proof_required": true,
+    "step1_through_step4_green_required": true,
+    "phase2_phase3_and_44_required": true
+  },
+  "release": {
+    "publish_from_pr": false,
+    "publish_from_main_only": true,
+    "exact_main_sha_tagging": true,
+    "version_tag_prefix": "el-bot-v0.6.0-",
+    "asset_hash_manifest_required": true,
+    "release_reread_required": true
+  },
+  "required_release_assets": [
+    "EL-Bot-Setup-0.6.0-x64.exe",
+    "EL-Bot-Portable-0.6.0-x64.exe",
+    "package-smoke.json",
+    "phase6-package-forgey-proof.json",
+    "runtime-package-manifest.json",
+    "hourglass-30fps.mp4",
+    "hourglass-contact-sheet.png",
+    "ui-idle.png",
+    "ui-warning.png",
+    "preview-zoom.png",
+    "proof.json",
+    "phase6-release-manifest.json"
+  ],
+  "final_exact_main_ci_required": true,
+  "fake_or_placeholder_release_evidence_forbidden": true
+}
