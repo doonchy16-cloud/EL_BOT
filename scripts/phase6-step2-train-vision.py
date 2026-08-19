@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Train G1 native vision by grounding pixels into verified semantic memory.
+"""Train G1 native vision with stage-correct semantic grounding.
 
 Only visual parameters update. The shared text Transformer remains frozen. Pixel
-examples have independently known targets. Visual *content* is grounded to one
-canonical concept memory independent of requested output format, while the separate
-visual direction token is grounded to the corresponding text direction. This avoids
-asking one pixel representation to chase incompatible ABC-vs-EL content embeddings.
+examples have independently known targets. Raw visual patch content is grounded to
+one canonical direction-invariant ABC concept *source embedding*. After the shared
+Transformer encoder has mixed in the separate visual direction token, encoded visual
+content is grounded to the corresponding direction-specific frozen text memory that
+the decoder already knows how to consume. This preserves one concept identity while
+allowing IMAGE_TO_EL and IMAGE_TO_ABC to form different decoder-ready memories.
 """
 from __future__ import annotations
 
@@ -38,13 +40,13 @@ def file_sha256(path: Path) -> str:
 
 
 def _canonical_source(tokenizer, vision, item):
-    """One direction-invariant semantic target for visual content."""
+    """One direction-invariant semantic source for raw visual content."""
     target = vision.concept(item.concept)
     return tokenizer.encode_source("ABC_TO_EL", target.abc)
 
 
 def _direction_source(tokenizer, vision, item):
-    """Direction-specific text memory used only for the separate visual direction token."""
+    """Text source whose encoded memory already supports the requested output format."""
     target = vision.concept(item.concept)
     if item.direction == "IMAGE_TO_EL": return tokenizer.encode_source("ABC_TO_EL", target.abc)
     if item.direction == "IMAGE_TO_ABC": return tokenizer.encode_source("EL_TO_ABC", target.el)
@@ -59,17 +61,17 @@ def _collate_sources(tokenizer, vision, selected, device, source_fn):
     return source
 
 
-def _semantic_text_pool(text_memory, text_padding, source_ids, tokenizer):
-    """Pool concept-bearing memory without direction/EOS/padding tokens."""
-    mask = (~text_padding) & source_ids.ne(tokenizer.eos_id) & source_ids.ne(tokenizer.pad_id)
+def _semantic_text_pool(memory, padding, source_ids, tokenizer):
+    """Pool concept-bearing vectors without direction/EOS/padding tokens."""
+    mask = (~padding) & source_ids.ne(tokenizer.eos_id) & source_ids.ne(tokenizer.pad_id)
     if mask.size(1): mask[:, 0] = False
     empty = ~mask.any(dim=1)
     if bool(empty.any().item()):
-        fallback = ~text_padding
+        fallback = ~padding
         if fallback.size(1): fallback[:, 0] = False
         mask[empty] = fallback[empty]
-    weights = mask.unsqueeze(-1).to(text_memory.dtype)
-    return (text_memory * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+    weights = mask.unsqueeze(-1).to(memory.dtype)
+    return (memory * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
 
 
 def _multi_positive_contrastive(visual_pool, text_pool, keys, temperature: float = 0.08):
@@ -101,7 +103,7 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
     minimum_steps=max(180,int(minimum_steps)); maximum_steps=max(900,minimum_steps*2)
     optimizer = torch.optim.AdamW(visual_parameters, lr=0.003, betas=(0.9, 0.98), weight_decay=0.003)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=maximum_steps, eta_min=0.0002)
-    total_losses=[]; ce_losses=[]; align_losses=[]; contrastive_losses=[]; learning_rates=[]; final_probes=[]
+    total_losses=[]; ce_losses=[]; align_losses=[]; raw_align_losses=[]; encoded_align_losses=[]; contrastive_losses=[]; learning_rates=[]; final_probes=[]
     try:
         # Frozen Transformer/decoder stays deterministic; gradients still flow through
         # the trainable visual adapter into the frozen network for the loss signal.
@@ -119,26 +121,43 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
             ce=F.cross_entropy(logits.reshape(-1,logits.size(-1)),labels.reshape(-1),ignore_index=-100)
             visual_memory=model.transformer.encoder(visual_source)
             with torch.no_grad():
-                canonical_memory,canonical_padding=model.encode_text_memory(canonical_source)
-                direction_memory,_=model.encode_text_memory(direction_source)
-            # Every rendition/output direction of one concept shares ONE canonical content
-            # target. IMAGE_TO_EL vs IMAGE_TO_ABC is represented only by token 0.
-            text_pool=_semantic_text_pool(canonical_memory,canonical_padding,canonical_source,tokenizer)
-            visual_pool=visual_memory[:,1:,:].mean(dim=1)
-            pool_align=(1.0-F.cosine_similarity(visual_pool,text_pool,dim=-1)).mean()
-            direction_align=(1.0-F.cosine_similarity(visual_memory[:,0,:],direction_memory[:,0,:],dim=-1)).mean()
-            magnitude_align=F.mse_loss(F.normalize(visual_pool,dim=-1),F.normalize(text_pool,dim=-1))
-            alignment=pool_align+direction_align+2.0*magnitude_align
+                canonical_padding=canonical_source.eq(tokenizer.pad_id)
+                canonical_embedding=model._embed(canonical_source)
+                direction_memory,direction_padding=model.encode_text_memory(direction_source)
+
+            # Stage 1: before self-attention sees the output-direction token, pixels must
+            # describe only concept identity. Match raw patch content to the same frozen
+            # canonical ABC source-embedding space for both requested output directions.
+            canonical_source_pool=_semantic_text_pool(canonical_embedding,canonical_padding,canonical_source,tokenizer)
+            raw_visual_pool=visual_source[:,1:,:].mean(dim=1)
+            raw_cos=(1.0-F.cosine_similarity(raw_visual_pool,canonical_source_pool,dim=-1)).mean()
+            raw_mse=F.mse_loss(F.normalize(raw_visual_pool,dim=-1),F.normalize(canonical_source_pool,dim=-1))
+            raw_alignment=raw_cos+2.0*raw_mse
+
+            # Stage 2: after encoder self-attention mixes direction token + image patches,
+            # match the decoder-facing content to the exact text memory for that output:
+            # ABC source memory for Image→EL; EL source memory for Image→ABC.
+            direction_text_pool=_semantic_text_pool(direction_memory,direction_padding,direction_source,tokenizer)
+            encoded_visual_pool=visual_memory[:,1:,:].mean(dim=1)
+            encoded_cos=(1.0-F.cosine_similarity(encoded_visual_pool,direction_text_pool,dim=-1)).mean()
+            encoded_mse=F.mse_loss(F.normalize(encoded_visual_pool,dim=-1),F.normalize(direction_text_pool,dim=-1))
+            direction_token=(1.0-F.cosine_similarity(visual_memory[:,0,:],direction_memory[:,0,:],dim=-1)).mean()
+            encoded_alignment=encoded_cos+2.0*encoded_mse+direction_token
+
             keys=[item.concept for item in selected]
-            contrastive=_multi_positive_contrastive(visual_pool,text_pool,keys)
-            loss=ce+4.0*alignment+1.5*contrastive
+            contrastive=_multi_positive_contrastive(raw_visual_pool,canonical_source_pool,keys)
+            alignment=raw_alignment+encoded_alignment
+            # Decoder CE remains the strongest direct task signal. The two alignment
+            # stages prevent concept collapse without forcing decoder-ready memories for
+            # opposite output directions to be identical.
+            loss=ce+2.0*raw_alignment+4.0*encoded_alignment+1.0*contrastive
             if not torch.isfinite(loss): raise RuntimeError(f"non-finite grounded vision loss at step {step+1}")
             loss.backward(); torch.nn.utils.clip_grad_norm_(visual_parameters,max_norm=1.0); optimizer.step(); scheduler.step()
-            total_losses.append(float(loss.item())); ce_losses.append(float(ce.item())); align_losses.append(float(alignment.item())); contrastive_losses.append(float(contrastive.item())); learning_rates.append(float(optimizer.param_groups[0]["lr"]))
+            total_losses.append(float(loss.item())); ce_losses.append(float(ce.item())); align_losses.append(float(alignment.item())); raw_align_losses.append(float(raw_alignment.item())); encoded_align_losses.append(float(encoded_alignment.item())); contrastive_losses.append(float(contrastive.item())); learning_rates.append(float(optimizer.param_groups[0]["lr"]))
             current=step+1
             if current==1 or current%90==0:
                 probes=vision.evaluate_visual_probes(model,tokenizer,target_device); exact=sum(1 for row in probes if row["exact"])
-                print(f"FORGEY_VISION_GROUNDED step={current}/{maximum_steps} total={total_losses[-1]:.6f} ce={ce_losses[-1]:.6f} align={align_losses[-1]:.6f} contrast={contrastive_losses[-1]:.6f} lr={learning_rates[-1]:.6f} probes={exact}/{len(probes)}",flush=True)
+                print(f"FORGEY_VISION_GROUNDED step={current}/{maximum_steps} total={total_losses[-1]:.6f} ce={ce_losses[-1]:.6f} raw={raw_align_losses[-1]:.6f} encoded={encoded_align_losses[-1]:.6f} contrast={contrastive_losses[-1]:.6f} lr={learning_rates[-1]:.6f} probes={exact}/{len(probes)}",flush=True)
                 if current>=minimum_steps and exact==len(probes): final_probes=probes; break
         if not final_probes: final_probes=vision.evaluate_visual_probes(model,tokenizer,target_device)
     finally:
@@ -146,11 +165,12 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
     window=min(30,max(5,len(total_losses)//5)); exact=sum(1 for row in final_probes if row["exact"])
     return {
         "truth_source":"deterministic synthetic pixel scenes",
-        "grounding_source":"one canonical frozen Forgey ABC concept memory plus separately grounded output-direction memory",
+        "grounding_source":"canonical frozen Forgey ABC source embedding before encoder plus direction-conditioned frozen decoder-ready text memory after encoder",
         "provider_generated_truth_count":0,
         "unverified_self_output_truth_count":0,
         "shared_text_parameters_updated":False,
-        "collapse_prevention":"direction-invariant canonical concept memory + concept-identity multi-positive contrastive grounding; direction isolated in direction token",
+        "collapse_prevention":"direction-invariant pre-encoder concept grounding + concept-identity multi-positive contrastive grounding; direction-specific semantics introduced only by shared encoder attention",
+        "representation_stages":"pre-encoder concept identity; post-encoder direction-conditioned decoder memory",
         "frozen_transformer_mode":"eval",
         "learning_rate_schedule":"cosine 0.003 -> 0.0002",
         "steps":len(total_losses),"minimum_steps":minimum_steps,"maximum_steps":maximum_steps,"batch_size":int(batch_size),
@@ -158,6 +178,8 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
         "early_loss":sum(total_losses[:window])/window,"late_loss":sum(total_losses[-window:])/window,
         "early_ce_loss":sum(ce_losses[:window])/window,"late_ce_loss":sum(ce_losses[-window:])/window,
         "early_alignment_loss":sum(align_losses[:window])/window,"late_alignment_loss":sum(align_losses[-window:])/window,
+        "early_raw_alignment_loss":sum(raw_align_losses[:window])/window,"late_raw_alignment_loss":sum(raw_align_losses[-window:])/window,
+        "early_encoded_alignment_loss":sum(encoded_align_losses[:window])/window,"late_encoded_alignment_loss":sum(encoded_align_losses[-window:])/window,
         "early_contrastive_loss":sum(contrastive_losses[:window])/window,"late_contrastive_loss":sum(contrastive_losses[-window:])/window,
         "initial_learning_rate":0.003,"final_learning_rate":learning_rates[-1] if learning_rates else 0.003,
         "probe_exact_count":exact,"probe_total":len(final_probes),"probes":final_probes,
