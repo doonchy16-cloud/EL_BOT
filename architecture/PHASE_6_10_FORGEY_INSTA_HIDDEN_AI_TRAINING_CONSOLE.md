@@ -1,10 +1,10 @@
 # Phase 6.10 — Hidden Forgey Insta Control Room
 
-**Status:** ⚡ STEP 4 IMPLEMENTATION AUTHORIZED / IN PROGRESS
+**Status:** ✅ STEP 4 PASS / AWAITING OWNER MERGE
 
 **Canonical intelligence:** `Forgey Insta:EL-Bot`
 
-This is the locked Step-4 control-room authority. The Owner authorized Step 4 on 2026-08-18 and then explicitly refined the hidden console to exactly **two primary pages**.
+This is the locked Step-4 control-room authority. The Owner authorized Step 4 on 2026-08-18 and then explicitly refined the hidden console to exactly **two primary pages**. The implementation has passed its verified evidence gate and remains unmerged until Owner approval.
 
 ## Hidden entry
 
@@ -113,6 +113,8 @@ The old deterministic translator remains intact as historical/support authority.
 
 No fake model size, parameter count, training progress, active time, confidence, status, teacher usage, generation, chart, benchmark, or audit event is allowed. Missing or unmeasurable data must remain missing and be labeled accordingly.
 
-## Step boundary
+## Verified closeout boundary
+
+Step 4 has passed its implementation evidence gate, including Forgey-primary routing, provider-free selected-generation inference, truthful Status data, salted-scrypt authentication, rendered two-page Electron control-room proof, Step-3 compatibility, Phase 2, Phase 3, and 44/44 diagnostics. Final exact-head CI after governance closeout remains required before the PR is marked merge-ready.
 
 Step 4 does **not** publish a Phase-6 installer/release or implement the Step-5 release publisher. Packaging/release proof remains Step 5.
