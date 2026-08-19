@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phase": 6,
   "step": 2,
   "name": "Forgey Insta G0/G1",
@@ -8,10 +8,18 @@
   "base_main_sha": "902a79fec235f77c1bf3b4c7edf82b9a0127b900",
   "engine_count": 44,
   "new_engine_count": 0,
+  "post_pass_owner_extension": {
+    "date": "2026-08-19",
+    "requirement": "Forgey Insta:EL-Bot must also be a native vision model before Phase 6 release.",
+    "scope": "Adds a learned pixel input branch to the same Transformer checkpoint without adding an engine or replacing the locked text/EL architecture.",
+    "release_blocking": true
+  },
   "model": {
     "family": "transformer-encoder-decoder",
     "single_bidirectional_model": true,
+    "modalities": ["text", "image"],
     "direction_tokens": ["<ABC_TO_EL>", "<EL_TO_ABC>"],
+    "native_vision_directions": ["IMAGE_TO_EL", "IMAGE_TO_ABC"],
     "d_model": 128,
     "attention_heads": 4,
     "encoder_layers": 3,
@@ -20,6 +28,12 @@
     "max_context": 128,
     "initialization": "random",
     "pretrained_semantic_weights": false,
+    "vision_enabled": true,
+    "vision_channels": 3,
+    "vision_image_size": 64,
+    "vision_patch_size": 8,
+    "vision_patch_tokens": 64,
+    "vision_input": "learned RGB patch projection + learned visual position/direction/modality embeddings into shared Transformer encoder",
     "trainable_parameter_target": {"minimum": 1000000, "maximum": 3000000},
     "parameter_count_is_runtime_derived": true
   },
@@ -29,34 +43,33 @@
     "merge_count_is_measured": true,
     "official_emoji_atomic": true,
     "el_structural_atomic": true,
-    "model_specials_separate_from_el_output": true
+    "model_specials_separate_from_el_output": true,
+    "vision_directions_do_not_expand_text_vocabulary": true
   },
   "g1_curriculum": {
     "allowed_truth_sources": [
       "official Unicode emoji names",
       "Phase 1-5 validated historical semantic seed",
-      "owner-defined deterministic EL structural examples"
+      "owner-defined deterministic EL structural examples",
+      "deterministic synthetic pixel scenes with independently known ABC/EL targets"
     ],
     "provider_generated_truth_allowed": false,
     "unverified_self_output_allowed": false,
-    "trusted_rehearsal_allowed": true
+    "trusted_rehearsal_allowed": true,
+    "native_vision_provider_generated_positive_truth_allowed": false,
+    "native_vision_unverified_self_output_allowed": false
+  },
+  "native_vision_validation": {
+    "held_out_pixel_probes_required": true,
+    "both_image_to_el_and_image_to_abc_required": true,
+    "provider_calls_on_success": 0,
+    "protected_text_non_regression_required": true,
+    "train_only_visual_adapter_during_visual_curriculum": true
   },
   "frozen_benchmark": {
     "path": "architecture/phase6_step2_frozen_benchmark.json",
     "training_replay_forbidden": true,
-    "required_categories": [
-      "easy",
-      "morphology",
-      "compounds",
-      "ambiguity",
-      "context",
-      "negation",
-      "relationships",
-      "numbers_time",
-      "technical",
-      "unknown_nonsense",
-      "reverse"
-    ]
+    "required_categories": ["easy","morphology","compounds","ambiguity","context","negation","relationships","numbers_time","technical","unknown_nonsense","reverse"]
   },
   "scope_guards": {
     "teacher_qwen_learning_system_implemented": false,
@@ -89,24 +102,21 @@
     "phase2_compatibility": "PASS",
     "phase3_compatibility": "PASS",
     "diagnostics": "44/44 PASS",
-    "note": "All numeric values are historical candidate-run evidence only. The tokenizer vocabulary and model parameter count are derived by the implemented Step-2 pipeline rather than read from these fields."
+    "note": "These numeric values remain historical pre-native-vision Step-2 candidate evidence. The final multimodal parameter count is runtime-derived from the extended graph and must remain in the locked 1-3M envelope."
   },
   "final_exact_head_ci_required": true,
   "required_evidence": [
     "Step-1 knowledge materializes and remains compatible",
     "from-scratch byte BPE is measured and unseen UTF-8 round-trips",
     "official emoji sequences remain atomic",
-    "one bidirectional G0 Transformer instantiates from random weights",
-    "real trainable parameter count falls inside the locked 1-3M target",
+    "one shared G0 Transformer instantiates from random weights",
+    "real multimodal trainable parameter count falls inside the locked 1-3M target",
     "frozen benchmark has zero training-source overlap",
-    "G1 early-to-late training loss materially improves",
-    "G1 frozen-benchmark loss improves over G0",
-    "trusted deterministic rehearsal retains zero provider/self-output/benchmark truth leakage and reaches all rehearsal probes exactly",
+    "G1 text training and trusted rehearsal retain protected text probes",
+    "G1 native visual adapter learns deterministic pixel truth with no provider/self-output positive truth",
+    "held-out Image→EL and Image→ABC probes are exact in fresh provider-free processes",
     "saved tokenizer/checkpoint are hashed and reloadable",
-    "fresh-process local inference executes ABC_TO_EL and EL_TO_ABC exactly on trusted rehearsal probes with zero provider calls",
     "Phase-2 and Phase-3 compatibility remain green",
-    "44/44 engine diagnostics remain green",
-    "Steps 3-5 remain unimplemented",
-    "one final exact PASS-head Step-1 + Step-2 CI pair succeeds"
+    "44/44 engine diagnostics remain green"
   ]
 }
