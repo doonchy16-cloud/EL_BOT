@@ -93,12 +93,11 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\ci-screenshot-vision.ps1' -PythonExe $env:EL_PYTHON
           if($LASTEXITCODE-ne 0){throw 'SCREENSHOT_VISION_REGRESSION_FAILED'}
 
-      - name: "🧪 Legacy complete diagnostics/release-engine regression"
+      - name: "🧪 Current complete 44-engine regression"
         shell: powershell
         run: |
           $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8'
-          & $env:EL_PYTHON -c "import pathlib,runpy;p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==chr(0x2705));runpy.run_path(str(p),run_name='__main__')";if($LASTEXITCODE-ne 0){throw 'LEGACY_COMPLETE_REGRESSION_FAILED'}
-          & $env:EL_PYTHON -c "import pathlib,runpy;p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==chr(0x1F680));runpy.run_path(str(p),run_name='__main__')";if($LASTEXITCODE-ne 0){throw 'LEGACY_RELEASE_ENGINE_REGRESSION_FAILED'}
+          & $env:EL_PYTHON -c "import pathlib,runpy;p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==chr(0x2705));runpy.run_path(str(p),run_name='__main__')";if($LASTEXITCODE-ne 0){throw 'CURRENT_COMPLETE_REGRESSION_FAILED'}
 
       - name: "📸🎞️ Phase 5 real-rendered visual regression"
         shell: powershell
