@@ -2,7 +2,7 @@
 
 ## Forgey Insta:EL-Bot
 
-**Status:** 🔒 STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS+MERGED / STEP 4 PASS / STEP 5 PAUSED
+**Status:** 🔒 STEP 1 PASS+MERGED / STEP 2 PASS+MERGED / STEP 3 PASS+MERGED / STEP 4 PASS+MERGED / STEP 5 AUTHORIZED+IN PROGRESS
 
 **Canonical intelligence name:** `Forgey Insta:EL-Bot`
 
@@ -50,60 +50,71 @@ Step 3 proved the teacher/learning/generation lifecycle:
 
 Verified Step-3 evidence included 5 Qwen calls, 3 admitted lessons, 2 rejected/negative lessons, provider-authored EL truth 0, self-output truth 0, benchmark overlap 0, G1→G2 teacher exactness 0/3→3/3, protected probes 8/8, teacher round-trip 3/3, promotion G1→G2, rollback G2→G1→G2, exact bicycle forward/reverse inference, Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS.
 
-## Step 4 — Primary Runtime + Hidden Control Room ✅ PASS / AWAITING OWNER MERGE
+### Step 4 — Primary Runtime + Hidden Control Room ✅ PASS / MERGED
 
 Owner authorization date: **2026-08-18**.
 
-Step-4 branch starts from exact merged Step-3 main SHA `2e40519e89ce0c8a412d5f0f47ad18fa7407ee09`.
+Step-4 final verified branch head: `b8ca651a64e4c4c6e9817d3dcadec5dbbb638c8b`.
 
-Verified implementation head before governance closeout: `e530934efbde45b9f9f5d1d1d3d5ffb2ac6c4116`.
+Final exact-head workflows all completed successfully:
+- Step 1 Validation run `32209780642` — SUCCESS;
+- Step 2 G0-G1 Validation run `32209780641` — SUCCESS;
+- Step 3 Teacher + Learning Validation run `32209780607` — SUCCESS;
+- Step 4 Runtime + Control Room Validation run `32209780695` — SUCCESS.
 
-Exact implementation-head workflows all completed successfully:
-- Step 1 Validation run `32201562506` — SUCCESS;
-- Step 2 G0-G1 Validation run `32201562397` — SUCCESS;
-- Step 3 Teacher + Learning Validation run `32201562403` — SUCCESS;
-- Step 4 Runtime + Control Room Validation run `32201562514` — SUCCESS.
+Step-4 merge commit on `main`: `e0ed1b2ac91ae1f9a716abfc0e93904469b91422`.
 
-### Primary runtime
+Step 4 proved:
+- selected verified G2 is attempted first and releases in both directions behind deterministic canonical/integrity/round-trip validation;
+- successful selected-generation inference uses zero provider calls;
+- deterministic/support fallback remains intact;
+- the far-left header 🤖 five-click/three-second gesture has zero visible discovery clue and opens authentication only;
+- local salted-scrypt Owner auth, rate limiting, short-lived sessions, credential rotation, no plaintext/backdoor/remote admin endpoint;
+- rendered Electron hidden control room has exactly two primary pages: **📊 Current Status** and **🏋️ Training Center**;
+- Current Status exposes truthful runtime state;
+- Training Center exposes actual model/tokenizer sizes, runtime-derived parameters, architecture, vocabulary, hashes, metrics, evidence, lineage and rollback state;
+- Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS.
 
-Normal translation now targets a Step-4 facade that attempts the registry-selected Forgey Insta generation first when a verified runtime generation is available. A neural candidate may release only after deterministic canonical/integrity/round-trip checks. Successful Forgey-primary release remains provider-free.
+## Step 5 — Proof, Packaging & Release 🚀 AUTHORIZED / IN PROGRESS
 
-If Forgey is unavailable or its candidate is rejected, the existing deterministic/support path remains available. Only unresolved semantics may reach Qwen behind orchestration/connector boundaries, and Qwen remains semantic teacher/fallback evidence rather than an EL author.
+Owner authorization date: **2026-08-18** local / **2026-08-19** UTC conversation time.
 
-### Hidden control room
+Step-5 branch starts from exact merged Step-4 main SHA `e0ed1b2ac91ae1f9a716abfc0e93904469b91422`.
 
-The hidden entry remains the existing far-left header 🤖 clicked **5 times within 3 seconds**, with zero discovery clue. The gesture opens authentication only.
+Step 5 owns final Phase-6 Windows packaging, runtime artifact materialization, installer/portable delivery, exact-SHA GitHub Release publishing, and exact-final-main-SHA release evidence.
 
-Authentication uses a local salted slow scrypt verifier, short-lived in-memory sessions, rate limiting, password rotation, no committed/hard-coded/plaintext Owner password, no backdoor password, and no remote admin endpoint.
+### Locked Step-5 delivery direction
 
-The Owner explicitly locked and Step 4 verified the hidden console to exactly **two primary pages**:
+Phase-6 Windows release version is **0.6.0** and must provide both x64 NSIS Setup and x64 Portable packages. The package must be self-contained for normal Forgey inference and therefore include:
+- embedded Python 3.12.10 x64;
+- embedded PyTorch 2.13.0 CPU runtime;
+- verified G2 model/tokenizer as selected production generation;
+- verified G1 model/tokenizer so the authenticated rollback contract remains real;
+- a relocatable generation registry whose artifact paths resolve relative to the application root while preserving exact model/tokenizer hashes, lineage, metrics, statuses and history;
+- Step-4 status/admin helpers and architecture authority required by the two-page hidden control room;
+- all existing 44 deterministic engines and normal runtime files.
 
-1. **📊 Current Status** — live app/model active time, selected generation, Forgey-primary counters/share, teacher dependency, latest inference metadata without user content, knowledge/diagnostics, runtime readiness, and session/security state.
-2. **🏋️ Training Center** — actual current model/tokenizer sizes, runtime-derived parameter count, vocabulary, architecture, hashes, generation lineage, training/benchmark metrics, teacher/negative evidence, replay/learning counts, promotion/rollback history, validation, and truthful training capability state.
+Ollama/Qwen remains external and is not bundled. Known verified Forgey-primary translation must work with `provider_calls=0`; unresolved teacher/fallback dependence must fail safely if the external provider is unavailable.
 
-No fake data is permitted. Unavailable data must be labeled unavailable.
+### Step-5 package proof direction
 
-### Step-4 verified acceptance
+A builder exit code is not release proof. The candidate package must prove from `dist/win-unpacked/resources/app`, using the packaged embedded Python/Torch and packaged model registry:
+- G2 hashes verify and the model/tokenizer load;
+- runtime-derived trainable parameter count is 1,788,672;
+- `vehicle powered by pedals with two wheels → 🚲` releases through packaged G2;
+- `🚲 → bicycle` releases through packaged G2;
+- both directions report provider calls 0 and round-trip PASS;
+- packaged diagnostics are 44/44;
+- packaged Electron UI renders, retains Phase-5 polish, and uses bundled Python;
+- Setup and Portable v0.6.0 both exist;
+- Phase-5 real rendered 30-FPS/168-frame visual proof remains green.
 
-Step 4 proved on its verified implementation candidate:
-- selected verified G2 is used as the primary path in both directions;
-- successful selected-generation inference makes zero provider calls;
-- deterministic support/round-trip gates remain in the neural release boundary;
-- old deterministic and Step-3 behavior remains compatible;
-- hidden gesture has no visible clue and opens only authentication;
-- auth verifier contains no plaintext credential and passes bootstrap/login/rate-limit/session/rotation tests;
-- rendered Electron proof reaches the hidden gesture, bootstraps auth, opens the console, and proves exactly two pages;
-- Current Status exposes real runtime state;
-- Training Center exposes actual model size, tokenizer size, runtime-derived parameters, architecture, vocabulary, hashes, metrics, teacher evidence, lineage, and rollback state;
-- Phase 2 PASS, Phase 3 PASS, and diagnostics 44/44 PASS;
-- Step 5 remains absent.
+### Exact-main release gate
 
-A final exact-head CI cycle is still required after this governance closeout commit before PR #6 may be marked merge-ready.
+Pull-request Step-5 CI may build/prove the complete package but must not publish a GitHub Release. After the verified Step-5 merge, the exact `main` SHA must run the same proof and then publish a GitHub Release tagged `el-bot-v0.6.0-<exact-main-short-sha>`, upload SHA-256 release evidence and required assets, and re-read the release to verify tag/target/assets.
 
-## Step 5 — Proof, Packaging & Release 🔒 PAUSED
-
-Step 5 will own final Phase-6 Windows packaging, runtime artifact materialization, installer/updater/release publishing, and exact-final-main-SHA release evidence. Step 4 does not publish the Phase-6 release.
+Phase 6 becomes PASS only after the Step-5 candidate is green, Step 5 is merged, the exact merged `main` Step-5 workflow succeeds, and the exact-SHA Phase-6 release is independently re-read successfully.
 
 ## Current implementation gate
 
-**Step 4 is PASS on its branch and is awaiting final exact-head closeout CI plus Owner merge approval. Step 5 remains paused.**
+**Steps 1–4 are PASS+MERGED. Step 5 is Owner-authorized and implementation is in progress. No Phase-6 final PASS may be declared before exact-main package/release evidence completes.**
