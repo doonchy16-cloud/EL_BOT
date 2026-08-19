@@ -51,7 +51,9 @@ function infer(input, expectedWinner, evidenceName, { conceptExact = false } = {
     throw new Error(`winner mismatch: expected ${JSON.stringify(expectedWinner)} [${codePoints(expectedWinner)}], got ${JSON.stringify(winner)} [${codePoints(winner)}]`);
   }
   if (conceptExact && Number(metrics.roundtrip) !== 1) throw new Error(`reverse concept matched but deterministic round-trip was not exact: ${metrics.roundtrip}`);
-  if (metrics.forgey_primary_released !== true) throw new Error('Forgey primary was not released');
+  if (metrics.forgey_primary_released !== true) {
+    throw new Error(`Forgey primary was not released: rejection=${JSON.stringify(metrics.forgey_rejection_reason || null)} validation=${JSON.stringify(metrics.forgey_validation || null)} assist=${JSON.stringify(metrics.assist_path || null)} roundtrip=${JSON.stringify(metrics.roundtrip ?? null)}`);
+  }
   if (Number(metrics.provider_calls) !== 0) throw new Error('provider call occurred on successful Forgey-primary inference');
   if (metrics.forgey_generation !== 'G2') throw new Error(`selected generation is not G2: ${metrics.forgey_generation}`);
   fs.mkdirSync(evidenceDir, { recursive: true });
