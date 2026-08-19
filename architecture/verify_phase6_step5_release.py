@@ -49,7 +49,6 @@ def main():
     workflow = text(ROOT / ".github" / "workflows" / "phase6-step5-release.yml")
     phase6 = text(ROOT / "architecture" / "PHASE_6_FORGEY_INSTA_EL_BOT_AUTHORITY.md")
     step5 = text(ROOT / "architecture" / "PHASE_6_11_FORGEY_INSTA_PROOF_PACKAGING_AND_RELEASE.md")
-    legacy = text(ROOT / ".github" / "workflows" / "🧪.yml")
 
     req("runtime/<generation>" in step5 and "relative to the application root" in step5, "portable registry authority missing")
     req("selected != \"G2\"" in runtime_materializer and "relative_to_application_root" in runtime_materializer, "portable G2 registry materializer weakened")
@@ -73,9 +72,7 @@ def main():
     req("Step-4 merge commit" in step5 and "e0ed1b2ac91ae1f9a716abfc0e93904469b91422" in step5, "Step-5 base merge not locked")
     req("Phase 6 becomes PASS only when" in step5, "exact-main final acceptance missing")
 
-    # The Phase-5 release workflow remains historical/dispatchable but must no longer publish on future main pushes.
-    legacy_push_block = legacy.split("permissions:", 1)[0]
-    req("- main" not in legacy_push_block, "legacy Phase-5 publisher still triggers on main")
+    req(not (ROOT / ".github" / "workflows" / "🧪.yml").exists(), "legacy Phase-5 main auto-release workflow still active")
 
     print("PHASE6_STEP5_AUTHORITY_OK version=0.6.0 python=3.12.10 torch=2.13 G2=PACKAGED G1=ROLLBACK release=MAIN_ONLY engines=44")
 
