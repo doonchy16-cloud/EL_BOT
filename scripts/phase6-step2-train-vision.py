@@ -65,7 +65,7 @@ def _semantic_text_pool(text_memory, text_padding, analog_source, tokenizer):
 
 
 def _multi_positive_contrastive(visual_pool, text_pool, keys, temperature: float = 0.08):
-    """Contrast concepts without treating duplicate augmentations as negatives."""
+    """Contrast concepts while treating every augmentation/direction of one concept as positive."""
     visual = F.normalize(visual_pool, dim=-1)
     text = F.normalize(text_pool, dim=-1)
     logits = (visual @ text.transpose(0, 1)) / float(temperature)
@@ -110,15 +110,16 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
             ce=F.cross_entropy(logits.reshape(-1,logits.size(-1)),labels.reshape(-1),ignore_index=-100)
             visual_memory=model.transformer.encoder(visual_source)
             with torch.no_grad(): text_memory,text_padding=model.encode_text_memory(analog_source)
-            # Content and direction are grounded separately. The previous objective pooled
-            # the direction token with content, permitting same-direction concept collapse.
+            # Content and output direction are separate representations. Visual content
+            # excludes the direction token, so both output directions for one concept
+            # MUST be positives here; direction is learned by the separate token below.
             text_pool=_semantic_text_pool(text_memory,text_padding,analog_source,tokenizer)
             visual_pool=visual_memory[:,1:,:].mean(dim=1)
             pool_align=(1.0-F.cosine_similarity(visual_pool,text_pool,dim=-1)).mean()
             direction_align=(1.0-F.cosine_similarity(visual_memory[:,0,:],text_memory[:,0,:],dim=-1)).mean()
             magnitude_align=F.mse_loss(F.normalize(visual_pool,dim=-1),F.normalize(text_pool,dim=-1))
             alignment=pool_align+direction_align+2.0*magnitude_align
-            keys=[(item.concept,item.direction) for item in selected]
+            keys=[item.concept for item in selected]
             contrastive=_multi_positive_contrastive(visual_pool,text_pool,keys)
             loss=ce+4.0*alignment+1.5*contrastive
             if not torch.isfinite(loss): raise RuntimeError(f"non-finite grounded vision loss at step {step+1}")
@@ -139,7 +140,7 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
         "provider_generated_truth_count":0,
         "unverified_self_output_truth_count":0,
         "shared_text_parameters_updated":False,
-        "collapse_prevention":"content-only semantic alignment + multi-positive contrastive grounding",
+        "collapse_prevention":"content-only semantic alignment + concept-identity multi-positive contrastive grounding; direction isolated in direction token",
         "frozen_transformer_mode":"eval",
         "steps":len(total_losses),"minimum_steps":minimum_steps,"maximum_steps":maximum_steps,"batch_size":int(batch_size),
         "training_examples":len(examples),"concept_count":len(vision.CONCEPTS),
