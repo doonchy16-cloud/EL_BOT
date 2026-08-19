@@ -3,11 +3,10 @@
 
 Only visual parameters update. The shared text Transformer remains frozen. Pixel
 examples have independently known targets. Raw visual patch content is grounded to
-one canonical direction-invariant ABC concept *source embedding*. After the shared
+one canonical direction-invariant ABC concept source embedding. After the shared
 Transformer encoder has mixed in the separate visual direction token, encoded visual
-content is grounded to the corresponding direction-specific frozen text memory that
-the decoder already knows how to consume. This preserves one concept identity while
-allowing IMAGE_TO_EL and IMAGE_TO_ABC to form different decoder-ready memories.
+content is grounded and contrastively separated in the corresponding direction-
+specific frozen text-memory space that the decoder already knows how to consume.
 """
 from __future__ import annotations
 
@@ -75,7 +74,7 @@ def _semantic_text_pool(memory, padding, source_ids, tokenizer):
 
 
 def _multi_positive_contrastive(visual_pool, text_pool, keys, temperature: float = 0.08):
-    """Contrast concepts while treating every augmentation/direction of one concept as positive."""
+    """Contrast semantic classes while preserving duplicate positives."""
     visual = F.normalize(visual_pool, dim=-1)
     text = F.normalize(text_pool, dim=-1)
     logits = (visual @ text.transpose(0, 1)) / float(temperature)
@@ -93,6 +92,36 @@ def _multi_positive_contrastive(visual_pool, text_pool, keys, temperature: float
     return 0.5 * ((v_all - v_pos).mean() + (t_all - t_pos).mean())
 
 
+def _stratified_batch(examples, batch_size: int, rng: random.Random, step: int):
+    """Deterministically cover every concept×direction class before seeded extras.
+
+    The held-out probe seeds are not present in `examples`; this only balances the
+    existing training set so rare/hard classes cannot disappear from an optimization
+    interval because of random sampling variance.
+    """
+    groups = {}
+    for item in examples:
+        groups.setdefault((item.concept, item.direction), []).append(item)
+    group_keys = sorted(groups)
+    size = max(1, int(batch_size))
+    selected = []
+    if size >= len(group_keys):
+        for offset, key in enumerate(group_keys):
+            bucket = groups[key]
+            selected.append(bucket[(int(step) + offset) % len(bucket)])
+        remaining = size - len(selected)
+        if remaining:
+            selected.extend(examples[index] for index in rng.choices(range(len(examples)), k=remaining))
+    else:
+        start = (int(step) * size) % len(group_keys)
+        for offset in range(size):
+            key = group_keys[(start + offset) % len(group_keys)]
+            bucket = groups[key]
+            selected.append(bucket[(int(step) + offset) % len(bucket)])
+    rng.shuffle(selected)
+    return selected
+
+
 def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch_size: int, seed: int, device="cpu"):
     target_device = torch.device(device); examples = vision.training_examples(); rng = random.Random(int(seed)); torch.manual_seed(int(seed))
     visual_parameters = tuple(model.vision_parameters())
@@ -103,13 +132,11 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
     minimum_steps=max(180,int(minimum_steps)); maximum_steps=max(900,minimum_steps*2)
     optimizer = torch.optim.AdamW(visual_parameters, lr=0.003, betas=(0.9, 0.98), weight_decay=0.003)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=maximum_steps, eta_min=0.0002)
-    total_losses=[]; ce_losses=[]; align_losses=[]; raw_align_losses=[]; encoded_align_losses=[]; contrastive_losses=[]; learning_rates=[]; final_probes=[]
+    total_losses=[]; ce_losses=[]; align_losses=[]; raw_align_losses=[]; encoded_align_losses=[]; raw_contrastive_losses=[]; encoded_contrastive_losses=[]; learning_rates=[]; final_probes=[]
     try:
-        # Frozen Transformer/decoder stays deterministic; gradients still flow through
-        # the trainable visual adapter into the frozen network for the loss signal.
         model.eval()
         for step in range(maximum_steps):
-            selected=[examples[index] for index in rng.choices(range(len(examples)),k=int(batch_size))]
+            selected=_stratified_batch(examples,int(batch_size),rng,step)
             images=torch.stack([vision.render_concept(item.concept,item.seed) for item in selected]).to(target_device)
             directions=[item.direction for item in selected]
             decoder,labels=vision._collate_targets(tokenizer,selected,target_device)
@@ -125,39 +152,36 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
                 canonical_embedding=model._embed(canonical_source)
                 direction_memory,direction_padding=model.encode_text_memory(direction_source)
 
-            # Stage 1: before self-attention sees the output-direction token, pixels must
-            # describe only concept identity. Match raw patch content to the same frozen
-            # canonical ABC source-embedding space for both requested output directions.
+            # Stage 1 — direction-invariant pixel concept identity.
             canonical_source_pool=_semantic_text_pool(canonical_embedding,canonical_padding,canonical_source,tokenizer)
             raw_visual_pool=visual_source[:,1:,:].mean(dim=1)
             raw_cos=(1.0-F.cosine_similarity(raw_visual_pool,canonical_source_pool,dim=-1)).mean()
             raw_mse=F.mse_loss(F.normalize(raw_visual_pool,dim=-1),F.normalize(canonical_source_pool,dim=-1))
             raw_alignment=raw_cos+2.0*raw_mse
+            concept_keys=[item.concept for item in selected]
+            raw_contrastive=_multi_positive_contrastive(raw_visual_pool,canonical_source_pool,concept_keys)
 
-            # Stage 2: after encoder self-attention mixes direction token + image patches,
-            # match the decoder-facing content to the exact text memory for that output:
-            # ABC source memory for Image→EL; EL source memory for Image→ABC.
+            # Stage 2 — direction-conditioned decoder-ready memory. Here direction is
+            # intentionally part of the semantic class because the encoder is supposed
+            # to transform one pixel concept into a different memory for EL vs ABC output.
             direction_text_pool=_semantic_text_pool(direction_memory,direction_padding,direction_source,tokenizer)
             encoded_visual_pool=visual_memory[:,1:,:].mean(dim=1)
             encoded_cos=(1.0-F.cosine_similarity(encoded_visual_pool,direction_text_pool,dim=-1)).mean()
             encoded_mse=F.mse_loss(F.normalize(encoded_visual_pool,dim=-1),F.normalize(direction_text_pool,dim=-1))
             direction_token=(1.0-F.cosine_similarity(visual_memory[:,0,:],direction_memory[:,0,:],dim=-1)).mean()
             encoded_alignment=encoded_cos+2.0*encoded_mse+direction_token
+            decoder_keys=[(item.concept,item.direction) for item in selected]
+            encoded_contrastive=_multi_positive_contrastive(encoded_visual_pool,direction_text_pool,decoder_keys)
 
-            keys=[item.concept for item in selected]
-            contrastive=_multi_positive_contrastive(raw_visual_pool,canonical_source_pool,keys)
             alignment=raw_alignment+encoded_alignment
-            # Decoder CE remains the strongest direct task signal. The two alignment
-            # stages prevent concept collapse without forcing decoder-ready memories for
-            # opposite output directions to be identical.
-            loss=ce+2.0*raw_alignment+4.0*encoded_alignment+1.0*contrastive
+            loss=ce+2.0*raw_alignment+4.0*encoded_alignment+0.75*raw_contrastive+1.5*encoded_contrastive
             if not torch.isfinite(loss): raise RuntimeError(f"non-finite grounded vision loss at step {step+1}")
             loss.backward(); torch.nn.utils.clip_grad_norm_(visual_parameters,max_norm=1.0); optimizer.step(); scheduler.step()
-            total_losses.append(float(loss.item())); ce_losses.append(float(ce.item())); align_losses.append(float(alignment.item())); raw_align_losses.append(float(raw_alignment.item())); encoded_align_losses.append(float(encoded_alignment.item())); contrastive_losses.append(float(contrastive.item())); learning_rates.append(float(optimizer.param_groups[0]["lr"]))
+            total_losses.append(float(loss.item())); ce_losses.append(float(ce.item())); align_losses.append(float(alignment.item())); raw_align_losses.append(float(raw_alignment.item())); encoded_align_losses.append(float(encoded_alignment.item())); raw_contrastive_losses.append(float(raw_contrastive.item())); encoded_contrastive_losses.append(float(encoded_contrastive.item())); learning_rates.append(float(optimizer.param_groups[0]["lr"]))
             current=step+1
             if current==1 or current%90==0:
                 probes=vision.evaluate_visual_probes(model,tokenizer,target_device); exact=sum(1 for row in probes if row["exact"])
-                print(f"FORGEY_VISION_GROUNDED step={current}/{maximum_steps} total={total_losses[-1]:.6f} ce={ce_losses[-1]:.6f} raw={raw_align_losses[-1]:.6f} encoded={encoded_align_losses[-1]:.6f} contrast={contrastive_losses[-1]:.6f} lr={learning_rates[-1]:.6f} probes={exact}/{len(probes)}",flush=True)
+                print(f"FORGEY_VISION_GROUNDED step={current}/{maximum_steps} total={total_losses[-1]:.6f} ce={ce_losses[-1]:.6f} raw={raw_align_losses[-1]:.6f} encoded={encoded_align_losses[-1]:.6f} raw_contrast={raw_contrastive_losses[-1]:.6f} encoded_contrast={encoded_contrastive_losses[-1]:.6f} lr={learning_rates[-1]:.6f} probes={exact}/{len(probes)}",flush=True)
                 if current>=minimum_steps and exact==len(probes): final_probes=probes; break
         if not final_probes: final_probes=vision.evaluate_visual_probes(model,tokenizer,target_device)
     finally:
@@ -169,18 +193,22 @@ def train_grounded_visual(model, tokenizer, vision, *, minimum_steps: int, batch
         "provider_generated_truth_count":0,
         "unverified_self_output_truth_count":0,
         "shared_text_parameters_updated":False,
-        "collapse_prevention":"direction-invariant pre-encoder concept grounding + concept-identity multi-positive contrastive grounding; direction-specific semantics introduced only by shared encoder attention",
+        "collapse_prevention":"direction-invariant pre-encoder concept grounding + concept-identity contrastive separation; post-encoder concept+direction contrastive separation in decoder-ready memory",
         "representation_stages":"pre-encoder concept identity; post-encoder direction-conditioned decoder memory",
+        "batching_strategy":"deterministic stratified concept-direction coverage plus seeded training-only extras",
         "frozen_transformer_mode":"eval",
         "learning_rate_schedule":"cosine 0.003 -> 0.0002",
         "steps":len(total_losses),"minimum_steps":minimum_steps,"maximum_steps":maximum_steps,"batch_size":int(batch_size),
-        "training_examples":len(examples),"concept_count":len(vision.CONCEPTS),
+        "training_examples":len(examples),"concept_count":len(vision.CONCEPTS),"semantic_class_count":len({(item.concept,item.direction) for item in examples}),
         "early_loss":sum(total_losses[:window])/window,"late_loss":sum(total_losses[-window:])/window,
         "early_ce_loss":sum(ce_losses[:window])/window,"late_ce_loss":sum(ce_losses[-window:])/window,
         "early_alignment_loss":sum(align_losses[:window])/window,"late_alignment_loss":sum(align_losses[-window:])/window,
         "early_raw_alignment_loss":sum(raw_align_losses[:window])/window,"late_raw_alignment_loss":sum(raw_align_losses[-window:])/window,
         "early_encoded_alignment_loss":sum(encoded_align_losses[:window])/window,"late_encoded_alignment_loss":sum(encoded_align_losses[-window:])/window,
-        "early_contrastive_loss":sum(contrastive_losses[:window])/window,"late_contrastive_loss":sum(contrastive_losses[-window:])/window,
+        "early_raw_contrastive_loss":sum(raw_contrastive_losses[:window])/window,"late_raw_contrastive_loss":sum(raw_contrastive_losses[-window:])/window,
+        "early_encoded_contrastive_loss":sum(encoded_contrastive_losses[:window])/window,"late_encoded_contrastive_loss":sum(encoded_contrastive_losses[-window:])/window,
+        "early_contrastive_loss":sum((a+b) for a,b in zip(raw_contrastive_losses[:window],encoded_contrastive_losses[:window]))/window,
+        "late_contrastive_loss":sum((a+b) for a,b in zip(raw_contrastive_losses[-window:],encoded_contrastive_losses[-window:]))/window,
         "initial_learning_rate":0.003,"final_learning_rate":learning_rates[-1] if learning_rates else 0.003,
         "probe_exact_count":exact,"probe_total":len(final_probes),"probes":final_probes,
     }
