@@ -15,23 +15,21 @@ concurrency:
 
 jobs:
   cleanup:
-    name: "🧹 Cancel stale Phase 6 runs"
+    name: "🧹 Clean stale runs + branches"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: "🧹 Cancel previous Phase 6 attempts"
+      - name: "🧹 Cancel stale runs and delete non-main branches"
         uses: actions/github-script@v7
         with:
           github-token: ${{ github.token }}
           script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
             const staleRunIds = [32303280449, 32303280324, 32303280332, 32303280353, 32303280401];
             for (const run_id of staleRunIds) {
               try {
-                await github.rest.actions.cancelWorkflowRun({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id,
-                });
+                await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id });
                 core.info(`Cancel requested for stale run ${run_id}`);
               } catch (error) {
                 if (error.status === 404 || error.status === 409) {
@@ -40,6 +38,41 @@ jobs:
                   throw error;
                 }
               }
+            }
+
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            for (const branch of branches) {
+              if (branch.name === 'main') continue;
+              try {
+                await github.rest.git.deleteRef({
+                  owner,
+                  repo,
+                  ref: `heads/${branch.name}`,
+                });
+                core.info(`Deleted stale branch ${branch.name}`);
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`Branch ${branch.name} is already gone`);
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            const remaining = await github.paginate(github.rest.repos.listBranches, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const unexpected = remaining.filter(branch => branch.name !== 'main').map(branch => branch.name);
+            if (unexpected.length) {
+              core.setFailed(`Non-main branches remain after cleanup: ${unexpected.join(', ')}`);
+            } else {
+              core.info('Repository branch cleanup verified: main only');
             }
 
   step5:
@@ -69,6 +102,13 @@ jobs:
       - name: "📖 Materialize knowledge"
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-step1-knowledge.ps1'
+
+      - name: "📖🧪 Step 1 lexical/runtime regression"
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8'
+          & $env:EL_PYTHON 'architecture\verify_phase6_step1_knowledge_foundation.py'
+          if($LASTEXITCODE-ne 0){throw 'STEP1_LEXICAL_RUNTIME_REGRESSION_FAILED'}
 
       - name: "🔥 PyTorch 2.13 CPU for build-time training"
         shell: powershell
@@ -177,7 +217,7 @@ jobs:
           if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.6.0-x64.exe')){throw 'Phase-6 NSIS installer missing'}
           if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.6.0-x64.exe')){throw 'Phase-6 portable executable missing'}
           $app='dist\win-unpacked\resources\app'
-          $brain=[char]::ConvertFromUtf32(0x1F9E0);$robot=[char]::ConvertFromUtf32(0x1F916);$eye=([char]::ConvertFromUtf32(0x1F441)+[char]0xFE0F)
+          $brain=[char]::ConvertFromUtf32(0x1F9E0);$robot=[char]::ConvertFromUtf32(0x1F916);$eye=([char]::ConvertFromUtf32(0x1F441)+[char]0xFE0)
           $requiredPaths=@('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','scripts\phase6-vision-infer.py',(Join-Path $brain $robot),(Join-Path $brain $eye),'architecture\phase6_step4_runtime_console_manifest.json')
           foreach($required in $requiredPaths){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
 

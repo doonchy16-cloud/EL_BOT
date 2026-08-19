@@ -1,7 +1,8 @@
-"""Provider-free Phase-3 semantic bridge for ABC -> Emoji.
+"""Provider-free semantic bridge for ABC -> Emoji.
 
-This is translation integration code, not an additional engine. It coordinates the
-approved Phase-3 engines while keeping the ABC engine itself provider-free.
+Phase 6 adds the Vocabulary-owned lexical resolver ahead of Phase-3 decomposition.
+Known dictionary surfaces, inflections, phrases, synonyms and defensible hypernyms
+therefore resolve locally before deeper search. No provider imports are allowed here.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ def _load(name: str, path: Path):
 
 _ROOT = Path(__file__).resolve().parent.parent
 _lang = _load("_el_language_foundation", _ROOT / "🧠" / "🧬")
+_lexical = _load("_el_phase6_lexical_bridge", _ROOT / "📚" / "📖")
 _decomp = _load("_el_phase3_decomp_bridge", _ROOT / "🧩" / "🧩")
 _grammar = _load("_el_phase3_grammar_bridge", _ROOT / "🧱" / "🧱")
 _search = _load("_el_phase3_search_bridge", _ROOT / "🔍" / "🔍")
@@ -45,6 +47,16 @@ class Phase3BridgeResult:
     effective_unknown_density: float
     effective_unresolved_clauses: int
     metrics: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalBridgeMatch:
+    phrase: str
+    expression: str
+    start: int
+    end: int
+    semantic_loss: float
+    source: str
 
 
 def _stem(word: str) -> str:
@@ -65,20 +77,20 @@ def _words(text: str) -> tuple[str, ...]:
 
 
 class Phase3SemanticBridge:
-    """Coordinate deterministic semantic rescue and full depth-1 universe search."""
+    """Coordinate lexical resolution, deterministic semantic rescue and finite search."""
 
     def __init__(self) -> None:
+        self.lexical = _lexical.resolver()
         self.decomposition = _decomp.ConceptDecompositionEngine()
         self.grammar = _grammar.ELGrammarCompositionEngine()
         self.search = _search.CompleteCandidateSearchEngine()
         self.competition = _competition.CandidateCompetitionEngine()
         self._search_cache: dict[tuple[str, tuple[str, ...]], tuple[object, dict[str, object]]] = {}
 
-    @staticmethod
-    def _semantic_labels(candidate: str) -> tuple[str, ...]:
+    def _semantic_labels(self, candidate: str) -> tuple[str, ...]:
         labels: list[str] = []
         for grapheme in _lang._core.split_graphemes(candidate):
-            meaning = _lang.MEANING_BY_SYMBOL.get(grapheme)
+            meaning = _lang.MEANING_BY_SYMBOL.get(grapheme) or self.lexical.meaning(grapheme)
             if meaning:
                 labels.extend(_words(meaning))
             for char in grapheme:
@@ -91,7 +103,42 @@ class Phase3SemanticBridge:
     @staticmethod
     def _is_canonical(candidate: str) -> bool:
         meaningful = [g for g in _lang._core.split_graphemes(candidate) if not g.isspace()]
-        return bool(meaningful) and all(g in _lang.MEANING_BY_SYMBOL for g in meaningful)
+        checker = getattr(_lang._vocab, "is_valid_el_symbol", lambda value: value in _lang.MEANING_BY_SYMBOL)
+        return bool(meaningful) and all(checker(g) for g in meaningful)
+
+    def _lexical_matches(
+        self,
+        text: str,
+        occupied_spans: tuple[tuple[int, int], ...] = (),
+        max_words: int = 4,
+    ) -> tuple[LexicalBridgeMatch, ...]:
+        """Resolve longest non-overlapping lexical phrases without changing Vocabulary API."""
+        value = str(text)
+        words = tuple(_WORD.finditer(value))
+        occupied = list(occupied_spans)
+        matches: list[LexicalBridgeMatch] = []
+        for width in range(min(max_words, len(words)), 0, -1):
+            for index in range(0, len(words) - width + 1):
+                start = words[index].start()
+                end = words[index + width - 1].end()
+                if any(start < right and end > left for left, right in occupied):
+                    continue
+                phrase = value[start:end]
+                resolution = self.lexical.resolve(phrase, value)
+                if not resolution.resolved:
+                    continue
+                matches.append(
+                    LexicalBridgeMatch(
+                        phrase,
+                        resolution.expression,
+                        start,
+                        end,
+                        float(resolution.semantic_loss),
+                        resolution.source,
+                    )
+                )
+                occupied.append((start, end))
+        return tuple(sorted(matches, key=lambda row: (row.start, row.end)))
 
     def _search_decomposition(self, decomposition):
         semantic_terms = tuple(dict.fromkeys((_stem(decomposition.normalized),) + tuple(_stem(term) for term in self.decomposition.semantic_terms(decomposition))))
@@ -99,7 +146,6 @@ class Phase3SemanticBridge:
         cached = self._search_cache.get(key)
         if cached is not None:
             return cached
-
         target = frozenset(term for term in semantic_terms if term)
         frontier = self.search.frontiers.define(min_length=1, max_length=1, frontier_id="full-universe-depth1:" + decomposition.sense_id)
 
@@ -115,27 +161,11 @@ class Phase3SemanticBridge:
                 score += 18.0
             if decomposition.sense_id == "language-word" and label_set.intersection({"letter", "input", "latin", "text", "memo"}):
                 score += 18.0
-            valid = score > 0.0
-            return {
-                "score": score,
-                "valid": valid,
-                "reasons": ("semantic-overlap:" + str(len(overlap)), "exact-label" if exact else "semantic-label"),
-                "labels": labels,
-                "canonical": self._is_canonical(candidate),
-            }
+            return {"score": score, "valid": score > 0.0, "reasons": ("semantic-overlap:" + str(len(overlap)), "exact-label" if exact else "semantic-label"), "labels": labels, "canonical": self._is_canonical(candidate)}
 
         result, _updated, proof = self.search.search_to_exhaustion(frontier, evaluator)
         competition = self.competition.compete(result.evaluations, canonical_preference=0.0, limit=8)
-        metrics = {
-            "frontier_id": result.frontier_id,
-            "frontier_total": result.total_candidates,
-            "evaluated": result.evaluated_count,
-            "exhausted": proof.exhausted,
-            "survivors": len(result.survivors),
-            "top_candidate": competition.winner.candidate if competition.winner else "",
-            "top_score": competition.winner.score if competition.winner else 0.0,
-            "top_canonical": competition.winner.canonical if competition.winner else False,
-        }
+        metrics = {"frontier_id": result.frontier_id, "frontier_total": result.total_candidates, "evaluated": result.evaluated_count, "exhausted": proof.exhausted, "survivors": len(result.survivors), "top_candidate": competition.winner.candidate if competition.winner else "", "top_score": competition.winner.score if competition.winner else 0.0, "top_canonical": competition.winner.canonical if competition.winner else False}
         value = (competition, metrics)
         self._search_cache[key] = value
         return value
@@ -161,16 +191,64 @@ class Phase3SemanticBridge:
         search_exhausted = True
         universe_top: list[str] = []
         resolved_senses: list[str] = []
+        lexical_resolutions = 0
+        lexical_direct = 0
+        lexical_hypernym = 0
+        lexical_loss_total = 0.0
+        lexical_phrases: list[str] = []
 
         for clause in document.clauses:
             resolved_rows = []
             unresolved_words = []
             seen_terms: set[str] = set()
+            lexical_chunks: list[str] = []
+            occupied = tuple((concept.start, concept.end) for concept in clause.concepts)
+            lexical_matches = self._lexical_matches(clause.source, occupied_spans=occupied, max_words=4)
+            covered_terms: set[str] = set()
+            unknown_set = {str(word).lower() for word in clause.unknown_words}
+            for match in lexical_matches:
+                match_terms = {item.lower() for item in _WORD.findall(match.phrase)}
+                newly_covered = match_terms.intersection(unknown_set).difference(covered_terms)
+                if not newly_covered:
+                    continue
+                covered_terms.update(newly_covered)
+                resolved_unknown += len(newly_covered)
+                lexical_resolutions += 1
+                lexical_loss_total += float(match.semantic_loss)
+                lexical_phrases.append(match.phrase.lower())
+                lexical_chunks.append(match.expression)
+                expected.extend(_lang.concept_signature_from_el(match.expression))
+                all_candidates.append((match.expression, "phase6-lexicon:" + match.source))
+                if match.source.startswith("unicode"):
+                    lexical_direct += 1
+                else:
+                    lexical_hypernym += 1
+
             for word in clause.unknown_words:
                 normalized_word = str(word).lower()
+                if normalized_word in covered_terms:
+                    continue
                 if normalized_word in seen_terms:
                     continue
                 seen_terms.add(normalized_word)
+                resolution = self.lexical.resolve(word, clause.source)
+                if resolution.resolved:
+                    resolved_unknown += 1
+                    lexical_resolutions += 1
+                    lexical_loss_total += float(resolution.semantic_loss)
+                    lexical_phrases.append(normalized_word)
+                    lexical_chunks.append(resolution.expression)
+                    expected.extend(_lang.concept_signature_from_el(resolution.expression))
+                    all_candidates.append((resolution.expression, "phase6-lexicon:" + resolution.source))
+                    if resolution.source.startswith("unicode"):
+                        lexical_direct += 1
+                    else:
+                        lexical_hypernym += 1
+                    continue
+                if resolution.status == "ambiguous":
+                    unresolved_words.append(word)
+                    continue
+
                 decomposition = self.decomposition.decompose(word, clause.source)
                 if not decomposition.resolved:
                     unresolved_words.append(word)
@@ -182,7 +260,6 @@ class Phase3SemanticBridge:
                 if primary is not None and primary.canonical:
                     expected.extend(_lang.concept_signature_from_el(primary.expression))
                     all_candidates.append((primary.expression, "phase3-grammar:" + decomposition.sense_id))
-
                 competition, search_metrics = self._search_decomposition(decomposition)
                 search_runs += 1
                 search_evaluated += int(search_metrics["evaluated"])
@@ -195,36 +272,39 @@ class Phase3SemanticBridge:
                         all_candidates.append((winner.candidate, "phase3-full-universe-depth1:" + decomposition.sense_id))
 
             legacy = render_clause(clause, compact=False)
-            if resolved_rows and not unresolved_words:
+            if (lexical_chunks or resolved_rows) and not unresolved_words:
                 legacy = self._strip_hold_suffix(legacy)
-            chunks = []
+            chunks = list(lexical_chunks)
             for decomposition in resolved_rows:
                 primary = self.grammar.compose_primary(decomposition)
                 if primary is not None and primary.canonical:
                     chunks.append(primary.expression)
             chunks = list(dict.fromkeys(chunks))
             if chunks:
-                if legacy:
-                    clause_value = legacy + "➡️" + "➡️".join(chunks)
-                else:
-                    clause_value = "➡️".join(chunks)
+                clause_value = (legacy + "➡️" if legacy else "") + "➡️".join(chunks)
             else:
                 clause_value = legacy or "🟡❓"
             clause_values.append(clause_value)
-            if not clause.concepts and unresolved_words and not resolved_rows:
+            if not clause.concepts and unresolved_words and not chunks:
                 unresolved_clauses += 1
 
         if clause_values:
             document_candidate = ". ".join(clause_values)
             if _lang.valid_el(document_candidate):
-                all_candidates.append((document_candidate, "phase3-document-composition"))
+                all_candidates.append((document_candidate, "phase6-document-composition" if lexical_resolutions else "phase3-document-composition"))
 
-        # Preserve insertion order while removing duplicate candidate/reason pairs.
         candidates = tuple(dict.fromkeys(all_candidates))
         effective_unknown = max(0, original_unknown - resolved_unknown)
         word_count = max(1, _lang.content_word_count(normalized))
         effective_density = effective_unknown / word_count
         metrics = {
+            "phase6_lexical_resolutions": lexical_resolutions,
+            "phase6_lexical_direct": lexical_direct,
+            "phase6_lexical_taxonomy": lexical_hypernym,
+            "phase6_lexical_avg_loss": round(lexical_loss_total / max(1, lexical_resolutions), 4),
+            "phase6_lexical_phrases": tuple(dict.fromkeys(lexical_phrases)),
+            "phase6_emoji_count": self.lexical.emoji_count,
+            "phase6_wordnet_available": self.lexical.wordnet.available,
             "phase3_resolved_unknowns": resolved_unknown,
             "phase3_remaining_unknowns": effective_unknown,
             "phase3_resolved_senses": tuple(dict.fromkeys(resolved_senses)),
