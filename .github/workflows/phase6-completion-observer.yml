@@ -1,0 +1,73 @@
+name: "🔍 Phase 6 Completion Observer"
+
+on:
+  workflow_run:
+    workflows: ["🚀 Phase 6 Step 5 Proof + Packaging + Release"]
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+  contents: read
+
+jobs:
+  report-failure:
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: "🔍 Publish exact run diagnostics"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner,
+              repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const failed = jobs
+              .filter(job => job.conclusion && job.conclusion !== 'success')
+              .map(job => ({
+                id: job.id,
+                name: job.name,
+                status: job.status,
+                conclusion: job.conclusion,
+                failed_steps: (job.steps || [])
+                  .filter(step => step.conclusion && step.conclusion !== 'success' && step.conclusion !== 'skipped')
+                  .map(step => ({ number: step.number, name: step.name, conclusion: step.conclusion })),
+              }));
+            const title = `[Phase 6 Completion Failure] ${run.head_sha}`;
+            const body = [
+              '# Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion — automatic failure evidence',
+              '',
+              `- workflow: ${run.name}`,
+              `- run_id: ${run.id}`,
+              `- run_number: ${run.run_number}`,
+              `- run_attempt: ${run.run_attempt}`,
+              `- event: ${run.event}`,
+              `- branch: ${run.head_branch}`,
+              `- head_sha: ${run.head_sha}`,
+              `- conclusion: ${run.conclusion}`,
+              `- url: ${run.html_url}`,
+              '',
+              '## Non-success jobs',
+              '```json',
+              JSON.stringify(failed, null, 2),
+              '```',
+              '',
+              'This issue is machine-generated so the project can inspect push-run logs without requiring Owner screenshots.',
+            ].join('\n');
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const match = existing.find(issue => issue.title === title);
+            if (match) {
+              await github.rest.issues.update({ owner, repo, issue_number: match.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body });
+            }
