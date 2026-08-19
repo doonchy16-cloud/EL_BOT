@@ -1,0 +1,196 @@
+(() => {
+'use strict';
+if (window.__EL_STEP4_ADMIN_INSTALLED__) return true;
+window.__EL_STEP4_ADMIN_INSTALLED__ = true;
+const api = window['😀'] && window['😀']['🔐'];
+if (!api) return false;
+const brand = document.querySelector('.brand');
+if (!brand) return false;
+
+const robot = '🤖';
+if (!document.getElementById('el-admin-entry')) {
+  const text = brand.textContent || '';
+  const at = text.indexOf(robot);
+  if (at >= 0) {
+    brand.textContent = '';
+    const before = text.slice(0, at), after = text.slice(at + robot.length);
+    if (before) brand.appendChild(document.createTextNode(before));
+    const entry = document.createElement('span');
+    entry.id = 'el-admin-entry'; entry.textContent = robot; entry.setAttribute('aria-hidden', 'true');
+    brand.appendChild(entry);
+    if (after) brand.appendChild(document.createTextNode(after));
+  }
+}
+const entry = document.getElementById('el-admin-entry');
+if (!entry) return false;
+
+let clicks = [];
+let opening = false;
+let token = '';
+let refreshTimer = null;
+function resetGesture(){ clicks = []; }
+window.addEventListener('blur', resetGesture, true);
+document.addEventListener('pointerdown', (event) => { if (event.target !== entry) resetGesture(); }, true);
+entry.addEventListener('click', async (event) => {
+  event.stopPropagation();
+  const now = performance.now();
+  clicks = clicks.filter((time) => now - time <= 3000);
+  clicks.push(now);
+  if (clicks.length < 5) return;
+  resetGesture();
+  if (!opening) { opening = true; try { await openAuthentication(); } finally { opening = false; } }
+});
+
+function node(tag, attrs = {}, text = '') {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === 'class') el.className = value;
+    else if (key === 'type') el.type = value;
+    else el.setAttribute(key, value);
+  }
+  if (text) el.textContent = text;
+  return el;
+}
+function remove(id){ const el=document.getElementById(id); if(el) el.remove(); }
+function errorText(code){
+  if(code==='password-length') return 'Use at least 12 characters.';
+  if(code==='confirmation-mismatch') return 'The passwords do not match.';
+  if(code==='rate-limited') return 'Too many failed attempts. Try again shortly.';
+  return 'Authentication failed.';
+}
+async function openAuthentication(){
+  remove('el-admin-auth-backdrop');
+  const state = await api.state();
+  const setup = !state.configured;
+  const back = node('div',{id:'el-admin-auth-backdrop',class:'el-admin-backdrop'});
+  const box = node('div',{class:'el-admin-auth'});
+  box.append(node('h2',{}, setup ? '🔐 Owner Setup' : '🔐 Owner Authentication'));
+  box.append(node('p',{}, setup ? 'Create the local Owner password for this EL Bot installation. It is never stored as plaintext.' : 'Enter the local Owner password to open the hidden Forgey Insta control room.'));
+  const password = node('input',{type:'password',autocomplete: setup?'new-password':'current-password',placeholder: setup?'Create Owner password':'Owner password'});
+  box.append(password);
+  let confirm = null;
+  if(setup){ confirm=node('input',{type:'password',autocomplete:'new-password',placeholder:'Confirm Owner password'}); box.append(confirm); }
+  const err=node('div',{class:'el-admin-error'}); box.append(err);
+  const actions=node('div',{class:'el-admin-auth-actions'});
+  const cancel=node('button',{class:'el-admin-btn'},'Cancel');
+  const submit=node('button',{class:'el-admin-btn'}, setup?'Create & Open':'Unlock');
+  actions.append(cancel,submit); box.append(actions); back.append(box); document.body.append(back);
+  password.focus();
+  cancel.onclick=()=>back.remove();
+  const go=async()=>{
+    submit.disabled=true; err.textContent='';
+    const result = setup ? await api.bootstrap(password.value, confirm.value) : await api.login(password.value);
+    submit.disabled=false;
+    password.value=''; if(confirm) confirm.value='';
+    if(!result || !result.ok){ err.textContent=errorText(result && result.code); return; }
+    token=result.token; back.remove(); await openConsole();
+  };
+  submit.onclick=go;
+  password.addEventListener('keydown',e=>{if(e.key==='Enter')void go();});
+  if(confirm) confirm.addEventListener('keydown',e=>{if(e.key==='Enter')void go();});
+}
+
+function fmtDuration(seconds){
+  if(seconds===null || seconds===undefined) return 'Unavailable';
+  let n=Math.max(0,Math.floor(Number(seconds)||0)); const d=Math.floor(n/86400);n%=86400;const h=Math.floor(n/3600);n%=3600;const m=Math.floor(n/60);const s=n%60;
+  return [d?`${d}d`:null,h||d?`${h}h`:null,m||h||d?`${m}m`:null,`${s}s`].filter(Boolean).join(' ');
+}
+function fmtBytes(value){
+  if(value===null || value===undefined) return 'Unavailable'; const n=Number(value); if(!Number.isFinite(n)) return 'Unavailable';
+  if(n<1024)return `${n} B`;if(n<1048576)return `${(n/1024).toFixed(1)} KB`;if(n<1073741824)return `${(n/1048576).toFixed(2)} MB`;return `${(n/1073741824).toFixed(2)} GB`;
+}
+function text(value){
+  if(value===null || value===undefined || value==='') return 'Unavailable';
+  if(typeof value==='boolean') return value?'Yes':'No';
+  if(typeof value==='number' && Number.isFinite(value)) return String(value);
+  return String(value);
+}
+function kv(card, rows){
+  const grid=node('div',{class:'el-admin-kv'});
+  for(const [label,value,cls] of rows){ const a=node('b',{},label),b=node('span',{class:cls||''},text(value));grid.append(a,b); }
+  card.append(grid); return card;
+}
+function card(title, rows, wide=false){ const c=node('div',{class:`el-admin-card${wide?' wide':''}`});c.append(node('h3',{},title));if(rows)kv(c,rows);return c; }
+function pretty(value){ try{return JSON.stringify(value,null,2);}catch(_){return String(value);} }
+
+async function openConsole(){
+  remove('el-admin-console');
+  const root=node('div',{id:'el-admin-console',class:'el-admin-console'});
+  const top=node('div',{class:'el-admin-top'}); const titles=node('div');
+  titles.append(node('div',{class:'el-admin-title'},'🤖 Forgey Insta Control Room'),node('div',{class:'el-admin-sub'},'Local Owner console · truthful runtime data only'));
+  const close=node('button',{class:'el-admin-close','aria-label':'Close control room'},'✕'); top.append(titles,close); root.append(top);
+  const nav=node('div',{class:'el-admin-nav'}); const statusBtn=node('button',{class:'on'},'📊 Current Status');const trainBtn=node('button',{},'🏋️ Training Center');nav.append(statusBtn,trainBtn);root.append(nav);
+  const status=node('div',{id:'el-admin-status-page',class:'el-admin-page on'}); const training=node('div',{id:'el-admin-training-page',class:'el-admin-page'});root.append(status,training);document.body.append(root);
+  const select=(name)=>{const isStatus=name==='status';status.classList.toggle('on',isStatus);training.classList.toggle('on',!isStatus);statusBtn.classList.toggle('on',isStatus);trainBtn.classList.toggle('on',!isStatus);};
+  statusBtn.onclick=()=>select('status');trainBtn.onclick=()=>select('training');
+  close.onclick=async()=>{if(refreshTimer)clearInterval(refreshTimer);refreshTimer=null;const t=token;token='';root.remove();if(t)await api.logout(t);};
+  await refresh(true);
+  refreshTimer=setInterval(()=>void refresh(false),3000);
+}
+
+async function refresh(force){
+  if(!token)return;
+  const snap=await api.snapshot(token,Boolean(force));
+  if(!snap || !snap.ok){ if(refreshTimer)clearInterval(refreshTimer);refreshTimer=null;token='';remove('el-admin-console');return; }
+  renderStatus(snap); renderTraining(snap);
+}
+
+function renderStatus(snap){
+  const page=document.getElementById('el-admin-status-page');if(!page)return;page.textContent='';const grid=node('div',{class:'el-admin-grid'});page.append(grid);
+  const rt=snap.runtime||{}, ai=snap.ai||{}, reg=ai.registry||{}, diag=ai.diagnostics||{}, teacher=ai.teacher||{}, knowledge=ai.knowledge||{};
+  grid.append(card('⚡ Runtime',[
+    ['App active time',fmtDuration(rt.app_active_seconds),'el-admin-good'],['Model active time',fmtDuration(rt.model_active_seconds),rt.model_active_seconds===null?'el-admin-muted':'el-admin-good'],['Translations this run',rt.translations],['Forgey primary releases',rt.forgey_primary_releases],['Teacher fallbacks',rt.teacher_fallbacks],['Forgey primary share',rt.forgey_primary_share===null?'No requests yet':`${(rt.forgey_primary_share*100).toFixed(1)}%`]
+  ]));
+  grid.append(card('🧠 Current AI',[
+    ['Selected generation',reg.selected_generation||'Unavailable',reg.hashes_verified?'el-admin-good':''],['Registry hashes verified',reg.hashes_verified,reg.hashes_verified?'el-admin-good':'el-admin-warn'],['Neural runtime ready',ai.available===true && reg.hashes_verified===true,ai.available===true&&reg.hashes_verified===true?'el-admin-good':'el-admin-warn'],['Generation count',reg.generation_count],['Model hash',reg.model_sha256?reg.model_sha256.slice(0,16)+'…':'Unavailable','el-admin-mono'],['Tokenizer hash',reg.tokenizer_sha256?reg.tokenizer_sha256.slice(0,16)+'…':'Unavailable','el-admin-mono']
+  ]));
+  grid.append(card('🧪 Health',[
+    ['Diagnostics',diag.passed===true?`${diag.count||44}/44 PASS`:diag.available===false?'Unavailable':'Not passing',diag.passed===true?'el-admin-good':'el-admin-warn'],['Step 1 knowledge',knowledge.step1_available],['Step 2 authority',knowledge.step2_status],['Step 3 authority',knowledge.step3_status],['Status collector',ai.available===true?'Available':(ai.reason||'Unavailable'),ai.available===true?'el-admin-good':'el-admin-warn']
+  ]));
+  grid.append(card('🦙 Teacher',[
+    ['Provider',teacher.provider],['Model',teacher.model],['Recorded calls',teacher.calls],['Admitted lessons',teacher.admitted],['Rejected / negative',teacher.rejected],['Provider-authored EL truth',teacher.provider_authored_el_truth],['Unverified self-output truth',teacher.self_output_truth]
+  ]));
+  const last=rt.last_inference;
+  grid.append(card('📡 Latest Inference',last?[
+    ['Time',last.at],['Direction',last.direction],['Input length',last.source_length],['Latency',`${last.elapsed_ms} ms`],['Quality',last.quality_status],['Forgey primary',last.forgey_primary_released,last.forgey_primary_released?'el-admin-good':'el-admin-warn'],['Generation',last.selected_generation],['Teacher fallback',last.teacher_fallback]
+  ]:[['State','No inference observed in this app run','el-admin-muted']]));
+  const security=card('🔐 Security',[
+    ['Session remaining',fmtDuration(Math.floor((snap.auth&&snap.auth.remaining_ms||0)/1000)),'el-admin-good'],['Credential storage','Salted scrypt verifier'],['Remote admin endpoint','None'],['Audit content','Events only; no passwords or translation text']
+  ]);
+  const rotate=node('button',{class:'el-admin-btn'},'Rotate Owner Password');security.append(node('div',{class:'el-admin-actions'}));security.lastChild.append(rotate);rotate.onclick=async()=>{
+    const current=prompt('Current Owner password');if(current===null)return;const next=prompt('New Owner password (12+ characters)');if(next===null)return;const confirm=prompt('Confirm new Owner password');if(confirm===null)return;
+    const result=await api.rotate(token,current,next,confirm);if(result&&result.ok){alert('Password rotated. Re-authentication is required.');token='';remove('el-admin-console');}else alert(errorText(result&&result.code));
+  };grid.append(security);
+}
+
+function renderTraining(snap){
+  const page=document.getElementById('el-admin-training-page');if(!page)return;page.textContent='';const grid=node('div',{class:'el-admin-grid'});page.append(grid);
+  const ai=snap.ai||{}, reg=ai.registry||{}, model=ai.model||{}, arch=ai.architecture||{}, teacher=ai.teacher||{}, learning=ai.learning||{}, training=ai.training||{};
+  grid.append(card('🧠 Current Model',[
+    ['Generation',reg.selected_generation],['Trainable parameters',model.trainable_parameters===null?'Unavailable':Number(model.trainable_parameters).toLocaleString(),model.trainable_parameters?'el-admin-good':'el-admin-muted'],['Total parameters',model.total_parameters===null?'Unavailable':Number(model.total_parameters).toLocaleString()],['Model file size',fmtBytes(model.model_file_bytes)],['Tokenizer file size',fmtBytes(model.tokenizer_file_bytes)],['Vocabulary size',model.vocabulary_size],['Checkpoint loadable',model.loadable,model.loadable===true?'el-admin-good':'el-admin-warn']
+  ]));
+  grid.append(card('🏗️ Architecture',[
+    ['Family',arch.family],['Model width',arch.d_model],['Attention heads',arch.attention_heads],['Encoder layers',arch.encoder_layers],['Decoder layers',arch.decoder_layers],['Feed-forward width',arch.feed_forward],['Context',arch.max_context?`${arch.max_context} tokens`:'Unavailable'],['Pretrained semantic weights',arch.pretrained_semantic_weights]
+  ]));
+  grid.append(card('🏋️ Training / Benchmark',[
+    ['Teacher exact',training.teacher_probe_exact],['Teacher total',training.teacher_probe_total],['Teacher token loss',training.teacher_token_loss],['Frozen benchmark loss',training.frozen_benchmark_loss],['Protected probes',training.protected_probes],['Round-trip',training.roundtrip],['Adversarial integrity',training.adversarial_integrity_pass],['Validation',training.validation_pass]
+  ]));
+  grid.append(card('🦙 Learning Evidence',[
+    ['Teacher calls',teacher.calls],['Admitted lessons',teacher.admitted],['Negative / rejected',teacher.rejected],['Learning claims',learning.claim_count],['Negative episodes',learning.episode_count],['Replay examples',learning.replay_examples],['Replay fingerprint',learning.replay_fingerprint?learning.replay_fingerprint.slice(0,16)+'…':'Unavailable','el-admin-mono']
+  ]));
+  const genCard=card('🗃️ Generations & Rollback',null,true);const generations=Array.isArray(reg.generations)?reg.generations:[];
+  if(!generations.length) genCard.append(node('div',{class:'el-admin-muted'},'No runtime generation registry is available.'));
+  for(const g of generations){const row=node('div',{class:'el-admin-generation'});row.append(node('span',{class:g.status==='production'?'el-admin-good':'el-admin-muted'},g.status==='production'?'●':'○'));const info=node('div');info.append(node('div',{},`${g.generation_id} · ${g.status}`),node('div',{class:'el-admin-mono el-admin-muted'},`${(g.model_sha256||'').slice(0,20)}… · parent ${g.parent_generation||'none'}`));row.append(info);if(g.status==='verified'){const rb=node('button',{class:'el-admin-btn danger'},'Rollback');rb.onclick=()=>void rollback(g.generation_id);row.append(rb);}else row.append(node('span',{},''));genCard.append(row);}grid.append(genCard);
+  const actions=card('🧪 Training Center Controls',[
+    ['Validate current','Re-check selected artifact hashes and loadability'],['Train next generation','Unavailable until a generic post-G2 trainer is implemented; no fake start button is shown'],['Promotion','Only measured candidates may be promoted by the generation policy']
+  ],true);const actionRow=node('div',{class:'el-admin-actions'});const validate=node('button',{class:'el-admin-btn'},'Validate Current Generation');const refresh=node('button',{class:'el-admin-btn'},'Refresh All Data');actionRow.append(validate,refresh);actions.append(actionRow);validate.onclick=async()=>{const r=await api.validate(token);alert(r&&r.valid?'Current generation validation: PASS':'Current generation validation did not pass. See Training Center data.');await refreshNow();};refresh.onclick=()=>void refreshNow();grid.append(actions);
+  const raw=card('📊 Raw Measured Metrics',null,true);const pre=node('pre',{class:'el-admin-pre'},pretty({selected_generation:reg.selected_generation,metrics:reg.selected_metrics,training_proof:ai.training_proof,promotion:ai.promotion,history:reg.history}));raw.append(pre);grid.append(raw);
+}
+async function refreshNow(){await refresh(true);}
+async function rollback(generation){
+  const password=prompt(`Re-enter Owner password to rollback to ${generation}`);if(password===null)return;
+  const phrase=prompt(`Type exactly: ROLLBACK ${generation}`);if(phrase===null)return;
+  const result=await api.rollback(token,generation,password,phrase);if(result&&result.ok){alert(`Rollback complete. Selected generation: ${result.selected_generation}`);await refresh(true);}else alert(`Rollback blocked: ${result&&result.code||'unknown'}`);
+}
+return true;
+})()

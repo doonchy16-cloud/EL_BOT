@@ -1,0 +1,171 @@
+'use strict';
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const AUTH_SCHEMA = 1;
+const SESSION_TTL_MS = 15 * 60 * 1000;
+const MIN_PASSWORD_LENGTH = 12;
+const MAX_PASSWORD_LENGTH = 256;
+const SCRYPT = Object.freeze({ N: 32768, r: 8, p: 1, keylen: 64, maxmem: 64 * 1024 * 1024 });
+
+function safeString(value) { return typeof value === 'string' ? value : ''; }
+
+class AdminAuthStore {
+  constructor(directory, options = {}) {
+    this.directory = path.resolve(String(directory));
+    this.file = path.join(this.directory, 'admin-auth-v1.json');
+    this.now = typeof options.now === 'function' ? options.now : () => Date.now();
+    this.sessionTtlMs = Number(options.sessionTtlMs || SESSION_TTL_MS);
+    this.sessions = new Map();
+    this.failures = new Map();
+  }
+
+  isConfigured() { return fs.existsSync(this.file); }
+
+  _read() {
+    if (!this.isConfigured()) return null;
+    const payload = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+    if (payload.schema_version !== AUTH_SCHEMA || payload.algorithm !== 'scrypt' || !payload.salt || !payload.verifier) {
+      throw new Error('invalid admin credential store');
+    }
+    return payload;
+  }
+
+  _write(payload) {
+    fs.mkdirSync(this.directory, { recursive: true });
+    const temp = this.file + '.tmp';
+    fs.writeFileSync(temp, JSON.stringify(payload, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+    try { fs.chmodSync(temp, 0o600); } catch (_) {}
+    try { fs.rmSync(this.file, { force: true }); } catch (_) {}
+    fs.renameSync(temp, this.file);
+    try { fs.chmodSync(this.file, 0o600); } catch (_) {}
+  }
+
+  _validateNewPassword(password, confirmation) {
+    const value = safeString(password);
+    if (value.length < MIN_PASSWORD_LENGTH || value.length > MAX_PASSWORD_LENGTH) {
+      return { ok: false, code: 'password-length' };
+    }
+    if (value !== safeString(confirmation)) return { ok: false, code: 'confirmation-mismatch' };
+    return { ok: true };
+  }
+
+  _derive(password, saltHex) {
+    return crypto.scryptSync(safeString(password), Buffer.from(saltHex, 'hex'), SCRYPT.keylen, {
+      N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, maxmem: SCRYPT.maxmem,
+    });
+  }
+
+  bootstrap(password, confirmation) {
+    if (this.isConfigured()) return { ok: false, code: 'already-configured' };
+    const valid = this._validateNewPassword(password, confirmation);
+    if (!valid.ok) return valid;
+    const salt = crypto.randomBytes(24).toString('hex');
+    const verifier = this._derive(password, salt).toString('hex');
+    this._write({
+      schema_version: AUTH_SCHEMA,
+      algorithm: 'scrypt',
+      parameters: { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, keylen: SCRYPT.keylen },
+      salt,
+      verifier,
+      created_at: new Date(this.now()).toISOString(),
+      rotated_at: null,
+    });
+    return { ok: true };
+  }
+
+  verifyPassword(password) {
+    const payload = this._read();
+    if (!payload) return false;
+    let actual;
+    try { actual = this._derive(password, payload.salt); } catch (_) { return false; }
+    const expected = Buffer.from(payload.verifier, 'hex');
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  }
+
+  _failureState(clientId) {
+    const key = String(clientId);
+    if (!this.failures.has(key)) this.failures.set(key, { count: 0, blockedUntil: 0 });
+    return this.failures.get(key);
+  }
+
+  _checkRate(clientId) {
+    const state = this._failureState(clientId);
+    const remaining = state.blockedUntil - this.now();
+    return remaining > 0 ? { blocked: true, retry_after_ms: remaining } : { blocked: false, retry_after_ms: 0 };
+  }
+
+  _recordFailure(clientId) {
+    const state = this._failureState(clientId);
+    state.count += 1;
+    if (state.count >= 5) {
+      const exponent = Math.min(6, state.count - 5);
+      state.blockedUntil = this.now() + Math.min(60000, 1000 * (2 ** exponent));
+    }
+    return this._checkRate(clientId);
+  }
+
+  _clearFailures(clientId) { this.failures.delete(String(clientId)); }
+
+  login(clientId, password) {
+    if (!this.isConfigured()) return { ok: false, code: 'not-configured' };
+    const rate = this._checkRate(clientId);
+    if (rate.blocked) return { ok: false, code: 'rate-limited', retry_after_ms: rate.retry_after_ms };
+    if (!this.verifyPassword(password)) {
+      const after = this._recordFailure(clientId);
+      return { ok: false, code: after.blocked ? 'rate-limited' : 'invalid', retry_after_ms: after.retry_after_ms };
+    }
+    this._clearFailures(clientId);
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = this.now() + this.sessionTtlMs;
+    this.sessions.set(token, { clientId: String(clientId), expiresAt });
+    return { ok: true, token, expires_at: expiresAt, ttl_ms: this.sessionTtlMs };
+  }
+
+  requireSession(clientId, token) {
+    const value = this.sessions.get(safeString(token));
+    if (!value || value.clientId !== String(clientId) || value.expiresAt <= this.now()) {
+      if (value) this.sessions.delete(safeString(token));
+      return null;
+    }
+    return { token: safeString(token), clientId: value.clientId, expiresAt: value.expiresAt };
+  }
+
+  sessionStatus(clientId, token) {
+    const session = this.requireSession(clientId, token);
+    if (!session) return { authenticated: false, remaining_ms: 0 };
+    return { authenticated: true, remaining_ms: Math.max(0, session.expiresAt - this.now()), expires_at: session.expiresAt };
+  }
+
+  logout(clientId, token) {
+    const session = this.requireSession(clientId, token);
+    if (session) this.sessions.delete(session.token);
+    return { ok: true };
+  }
+
+  rotate(clientId, token, currentPassword, nextPassword, confirmation) {
+    if (!this.requireSession(clientId, token)) return { ok: false, code: 'session-required' };
+    if (!this.verifyPassword(currentPassword)) return { ok: false, code: 'reauth-failed' };
+    const valid = this._validateNewPassword(nextPassword, confirmation);
+    if (!valid.ok) return valid;
+    const existing = this._read();
+    const salt = crypto.randomBytes(24).toString('hex');
+    const verifier = this._derive(nextPassword, salt).toString('hex');
+    this._write({
+      schema_version: AUTH_SCHEMA,
+      algorithm: 'scrypt',
+      parameters: { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, keylen: SCRYPT.keylen },
+      salt,
+      verifier,
+      created_at: existing.created_at || new Date(this.now()).toISOString(),
+      rotated_at: new Date(this.now()).toISOString(),
+    });
+    this.sessions.clear();
+    this.failures.clear();
+    return { ok: true, reauth_required: true };
+  }
+}
+
+module.exports = Object.freeze({ AdminAuthStore, SESSION_TTL_MS, MIN_PASSWORD_LENGTH, SCRYPT });

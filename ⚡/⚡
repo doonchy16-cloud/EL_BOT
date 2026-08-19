@@ -6,10 +6,11 @@ const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const ADMIN = require('./🛡️');
 
 const ROOT = path.resolve(__dirname, '..');
 const BOT = path.join(ROOT, '🤖');
-const TRANSLATE = path.join(ROOT, '↔️', '↔️');
+const TRANSLATE = path.join(ROOT, '↔️', '⚡');
 const VISION = path.join(ROOT, '📸', '📸');
 const PRELOAD = path.join(__dirname, '🔌');
 const VIEW_SOURCE = path.join(__dirname, '🖥️');
@@ -127,6 +128,7 @@ async function loadApplicationView(win) {
   await win.loadFile(runtimeView);
   if (!(await verifyRenderedView(win))) throw new Error('rendered UI verification failed');
   await applyPhase5Enhancements(win);
+  await ADMIN.install(win);
   return runtimeView;
 }
 
@@ -154,7 +156,7 @@ function runPython(target, source, timeoutMs, extraArgs = [], onStage = null) {
       cwd: ROOT,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_RANK_DB: rankDbPath() },
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', EL_RANK_DB: rankDbPath(), EL_FORGEY_REGISTRY: ADMIN.registryPath() },
     });
     let stdout = '', stderr = '', stderrBuffer = '', settled = false;
     const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
@@ -195,8 +197,11 @@ function parseRanked(raw) {
 
 async function runTranslation(event, mode, source) {
   if (![1, 2].includes(mode) || typeof source !== 'string') return { winner: '❌🔣', candidates: [], metrics: {} };
+  const started = Date.now();
   const raw = await runPython(TRANSLATE, `${mode}\n${source}`, 420000, ['🔀'], (payload) => emitStage(event, stagePayload(payload, 'translation')));
-  return parseRanked(raw);
+  const result = parseRanked(raw);
+  ADMIN.recordTranslation({ mode, sourceLength: source.length, elapsedMs: Date.now() - started, result });
+  return result;
 }
 
 async function runVision(event, mode, imageDataUrl) {
