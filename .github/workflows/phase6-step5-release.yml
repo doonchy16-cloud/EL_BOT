@@ -1,14 +1,13 @@
-name: "🚀 Phase 6 Step 5 Proof + Packaging + Release"
+name: "🚀 Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion"
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: "phase6-step5-${{ github.ref }}"
@@ -16,10 +15,33 @@ concurrency:
 
 jobs:
   step5:
-    name: "🚀📦 Forgey Windows Release Gate"
+    name: "🚀📦 Forgey Windows Final Completion Gate"
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 180
     steps:
+      - name: "🧹 Cancel stale Phase 6 runs"
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const staleRunIds = [32303280449, 32303280324, 32303280332, 32303280353, 32303280401];
+            for (const run_id of staleRunIds) {
+              try {
+                await github.rest.actions.cancelWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id,
+                });
+                core.info(`Cancel requested for stale run ${run_id}`);
+              } catch (error) {
+                if (error.status === 404 || error.status === 409) {
+                  core.info(`Stale run ${run_id} is already gone or no longer cancellable (${error.status})`);
+                } else {
+                  throw error;
+                }
+              }
+            }
+
       - name: "📥 Source"
         uses: actions/checkout@v4
 
