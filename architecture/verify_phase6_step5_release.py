@@ -24,6 +24,7 @@ def main():
 
     package=load(ROOT/"package.json")
     req(package.get("version")=="0.6.0","package.json not Phase-6 version")
+    req("--publish never" in str((package.get("scripts") or {}).get("build:windows","")),"electron-builder implicit publishing is not disabled")
     files=list((package.get("build") or {}).get("files") or [])
     req("!scripts/**" not in files,"runtime admin/status scripts excluded from package")
     req("!architecture/**" not in files,"runtime architecture authority excluded from package")
