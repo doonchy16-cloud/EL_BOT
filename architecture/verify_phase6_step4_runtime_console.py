@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Strict Phase-6 Step-4 primary-runtime + two-page control-room evidence gate."""
 from pathlib import Path
-import json, re
+import json, re, unicodedata
 ROOT=Path(__file__).resolve().parent.parent
 
 def req(c,m):
@@ -9,6 +9,11 @@ def req(c,m):
 
 def read(path): return Path(path).read_text(encoding='utf-8')
 def load(path): return json.loads(Path(path).read_text(encoding='utf-8'))
+def concept_fold(value):
+    normalized=unicodedata.normalize('NFKC',str(value or ''))
+    visible=''.join(ch for ch in normalized if unicodedata.category(ch)!='Cf')
+    compact=re.sub(r'\s+',' ',visible).strip()
+    return re.sub(r'[.!?]+$','',compact).strip().casefold()
 
 def main():
     manifest=load(ROOT/'architecture'/'phase6_step4_runtime_console_manifest.json')
@@ -34,12 +39,12 @@ def main():
         req((evidence_dir/name).is_file(),f'missing Step4 evidence {name}')
     f=load(evidence_dir/'primary-forward.json');r=load(evidence_dir/'primary-reverse.json');s=load(evidence_dir/'status.json');a=load(evidence_dir/'auth-proof.json');c=load(evidence_dir/'console-proof.json')
     req(f.get('winner')=='🚲' and f.get('metrics',{}).get('forgey_primary_released') is True and int(f.get('metrics',{}).get('provider_calls',-1))==0,'forward primary proof failed')
-    req(str(r.get('winner','')).casefold()=='bicycle'.casefold() and r.get('metrics',{}).get('forgey_primary_released') is True and int(r.get('metrics',{}).get('provider_calls',-1))==0,'reverse primary proof failed')
+    req(concept_fold(r.get('winner',''))==concept_fold('bicycle') and float(r.get('metrics',{}).get('roundtrip',0) or 0)==1.0 and r.get('metrics',{}).get('forgey_primary_released') is True and int(r.get('metrics',{}).get('provider_calls',-1))==0,'reverse primary concept/round-trip proof failed')
     req(f['metrics'].get('forgey_generation')=='G2' and r['metrics'].get('forgey_generation')=='G2','selected G2 not used')
     req(s.get('registry',{}).get('hashes_verified') is True and s.get('registry',{}).get('selected_generation')=='G2','status registry proof failed')
     req(int(s.get('model',{}).get('trainable_parameters') or 0)==1788672,'runtime parameter count not derived')
     req(int(s.get('model',{}).get('model_file_bytes') or 0)>0 and int(s.get('model',{}).get('tokenizer_file_bytes') or 0)>0,'actual model/tokenizer sizes missing')
     req(a.get('scrypt') is True and a.get('plaintext_absent') is True and a.get('rate_limit') is True and a.get('rotation') is True,'auth proof failed')
     req(c.get('page_count')==2 and c.get('pages')==['📊 Current Status','🏋️ Training Center'] and c.get('hidden_entry_no_title') is True and c.get('hidden_entry_no_tabindex') is True,'console proof failed')
-    print('PHASE6_STEP4_OK primary=G2 provider=0 pages=2 auth=scrypt status=REAL params=1788672 step5=ABSENT')
+    print('PHASE6_STEP4_OK primary=G2 provider=0 reverse_concept=bicycle reverse_roundtrip=1 pages=2 auth=scrypt status=REAL params=1788672 step5=ABSENT')
 if __name__=='__main__':main()
