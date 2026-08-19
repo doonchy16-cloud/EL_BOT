@@ -1,10 +1,10 @@
 # Phase 6.10 — Hidden Forgey Insta Control Room
 
-**Status:** ✅ STEP 4 PASS / AWAITING OWNER MERGE
+**Status:** ✅ STEP 4 PASS / MERGED
 
 **Canonical intelligence:** `Forgey Insta:EL-Bot`
 
-This is the locked Step-4 control-room authority. The Owner authorized Step 4 on 2026-08-18 and then explicitly refined the hidden console to exactly **two primary pages**. The implementation has passed its verified evidence gate and remains unmerged until Owner approval.
+This is the locked Step-4 control-room authority. The Owner authorized Step 4 on 2026-08-18 and explicitly refined the hidden console to exactly **two primary pages**. Step 4 passed its final exact-head evidence gate and was merged to `main` as `e0ed1b2ac91ae1f9a716abfc0e93904469b91422`.
 
 ## Hidden entry
 
@@ -89,7 +89,7 @@ The Training Center includes a real **Validate Current Generation** control and 
 
 ## Runtime contract
 
-Step 4 changes normal translation routing to:
+Step 4 changed normal translation routing to:
 
 ```text
 ABC / EL input
@@ -107,14 +107,14 @@ if still unresolved → ✦ orchestration → 🔌 connector → 🦙 Qwen seman
 deterministic EL construction + validation only
 ```
 
-The old deterministic translator remains intact as historical/support authority. Step 4 is implemented as a new runtime facade rather than rewriting Step-3-proven translation code.
+The old deterministic translator remains intact as historical/support authority. Step 4 uses a runtime facade rather than rewriting Step-3-proven translation code.
 
 ## No-fake-data rule
 
 No fake model size, parameter count, training progress, active time, confidence, status, teacher usage, generation, chart, benchmark, or audit event is allowed. Missing or unmeasurable data must remain missing and be labeled accordingly.
 
-## Verified closeout boundary
+## Verified closeout
 
-Step 4 has passed its implementation evidence gate, including Forgey-primary routing, provider-free selected-generation inference, truthful Status data, salted-scrypt authentication, rendered two-page Electron control-room proof, Step-3 compatibility, Phase 2, Phase 3, and 44/44 diagnostics. Final exact-head CI after governance closeout remains required before the PR is marked merge-ready.
+Final Step-4 branch head `b8ca651a64e4c4c6e9817d3dcadec5dbbb638c8b` passed exact-head Step 1, Step 2, Step 3 and Step 4 workflows, including Forgey-primary routing, provider-free selected-generation inference, truthful Status data, salted-scrypt authentication, rendered two-page Electron control-room proof, Phase 2, Phase 3, and 44/44 diagnostics. It was merged to `main` as `e0ed1b2ac91ae1f9a716abfc0e93904469b91422`.
 
-Step 4 does **not** publish a Phase-6 installer/release or implement the Step-5 release publisher. Packaging/release proof remains Step 5.
+Step 5 now packages and proves this merged control-room/runtime authority. Step 5 must not weaken the two-page contract, fabricate unavailable training controls, or publish a release before its exact-main release gate.
