@@ -85,6 +85,10 @@ def main() -> None:
     model, metadata = model_module.ForgeyInstaTransformer.load_checkpoint(checkpoint_path, map_location="cpu")
     device = torch.device("cpu")
     model.to(device)
+    # Rehearsal runs with Transformer dropout enabled. Seed PyTorch explicitly so the
+    # exact same trusted curriculum produces the exact same G1 checkpoint in every
+    # workflow/process instead of depending on process-start RNG state.
+    torch.manual_seed(int(args.seed))
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
 
     curriculum, _ = curriculum_module.build_bootstrap_curriculum(BENCHMARK)
