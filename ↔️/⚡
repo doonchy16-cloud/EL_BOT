@@ -23,6 +23,7 @@ LEGACY = ROOT / "↔️" / "↔️"
 DEFAULT_REGISTRY = ROOT / "data" / "phase6-step3" / "generation-registry.json"
 _NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 _WHITESPACE_RE = re.compile(r"\s+")
+_TERMINAL_SENTENCE_PUNCT_RE = re.compile(r"[.!?]+$")
 
 
 def load(name: str, path: Path):
@@ -52,15 +53,16 @@ def _candidate_values(result) -> tuple[str, ...]:
 
 
 def _normalize_abc_text(value: str) -> str:
-    """Normalize released natural-language text without changing its semantics.
-
-    Neural text must not expose Unicode format controls (category Cf). NFKC keeps
-    compatibility forms stable, and whitespace is collapsed before deterministic
-    validation so invisible tokenizer artifacts cannot become production output.
-    """
+    """Normalize released natural-language text without changing its semantics."""
     normalized = unicodedata.normalize("NFKC", str(value or ""))
     visible = "".join(char for char in normalized if unicodedata.category(char) != "Cf")
     return _WHITESPACE_RE.sub(" ", visible).strip()
+
+
+def _validation_abc_concept(value: str) -> str:
+    """Canonical comparison form used only for semantic validation/round-trip."""
+    display = _normalize_abc_text(value)
+    return _TERMINAL_SENTENCE_PUNCT_RE.sub("", display).strip().casefold()
 
 
 def _relation_integrity(source: str, candidate: str) -> bool:
@@ -165,13 +167,17 @@ class Step4TranslationEngine:
             reverse = self.legacy.emoji_to_abc.translate(source, verifier=self.legacy.abc_to_emoji, cross_verify=True, emit=False)
             support_quality = str(reverse.metrics.get("quality_status", "fail") or "fail").lower()
             candidates = _candidate_values(reverse)
+            concept = _validation_abc_concept(prediction)
+            if not concept:
+                reasons.append("empty-neural-concept")
             if support_quality == "pass":
-                canonical_match = next((value for value in candidates if _normalize_abc_text(value).casefold() == prediction.casefold()), None)
+                canonical_match = next((value for value in candidates if _validation_abc_concept(value) == concept), None)
                 if canonical_match is None:
                     reasons.append("deterministic-authority-conflict")
                 else:
                     prediction = _normalize_abc_text(canonical_match)
-            reencoded = self.legacy.abc_to_emoji.translate(prediction, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
+                    concept = _validation_abc_concept(prediction)
+            reencoded = self.legacy.abc_to_emoji.translate(concept, verifier=self.legacy.emoji_to_abc, cross_verify=True, emit=False)
             roundtrip_ok = str(reencoded.winner) == source
             if not roundtrip_ok: reasons.append("deterministic-roundtrip-failed")
 
