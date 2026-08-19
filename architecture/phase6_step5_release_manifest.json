@@ -82,5 +82,6 @@
     "phase6-release-manifest.json"
   ],
   "final_exact_main_ci_required": true,
+  "ci_certification_requires_completed_exact_head_runs": true,
   "fake_or_placeholder_release_evidence_forbidden": true
 }
