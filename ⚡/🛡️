@@ -197,7 +197,13 @@ function registerHandlers() {
   ipcMain.handle('🤖:validate', async (event, token) => {
     if (!requireSession(event, token)) return { ok: false, code: 'session-required' };
     const ai = collectAiSnapshot(true);
-    const valid = Boolean(ai && ai.registry && ai.registry.hashes_verified === true && ai.model && ai.model.loadable !== false);
+    const valid = Boolean(
+      ai && ai.available === true &&
+      ai.registry && ai.registry.hashes_verified === true &&
+      ai.model && ai.model.loadable === true && ai.model.vision_enabled === true && Number(ai.model.vision_parameters || 0) > 0 &&
+      ai.training && ai.training.vision_validation_pass === true &&
+      ai.diagnostics && ai.diagnostics.passed === true && Number(ai.diagnostics.count || 0) === 44
+    );
     writeAudit('model-validate', { client_id: clientId(event), valid, generation: ai && ai.registry ? ai.registry.selected_generation : '' });
     return { ok: true, valid, ai };
   });

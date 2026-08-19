@@ -36,8 +36,10 @@ import json, os, pathlib, subprocess, sys, unicodedata
 camera = chr(0x1F4F8)
 vision = next(path for path in pathlib.Path('.').rglob('*') if path.is_file() and path.name == camera and path.parent.name == camera)
 source = vision.read_text(encoding='utf-8')
+assert 'Forgey Insta native vision is attempted first' in source
 assert 'vision sensor, not a translator' in source
 assert 'OllamaConnector' in source and 'ABCToEmojiEngine' in source
+assert 'native_forgey_vision_attempted' in source and 'native_forgey_vision_released' in source
 assert 'Do not translate into Emoji Language' in source
 assert '"visible_text":12' in source and 'vision_evidence' in source
 result = subprocess.run([sys.executable, str(vision), chr(0x1F500)], input='2\n'+os.environ['EL_TEST_IMAGE'], text=True, capture_output=True, encoding='utf-8', timeout=360)
@@ -47,6 +49,11 @@ assert result.returncode == 0 and raw
 payload = json.loads(raw); winner = str(payload.get('winner','')); metrics = payload.get('metrics') or {}
 assert winner and not winner.startswith(chr(0x274C))
 assert not any(unicodedata.category(ch).startswith('L') for ch in winner)
+assert metrics.get('native_forgey_vision_attempted') is True, metrics
+# This fixture is intentionally complex/OCR-heavy and must not be mislabeled as a
+# learned simple native-vision concept. It should fall through to the Qwen sensor.
+assert metrics.get('native_forgey_vision_released') is False, metrics
+assert int(metrics.get('native_forgey_vision_provider_calls',-1)) == 0, metrics
 assert int(metrics.get('sensor_calls',0)) in (1,2)
 assert int(metrics.get('vision_facts',0)) >= 1, metrics
 assert isinstance(metrics.get('vision_evidence'), dict), metrics

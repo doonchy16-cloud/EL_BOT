@@ -20,7 +20,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: "📥 Source"
         uses: actions/checkout@v4
@@ -109,6 +109,14 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-step2-rehearse-g1.py' --artifact-dir $artifact --steps 240 --batch-size 32
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_G1_REHEARSAL_FAILED' }
 
+      - name: "👁️🏋️ Native visual adapter training"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'scripts\phase6-step2-train-vision.py' --artifact-dir 'data\phase6-step2' --steps 360 --batch-size 28
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_NATIVE_VISION_TRAIN_FAILED' }
+
       - name: "⚡ Local inference ABC → EL"
         shell: powershell
         run: |
@@ -127,13 +135,32 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence 'data\phase6-step2\infer-el-to-abc.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_REVERSE_INFER_FAILED' }
 
-      - name: "🧪 Step 2 authority"
+      - name: "👁️ Local inference Image → EL"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $red = [char]::ConvertFromUtf32(0x1F534)
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir 'data\phase6-step2' --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence 'data\phase6-step2\infer-image-to-el.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_IMAGE_TO_EL_FAILED' }
+
+      - name: "👁️ Local inference Image → ABC"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir 'data\phase6-step2' --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence 'data\phase6-step2\infer-image-to-abc.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_IMAGE_TO_ABC_FAILED' }
+
+      - name: "🧪 Step 2 text + native-vision authority"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_AUTHORITY_FAILED' }
+          & $env:EL_PYTHON 'architecture\verify_phase6_step2_native_vision.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP2_NATIVE_VISION_AUTHORITY_FAILED' }
 
       - name: "🧪 Phase 2 compatibility"
         shell: powershell

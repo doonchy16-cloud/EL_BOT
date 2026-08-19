@@ -20,7 +20,7 @@ jobs:
       - self-hosted
       - Windows
       - X64
-    timeout-minutes: 90
+    timeout-minutes: 115
     steps:
       - name: "📥 Source"
         uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_TORCH_IMPORT_FAILED' }
           "EL_TORCH_SITE=$torchDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: "🏋️ Reconstruct Step 2 G1"
+      - name: "🏋️ Reconstruct Step 2 G1 + native vision"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -102,6 +102,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_TRAIN_FAILED' }
           & $env:EL_PYTHON 'scripts\phase6-step2-rehearse-g1.py' --artifact-dir $output --steps 240 --batch-size 32
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_REHEARSAL_FAILED' }
+          & $env:EL_PYTHON 'scripts\phase6-step2-train-vision.py' --artifact-dir $output --steps 360 --batch-size 28
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_VISION_FAILED' }
 
       - name: "⚡ Reconstruct Step 2 local inference evidence"
         shell: powershell
@@ -109,18 +111,25 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           $rocket = [char]::ConvertFromUtf32(0x1F680)
+          $red = [char]::ConvertFromUtf32(0x1F534)
           & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'ABC_TO_EL' --text 'rocket' --expected $rocket --evidence 'data\phase6-step2\infer-abc-to-el.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_FORWARD_FAILED' }
           & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir 'data\phase6-step2' --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence 'data\phase6-step2\infer-el-to-abc.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_REVERSE_FAILED' }
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir 'data\phase6-step2' --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence 'data\phase6-step2\infer-image-to-el.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_IMAGE_EL_FAILED' }
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir 'data\phase6-step2' --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence 'data\phase6-step2\infer-image-to-abc.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G1_IMAGE_ABC_FAILED' }
 
-      - name: "🧪 Step 2 compatibility"
+      - name: "🧪 Step 2 compatibility + native vision"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_STEP2_COMPAT_FAILED' }
+          & $env:EL_PYTHON 'architecture\verify_phase6_step2_native_vision.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_STEP2_VISION_COMPAT_FAILED' }
 
       - name: "🦙 Verify real Qwen teacher"
         shell: powershell
@@ -148,6 +157,14 @@ jobs:
           $step3 = Join-Path (Get-Location) 'data\phase6-step3'
           & $env:EL_PYTHON 'scripts\phase6-step3-train-g2.py' --step2-artifact $step2 --step3-artifact $step3 --steps 360 --batch-size 40
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G2_TRAIN_FAILED' }
+
+      - name: "👁️🏋️ Re-align G2 native vision"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $env:EL_PYTHON 'scripts\phase6-step3-refresh-vision.py' --step3-artifact 'data\phase6-step3' --steps 300 --batch-size 28
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_G2_VISION_FAILED' }
 
       - name: "🎓🗃️ Promotion + rejection + rollback"
         shell: powershell
@@ -177,13 +194,26 @@ jobs:
           & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'EL_TO_ABC' --text $bicycle --expected 'bicycle' --evidence 'data\phase6-step3\infer-selected-reverse.json'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_SELECTED_REVERSE_FAILED' }
 
-      - name: "🧪 Step 3 authority"
+      - name: "👁️ Selected G2 inference Image → EL/ABC"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $red = [char]::ConvertFromUtf32(0x1F534)
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence 'data\phase6-step3\infer-selected-image-to-el.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_SELECTED_IMAGE_EL_FAILED' }
+          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --registry 'data\phase6-step3\generation-registry.json' --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence 'data\phase6-step3\infer-selected-image-to-abc.json'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_SELECTED_IMAGE_ABC_FAILED' }
+
+      - name: "🧪 Step 3 authority + native vision"
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONIOENCODING = 'utf-8'
           & $env:EL_PYTHON 'architecture\verify_phase6_step3_teacher_learning.py'
           if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_AUTHORITY_FAILED' }
+          & $env:EL_PYTHON 'architecture\verify_phase6_step3_native_vision.py'
+          if ($LASTEXITCODE -ne 0) { throw 'PHASE6_STEP3_NATIVE_VISION_AUTHORITY_FAILED' }
 
       - name: "🧪 Phase 2 compatibility"
         shell: powershell

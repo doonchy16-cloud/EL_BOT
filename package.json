@@ -10,7 +10,7 @@
     "dev": "electron .",
     "proof:visual": "electron scripts/phase5-visual-proof.js",
     "build:icon": "node scripts/materialize-icon.js",
-    "build:windows": "node scripts/materialize-icon.js && electron-builder --win --x64"
+    "build:windows": "node scripts/materialize-icon.js && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "electron": "43.2.0",
