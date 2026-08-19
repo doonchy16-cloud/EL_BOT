@@ -31,6 +31,7 @@ class PromotionPolicy:
     require_roundtrip_all_exact: bool = True
     require_adversarial_integrity: bool = True
     require_validation_pass: bool = True
+    require_native_vision_non_regression: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,30 +48,18 @@ class ForgeyGenerationRegistry:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self._state: dict[str, Any] = {
-            "schema_version": 1,
-            "production_generation": "",
-            "generations": {},
-            "history": [],
-            "sequence": 0,
-        }
+        self._state: dict[str, Any] = {"schema_version": 1, "production_generation": "", "generations": {}, "history": [], "sequence": 0}
         if self.path.is_file():
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-            if payload.get("schema_version") != 1 or not isinstance(payload.get("generations"), dict):
-                raise ValueError("unsupported generation registry")
+            if payload.get("schema_version") != 1 or not isinstance(payload.get("generations"), dict): raise ValueError("unsupported generation registry")
             self._state = payload
 
     @property
-    def production_generation(self) -> str:
-        return str(self._state.get("production_generation", ""))
-
+    def production_generation(self) -> str: return str(self._state.get("production_generation", ""))
     @property
-    def generations(self) -> dict[str, dict[str, Any]]:
-        return deepcopy(self._state["generations"])
-
+    def generations(self) -> dict[str, dict[str, Any]]: return deepcopy(self._state["generations"])
     @property
-    def history(self) -> tuple[dict[str, Any], ...]:
-        return tuple(deepcopy(self._state.get("history", ())))
+    def history(self) -> tuple[dict[str, Any], ...]: return tuple(deepcopy(self._state.get("history", ())))
 
     def _persist(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,169 +74,102 @@ class ForgeyGenerationRegistry:
     @staticmethod
     def _validate_metrics(metrics: dict[str, Any]) -> None:
         required = {
-            "teacher_probe_exact", "teacher_probe_total", "teacher_token_loss",
-            "frozen_benchmark_loss", "protected_probe_exact", "protected_probe_total",
-            "roundtrip_exact", "roundtrip_total", "adversarial_integrity_pass", "validation_pass",
+            "teacher_probe_exact", "teacher_probe_total", "teacher_token_loss", "frozen_benchmark_loss",
+            "protected_probe_exact", "protected_probe_total", "roundtrip_exact", "roundtrip_total",
+            "adversarial_integrity_pass", "validation_pass", "vision_validation_pass", "vision_probe_exact", "vision_probe_total",
         }
         missing = required - set(metrics)
-        if missing:
-            raise ValueError(f"generation metrics missing: {sorted(missing)}")
-        for key in ("teacher_probe_exact", "teacher_probe_total", "protected_probe_exact", "protected_probe_total", "roundtrip_exact", "roundtrip_total"):
-            if isinstance(metrics[key], bool) or int(metrics[key]) < 0:
-                raise ValueError(f"invalid metric {key}")
+        if missing: raise ValueError(f"generation metrics missing: {sorted(missing)}")
+        for key in ("teacher_probe_exact", "teacher_probe_total", "protected_probe_exact", "protected_probe_total", "roundtrip_exact", "roundtrip_total", "vision_probe_exact", "vision_probe_total"):
+            if isinstance(metrics[key], bool) or int(metrics[key]) < 0: raise ValueError(f"invalid metric {key}")
         for key in ("teacher_token_loss", "frozen_benchmark_loss"):
             value = float(metrics[key])
-            if not (value > 0.0):
-                raise ValueError(f"invalid metric {key}")
-        if not isinstance(metrics["adversarial_integrity_pass"], bool) or not isinstance(metrics["validation_pass"], bool):
-            raise ValueError("integrity/validation metrics must be boolean")
+            if not (value > 0.0): raise ValueError(f"invalid metric {key}")
+        for key in ("adversarial_integrity_pass", "validation_pass", "vision_validation_pass"):
+            if not isinstance(metrics[key], bool): raise ValueError(f"boolean metric required: {key}")
+        if int(metrics["vision_probe_total"]) <= 0: raise ValueError("native vision probe denominator must be positive")
+        if int(metrics["vision_probe_exact"]) > int(metrics["vision_probe_total"]): raise ValueError("native vision exact count exceeds denominator")
 
-    def register_generation(
-        self,
-        generation_id: str,
-        *,
-        parent_generation: str,
-        model_path: str | Path,
-        tokenizer_path: str | Path,
-        replay_fingerprint_sha256: str,
-        metrics: dict[str, Any],
-        status: str = "candidate",
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    def register_generation(self, generation_id: str, *, parent_generation: str, model_path: str | Path, tokenizer_path: str | Path, replay_fingerprint_sha256: str, metrics: dict[str, Any], status: str = "candidate", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         generation = str(generation_id).strip()
-        if not generation or generation in self._state["generations"]:
-            raise ValueError("generation ID must be new and non-empty")
-        if status not in {"candidate", "verified"}:
-            raise ValueError("new generation status must be candidate or verified")
+        if not generation or generation in self._state["generations"]: raise ValueError("generation ID must be new and non-empty")
+        if status not in {"candidate", "verified"}: raise ValueError("new generation status must be candidate or verified")
         parent = str(parent_generation).strip()
-        if parent and parent not in self._state["generations"]:
-            raise ValueError("parent generation is not registered")
-        model = Path(model_path).resolve()
-        tokenizer = Path(tokenizer_path).resolve()
-        if not model.is_file() or not tokenizer.is_file():
-            raise FileNotFoundError("generation model/tokenizer artifact missing")
+        if parent and parent not in self._state["generations"]: raise ValueError("parent generation is not registered")
+        model = Path(model_path).resolve(); tokenizer = Path(tokenizer_path).resolve()
+        if not model.is_file() or not tokenizer.is_file(): raise FileNotFoundError("generation model/tokenizer artifact missing")
         self._validate_metrics(metrics)
         replay_fingerprint = str(replay_fingerprint_sha256).strip().lower()
-        if len(replay_fingerprint) != 64 or any(ch not in "0123456789abcdef" for ch in replay_fingerprint):
-            raise ValueError("replay fingerprint must be SHA-256 hex")
+        if len(replay_fingerprint) != 64 or any(ch not in "0123456789abcdef" for ch in replay_fingerprint): raise ValueError("replay fingerprint must be SHA-256 hex")
         record = {
-            "generation_id": generation,
-            "parent_generation": parent,
-            "status": status,
-            "model_path": str(model),
-            "model_sha256": file_sha256(model),
-            "tokenizer_path": str(tokenizer),
-            "tokenizer_sha256": file_sha256(tokenizer),
-            "replay_fingerprint_sha256": replay_fingerprint,
-            "metrics": deepcopy(metrics),
-            "metadata": deepcopy(metadata or {}),
+            "generation_id": generation, "parent_generation": parent, "status": status,
+            "model_path": str(model), "model_sha256": file_sha256(model),
+            "tokenizer_path": str(tokenizer), "tokenizer_sha256": file_sha256(tokenizer),
+            "replay_fingerprint_sha256": replay_fingerprint, "metrics": deepcopy(metrics), "metadata": deepcopy(metadata or {}),
         }
         self._state["generations"][generation] = record
         self._event("register", generation_id=generation, parent_generation=parent, model_sha256=record["model_sha256"])
-        self._persist()
-        return deepcopy(record)
+        self._persist(); return deepcopy(record)
 
     def initialize_production(self, generation_id: str) -> None:
-        generation = str(generation_id)
-        record = self._state["generations"].get(generation)
-        if record is None:
-            raise KeyError(generation)
-        if self.production_generation:
-            raise RuntimeError("production generation already initialized")
-        if file_sha256(record["model_path"]) != record["model_sha256"]:
-            raise RuntimeError("generation model hash changed before initialization")
-        record["status"] = "production"
-        self._state["production_generation"] = generation
-        self._event("initialize-production", generation_id=generation, model_sha256=record["model_sha256"])
-        self._persist()
+        generation = str(generation_id); record = self._state["generations"].get(generation)
+        if record is None: raise KeyError(generation)
+        if self.production_generation: raise RuntimeError("production generation already initialized")
+        if file_sha256(record["model_path"]) != record["model_sha256"]: raise RuntimeError("generation model hash changed before initialization")
+        record["status"] = "production"; self._state["production_generation"] = generation
+        self._event("initialize-production", generation_id=generation, model_sha256=record["model_sha256"]); self._persist()
 
     @staticmethod
     def evaluate_metrics(production: dict[str, Any], candidate: dict[str, Any], policy: PromotionPolicy | None = None) -> tuple[bool, tuple[str, ...]]:
-        policy = policy or PromotionPolicy()
-        ForgeyGenerationRegistry._validate_metrics(production)
-        ForgeyGenerationRegistry._validate_metrics(candidate)
+        policy = policy or PromotionPolicy(); ForgeyGenerationRegistry._validate_metrics(production); ForgeyGenerationRegistry._validate_metrics(candidate)
         reasons: list[str] = []
-
-        measurable = (
-            int(candidate["teacher_probe_exact"]) > int(production["teacher_probe_exact"])
-            or float(candidate["teacher_token_loss"]) <= float(production["teacher_token_loss"]) * 0.98
-        )
-        if policy.require_measurable_teacher_improvement and not measurable:
-            reasons.append("no-measurable-teacher-improvement")
-        if policy.require_frozen_benchmark_non_regression and float(candidate["frozen_benchmark_loss"]) > float(production["frozen_benchmark_loss"]):
-            reasons.append("frozen-benchmark-regression")
-        if policy.require_protected_probe_non_regression and int(candidate["protected_probe_exact"]) < int(production["protected_probe_exact"]):
-            reasons.append("protected-probe-regression")
-        if int(candidate["protected_probe_total"]) != int(production["protected_probe_total"]):
-            reasons.append("protected-probe-denominator-changed")
-        if policy.require_roundtrip_all_exact and int(candidate["roundtrip_exact"]) != int(candidate["roundtrip_total"]):
-            reasons.append("roundtrip-not-all-exact")
-        if policy.require_adversarial_integrity and candidate["adversarial_integrity_pass"] is not True:
-            reasons.append("adversarial-integrity-failed")
-        if policy.require_validation_pass and candidate["validation_pass"] is not True:
-            reasons.append("deterministic-validation-failed")
+        measurable = int(candidate["teacher_probe_exact"]) > int(production["teacher_probe_exact"]) or float(candidate["teacher_token_loss"]) <= float(production["teacher_token_loss"]) * 0.98
+        if policy.require_measurable_teacher_improvement and not measurable: reasons.append("no-measurable-teacher-improvement")
+        if policy.require_frozen_benchmark_non_regression and float(candidate["frozen_benchmark_loss"]) > float(production["frozen_benchmark_loss"]): reasons.append("frozen-benchmark-regression")
+        if policy.require_protected_probe_non_regression and int(candidate["protected_probe_exact"]) < int(production["protected_probe_exact"]): reasons.append("protected-probe-regression")
+        if int(candidate["protected_probe_total"]) != int(production["protected_probe_total"]): reasons.append("protected-probe-denominator-changed")
+        if policy.require_roundtrip_all_exact and int(candidate["roundtrip_exact"]) != int(candidate["roundtrip_total"]): reasons.append("roundtrip-not-all-exact")
+        if policy.require_adversarial_integrity and candidate["adversarial_integrity_pass"] is not True: reasons.append("adversarial-integrity-failed")
+        if policy.require_validation_pass and candidate["validation_pass"] is not True: reasons.append("deterministic-validation-failed")
+        if policy.require_native_vision_non_regression:
+            if candidate["vision_validation_pass"] is not True: reasons.append("native-vision-validation-failed")
+            if int(candidate["vision_probe_total"]) != int(production["vision_probe_total"]): reasons.append("native-vision-probe-denominator-changed")
+            if int(candidate["vision_probe_exact"]) < int(production["vision_probe_exact"]): reasons.append("native-vision-probe-regression")
+            if int(candidate["vision_probe_exact"]) != int(candidate["vision_probe_total"]): reasons.append("native-vision-not-all-exact")
         return not reasons, tuple(reasons)
 
     def decide_promotion(self, candidate_generation: str, policy: PromotionPolicy | None = None) -> PromotionDecision:
-        candidate_id = str(candidate_generation)
-        candidate = self._state["generations"].get(candidate_id)
-        if candidate is None:
-            raise KeyError(candidate_id)
-        previous_id = self.production_generation
-        production = self._state["generations"].get(previous_id)
-        if production is None:
-            raise RuntimeError("production generation missing")
-        if candidate["parent_generation"] != previous_id:
-            raise ValueError("candidate parent is not current production")
-        if file_sha256(candidate["model_path"]) != candidate["model_sha256"]:
-            raise RuntimeError("candidate artifact hash changed")
-        if file_sha256(candidate["tokenizer_path"]) != candidate["tokenizer_sha256"]:
-            raise RuntimeError("candidate tokenizer hash changed")
-
+        candidate_id = str(candidate_generation); candidate = self._state["generations"].get(candidate_id)
+        if candidate is None: raise KeyError(candidate_id)
+        previous_id = self.production_generation; production = self._state["generations"].get(previous_id)
+        if production is None: raise RuntimeError("production generation missing")
+        if candidate["parent_generation"] != previous_id: raise ValueError("candidate parent is not current production")
+        if file_sha256(candidate["model_path"]) != candidate["model_sha256"]: raise RuntimeError("candidate artifact hash changed")
+        if file_sha256(candidate["tokenizer_path"]) != candidate["tokenizer_sha256"]: raise RuntimeError("candidate tokenizer hash changed")
         accepted, reasons = self.evaluate_metrics(production["metrics"], candidate["metrics"], policy)
         if accepted:
-            production["status"] = "verified"
-            candidate["status"] = "production"
-            self._state["production_generation"] = candidate_id
-            self._event("promote", from_generation=previous_id, to_generation=candidate_id, model_sha256=candidate["model_sha256"])
-            selected = candidate_id
+            production["status"] = "verified"; candidate["status"] = "production"; self._state["production_generation"] = candidate_id
+            self._event("promote", from_generation=previous_id, to_generation=candidate_id, model_sha256=candidate["model_sha256"]); selected = candidate_id
         else:
-            candidate["status"] = "rejected"
-            self._event("reject", production_generation=previous_id, candidate_generation=candidate_id, reasons=list(reasons))
-            selected = previous_id
-        self._persist()
-        return PromotionDecision(candidate_id, accepted, reasons, previous_id, selected)
+            candidate["status"] = "rejected"; self._event("reject", production_generation=previous_id, candidate_generation=candidate_id, reasons=list(reasons)); selected = previous_id
+        self._persist(); return PromotionDecision(candidate_id, accepted, reasons, previous_id, selected)
 
     def rollback(self, target_generation: str) -> dict[str, Any]:
-        target_id = str(target_generation)
-        target = self._state["generations"].get(target_id)
-        if target is None:
-            raise KeyError(target_id)
-        if target["status"] not in {"verified", "production"}:
-            raise ValueError("rollback target is not a previously verified generation")
-        if file_sha256(target["model_path"]) != target["model_sha256"]:
-            raise RuntimeError("rollback target model hash changed")
-        if file_sha256(target["tokenizer_path"]) != target["tokenizer_sha256"]:
-            raise RuntimeError("rollback target tokenizer hash changed")
+        target_id = str(target_generation); target = self._state["generations"].get(target_id)
+        if target is None: raise KeyError(target_id)
+        if target["status"] not in {"verified", "production"}: raise ValueError("rollback target is not a previously verified generation")
+        if file_sha256(target["model_path"]) != target["model_sha256"]: raise RuntimeError("rollback target model hash changed")
+        if file_sha256(target["tokenizer_path"]) != target["tokenizer_sha256"]: raise RuntimeError("rollback target tokenizer hash changed")
         previous_id = self.production_generation
         if previous_id and previous_id in self._state["generations"]:
             previous = self._state["generations"][previous_id]
-            if previous_id != target_id and previous["status"] == "production":
-                previous["status"] = "verified"
-        target["status"] = "production"
-        self._state["production_generation"] = target_id
-        self._event("rollback", from_generation=previous_id, to_generation=target_id, model_sha256=target["model_sha256"])
-        self._persist()
-        return deepcopy(target)
+            if previous_id != target_id and previous["status"] == "production": previous["status"] = "verified"
+        target["status"] = "production"; self._state["production_generation"] = target_id
+        self._event("rollback", from_generation=previous_id, to_generation=target_id, model_sha256=target["model_sha256"]); self._persist(); return deepcopy(target)
 
     def verify_generation_hashes(self, generation_id: str) -> bool:
         record = self._state["generations"].get(str(generation_id))
-        if record is None:
-            return False
-        return (
-            file_sha256(record["model_path"]) == record["model_sha256"]
-            and file_sha256(record["tokenizer_path"]) == record["tokenizer_sha256"]
-        )
+        if record is None: return False
+        return file_sha256(record["model_path"]) == record["model_sha256"] and file_sha256(record["tokenizer_path"]) == record["tokenizer_sha256"]
 
-    def render_el_status(self) -> str:
-        return "✅🗃️🤖" + (self.production_generation or "0")
+    def render_el_status(self) -> str: return "✅🗃️🤖" + (self.production_generation or "0")
