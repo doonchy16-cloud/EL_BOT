@@ -149,7 +149,9 @@ jobs:
           if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.6.0-x64.exe')){throw 'Phase-6 NSIS installer missing'}
           if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.6.0-x64.exe')){throw 'Phase-6 portable executable missing'}
           $app='dist\win-unpacked\resources\app'
-          foreach($required in @('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','scripts\phase6-vision-infer.py','🧠\🤖','🧠\👁️','architecture\phase6_step4_runtime_console_manifest.json')){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
+          $brain=[char]::ConvertFromUtf32(0x1F9E0);$robot=[char]::ConvertFromUtf32(0x1F916);$eye=([char]::ConvertFromUtf32(0x1F441)+[char]0xFE0F)
+          $requiredPaths=@('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','scripts\phase6-vision-infer.py',(Join-Path $brain $robot),(Join-Path $brain $eye),'architecture\phase6_step4_runtime_console_manifest.json')
+          foreach($required in $requiredPaths){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
 
       - name: "🧪📦🖥️ Existing packaged UI/Python smoke"
         shell: powershell
