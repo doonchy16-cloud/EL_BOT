@@ -34,7 +34,7 @@ def main():
     runtime_materializer=text(ROOT/"scripts"/"materialize-phase6-runtime.py")
     python_materializer=text(ROOT/"scripts"/"materialize-phase6-python.ps1")
     package_proof=text(ROOT/"scripts"/"phase6-step5-package-forgey-proof.py")
-    publisher=text(ROOT/"scripts"/"publish-phase6-release.ps1")
+    publisher=text(ROOT/"scripts"/"publish-step5-main-release.ps1")
     workflow=text(ROOT/".github"/"workflows"/"phase6-step5-release.yml")
     phase6=text(ROOT/"architecture"/"PHASE_6_FORGEY_INSTA_EL_BOT_AUTHORITY.md")
     step5=text(ROOT/"architecture"/"PHASE_6_11_FORGEY_INSTA_PROOF_PACKAGING_AND_RELEASE.md")
@@ -46,13 +46,14 @@ def main():
     req("provider_calls" in package_proof and "1788672" in package_proof and "44/44" in package_proof,"packaged Forgey proof too weak")
     req("refs/heads/main" in publisher and "0.6.0" in publisher and "phase6-package-forgey-proof.json" in publisher,"exact-main Phase-6 publisher missing")
     req("phase6-release-manifest.json" in publisher and "runtime-package-manifest.json" in publisher,"release evidence assets incomplete")
+    req(not (ROOT/"scripts"/"publish-phase6-release.ps1").exists(),"historical Step-1/2/3 publisher sentinel was reused")
 
     req("pull_request:" in workflow and "push:" in workflow and "branches: [main]" in workflow,"Step-5 PR/main workflow topology missing")
     for marker in (
         "phase6-step2-train-g1.py","phase6-step3-teach.py","phase6-step3-train-g2.py","phase6-step3-promote.py",
         "phase6-step4-runtime-proof.js","phase6-step4-console-proof.js","ci-screenshot-vision.ps1","LEGACY_COMPLETE_REGRESSION_FAILED","LEGACY_RELEASE_ENGINE_REGRESSION_FAILED",
         "materialize-phase6-runtime.py","materialize-phase6-python.ps1","proof:visual","build:windows",
-        "package-smoke.json","phase6-step5-package-forgey-proof.py","verify_phase6_step5_release.py","publish-phase6-release.ps1",
+        "package-smoke.json","phase6-step5-package-forgey-proof.py","verify_phase6_step5_release.py","publish-step5-main-release.ps1",
     ):
         req(marker in workflow,f"Step-5 workflow missing {marker}")
     req("github.event_name == 'push'" in workflow and "refs/heads/main" in workflow,"publisher is not main-only in workflow")
