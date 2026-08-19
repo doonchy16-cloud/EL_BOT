@@ -173,5 +173,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
-          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\publish-phase6-release.ps1'
+          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\publish-step5-main-release.ps1'
           if($LASTEXITCODE-ne 0){throw 'PHASE6_RELEASE_PUBLISH_FAILED'}
