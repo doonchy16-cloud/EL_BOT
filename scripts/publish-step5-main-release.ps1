@@ -1,5 +1,6 @@
 param(
-  [string]$Version = '0.6.0'
+  [string]$Version = '0.6.0',
+  [string]$Phase5KeepSha = 'c489d6f79d2f21d9544d8631dda3de7793adebf0'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -14,6 +15,58 @@ $short = $sha.Substring(0, [Math]::Min(12, $sha.Length))
 $tag = "el-bot-v$Version-$short"
 $api = if ($env:GITHUB_API_URL) { $env:GITHUB_API_URL.TrimEnd('/') } else { 'https://api.github.com' }
 $headers = @{ Authorization = "Bearer $($env:GITHUB_TOKEN)"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+
+function Get-AllReleases {
+  $items = @()
+  $page = 1
+  do {
+    $batch = @(Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases?per_page=100&page=$page" -Headers $headers)
+    $items += $batch
+    $page += 1
+  } while ($batch.Count -eq 100)
+  return @($items)
+}
+
+function Remove-ReleaseAndTag([object]$Release) {
+  $releaseId = [int64]$Release.id
+  $releaseTag = [string]$Release.tag_name
+  if ($releaseId -gt 0) {
+    Invoke-RestMethod -Method Delete -Uri "$api/repos/$repo/releases/$releaseId" -Headers $headers | Out-Null
+    Write-Output "RELEASE_HISTORY_REMOVED release_id=$releaseId tag=$releaseTag"
+  }
+  if ($releaseTag) {
+    $encodedTag = [Uri]::EscapeDataString($releaseTag)
+    try {
+      Invoke-RestMethod -Method Delete -Uri "$api/repos/$repo/git/refs/tags/$encodedTag" -Headers $headers | Out-Null
+      Write-Output "RELEASE_TAG_REMOVED tag=$releaseTag"
+    } catch {
+      $status = $_.Exception.Response.StatusCode.value__
+      if ($status -notin @(404, 422)) { throw }
+    }
+  }
+}
+
+# Keep exactly one historical v0.5.0 release: the strongest completed Phase-5 build.
+$releaseHistory = @(Get-AllReleases)
+$phase5Prefix = 'el-bot-v0.5.0-'
+$phase5KeepPrefix = $Phase5KeepSha.Substring(0, [Math]::Min(12, $Phase5KeepSha.Length))
+$phase5Releases = @($releaseHistory | Where-Object { [string]$_.tag_name -like "$phase5Prefix*" })
+$phase5KeepCandidates = @($phase5Releases | Where-Object {
+  ([string]$_.target_commitish).StartsWith($phase5KeepPrefix) -or ([string]$_.tag_name).Contains($phase5KeepPrefix)
+})
+if ($phase5KeepCandidates.Count -lt 1) { throw "Required Phase-5 keeper release not found for $Phase5KeepPrefix" }
+$phase5Keeper = @($phase5KeepCandidates | Sort-Object @{ Expression = { @($_.assets).Count }; Descending = $true }, @{ Expression = { $_.published_at }; Descending = $true })[0]
+foreach ($old in $phase5Releases) {
+  if ([int64]$old.id -eq [int64]$phase5Keeper.id) { continue }
+  Remove-ReleaseAndTag $old
+}
+Write-Output "PHASE5_RELEASE_KEEP tag=$($phase5Keeper.tag_name) target=$($phase5Keeper.target_commitish) assets=$(@($phase5Keeper.assets).Count)"
+
+# Version releases are single-authority too: remove any older v0.6.0 release before publishing this exact-main build.
+$releaseHistory = @(Get-AllReleases)
+foreach ($old in @($releaseHistory | Where-Object { [string]$_.tag_name -like "el-bot-v$Version-*" -and [string]$_.tag_name -ne $tag })) {
+  Remove-ReleaseAndTag $old
+}
 
 $required = @(
   "dist\EL-Bot-Setup-$Version-x64.exe",
@@ -53,7 +106,7 @@ try { $release = Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases/t
 catch { $status = $_.Exception.Response.StatusCode.value__; if ($status -ne 404) { throw } }
 
 if (-not $release) {
-  $body = @{ tag_name = $tag; target_commitish = $sha; name = "EL Bot v$Version - Phase 6 Multimodal Forgey Insta ($short)"; body = "Phase 6 exact-main Windows release for commit $sha. Includes Setup + Portable x64, embedded Python 3.12.10 and PyTorch 2.13 CPU, verified G1/G2 Forgey artifacts, provider-free text and native image inference proof, 44/44 diagnostics, and retained Phase-5 rendered visual proof."; draft = $false; prerelease = $false } | ConvertTo-Json -Depth 4
+  $body = @{ tag_name = $tag; target_commitish = $sha; name = "EL Bot v$Version - Phase 6 Multimodal Forgey Insta ($short)"; body = "Phase 6 exact-main Windows release for commit $sha. Normal install flow: download EL-Bot-Setup-$Version-x64.exe and run the NSIS setup wizard. A portable x64 EXE is also included. Embedded Python 3.12.10 and PyTorch 2.13 CPU, verified G1/G2 Forgey artifacts, provider-free text and native image inference proof, 44/44 diagnostics, and retained Phase-5 rendered visual proof are included."; draft = $false; prerelease = $false } | ConvertTo-Json -Depth 4
   $release = Invoke-RestMethod -Method Post -Uri "$api/repos/$repo/releases" -Headers $headers -ContentType 'application/json' -Body $body
 }
 
@@ -72,9 +125,18 @@ foreach ($path in $uploadPaths) {
 $verified = @(Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases/$($release.id)/assets?per_page=100" -Headers $headers)
 $names = @($verified | ForEach-Object { $_.name })
 foreach ($path in $uploadPaths) { $name = (Get-Item -LiteralPath $path).Name; if ($names -notcontains $name) { throw "Phase-6 release verification missing asset: $name" } }
+if ($names.Count -ne $uploadPaths.Count) { throw "Phase-6 release must contain exactly $($uploadPaths.Count) assets, found $($names.Count)" }
 $releaseCheck = Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases/tags/$tag" -Headers $headers
 if (-not $releaseCheck -or [string]$releaseCheck.tag_name -ne $tag) { throw 'Phase-6 release re-read failed' }
 if ([string]$releaseCheck.target_commitish -ne $sha) { throw 'Phase-6 release re-read target SHA mismatch' }
-$evidence = [ordered]@{ schema_version = 2; phase = 6; step = 5; release_id = $release.id; tag = $tag; commit_sha = $sha; target_commitish = $releaseCheck.target_commitish; url = $release.html_url; modalities = @('text','image'); native_vision = $true; verified_assets = $names }
+
+# Final release-history invariant: exactly one v0.5.0 release and exactly one v0.6.0 release.
+$finalHistory = @(Get-AllReleases)
+$finalPhase5 = @($finalHistory | Where-Object { [string]$_.tag_name -like "$phase5Prefix*" })
+$finalPhase6 = @($finalHistory | Where-Object { [string]$_.tag_name -like "el-bot-v$Version-*" })
+if ($finalPhase5.Count -ne 1) { throw "Release-history cleanup failed: expected 1 v0.5.0 release, found $($finalPhase5.Count)" }
+if ($finalPhase6.Count -ne 1 -or [string]$finalPhase6[0].tag_name -ne $tag) { throw "Release-history cleanup failed: expected only current v$Version release $tag" }
+
+$evidence = [ordered]@{ schema_version = 2; phase = 6; step = 5; release_id = $release.id; tag = $tag; commit_sha = $sha; target_commitish = $releaseCheck.target_commitish; url = $release.html_url; modalities = @('text','image'); native_vision = $true; verified_assets = $names; phase5_keeper_tag = [string]$finalPhase5[0].tag_name; release_history = 'v0.5.0=1;v0.6.0=1' }
 $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath 'dist\phase6-release-evidence.json' -Encoding UTF8
-Write-Output "PHASE6_RELEASE_OK tag=$tag sha=$sha native_vision=PASS url=$($release.html_url)"
+Write-Output "PHASE6_RELEASE_OK tag=$tag sha=$sha native_vision=PASS assets=$($names.Count) phase5_keeper=$($finalPhase5[0].tag_name) url=$($release.html_url)"
