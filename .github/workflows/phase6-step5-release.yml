@@ -1,5 +1,5 @@
 name: "🚀 Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion"
-run-name: "Phase 6 and Forgey-Insta:EL-Bot v1.0.0 Completion — checkpointed final"
+run-name: "Phase 6 release transaction — v0.5.0 + v0.6.0 only"
 
 on:
   push:
@@ -12,16 +12,16 @@ permissions:
   statuses: write
 
 concurrency:
-  group: "phase6-step5-${{ github.ref }}"
+  group: "phase6-final-release-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
-  cleanup:
-    name: "🧹 Single-run cleanup"
+  release_guard:
+    name: "🔒 Main-only + single-run guard"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: "🧹 Cancel other active runs + verify main-only branches"
+      - name: "🔒 Cancel other active runs and enforce main-only branches"
         uses: actions/github-script@v7
         with:
           github-token: ${{ github.token }}
@@ -29,525 +29,161 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const currentRun = context.runId;
+            const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 
             const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-              owner,
-              repo,
-              per_page: 100,
+              owner, repo, per_page: 100
             });
-            const active = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
             for (const run of runs) {
               if (run.id === currentRun || !active.has(run.status)) continue;
               try {
                 await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id: run.id });
-                core.info(`Cancel requested for other active run ${run.id} (${run.name})`);
+                core.info(`cancel requested for other active run ${run.id}`);
               } catch (error) {
-                if (error.status === 404 || error.status === 409) {
-                  core.info(`Run ${run.id} already gone or no longer cancellable (${error.status})`);
-                } else {
-                  throw error;
-                }
+                if (![404, 409].includes(error.status)) throw error;
               }
             }
 
             const branches = await github.paginate(github.rest.repos.listBranches, {
-              owner,
-              repo,
-              per_page: 100,
+              owner, repo, per_page: 100
             });
             for (const branch of branches) {
               if (branch.name === 'main') continue;
-              await github.rest.git.deleteRef({
-                owner,
-                repo,
-                ref: `heads/${branch.name}`,
-              });
-              core.info(`Deleted stale branch ${branch.name}`);
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${branch.name}` });
+              core.info(`deleted non-main branch ${branch.name}`);
             }
 
             const remaining = await github.paginate(github.rest.repos.listBranches, {
-              owner,
-              repo,
-              per_page: 100,
+              owner, repo, per_page: 100
             });
-            const unexpected = remaining.filter(branch => branch.name !== 'main').map(branch => branch.name);
+            const unexpected = remaining.filter(b => b.name !== 'main').map(b => b.name);
             if (unexpected.length) {
-              core.setFailed(`Non-main branches remain after cleanup: ${unexpected.join(', ')}`);
+              core.setFailed(`main-only invariant failed: ${unexpected.join(', ')}`);
             } else {
-              core.info('Repository branch cleanup verified: main only');
+              core.info('MAIN_ONLY_BRANCHES_OK');
             }
 
-  foundation:
-    name: "1️⃣📖 Knowledge + lexical checkpoint"
-    needs: cleanup
-    if: ${{ !contains(github.event.head_commit.message, '[resume-g2]') }}
+  transactional_release:
+    name: "🚀 Transactional release: inspect → ensure → verify → clean"
+    needs: release_guard
+    if: ${{ contains(github.event.head_commit.message, '[release-only]') || github.event_name == 'workflow_dispatch' }}
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 20
+    timeout-minutes: 120
     steps:
       - name: "📥 Source"
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: "🐍 Python 3.12"
+      - name: "🟩 Node 24 for v0.6 fallback"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: "🐍 Bootstrap release Python 3.12.10"
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe'
-          if(-not(Test-Path $exe)){$zip=Join-Path $env:RUNNER_TEMP 'python.zip';New-Item -ItemType Directory -Force -Path $dir|Out-Null;Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip;Expand-Archive $zip $dir -Force}
-          $pth=Join-Path $dir 'python312._pth';if(Test-Path $pth){$t=Get-Content $pth -Raw;if($t -match '#import site'){$t=$t -replace '#import site','import site';[IO.File]::WriteAllText($pth,$t,[Text.UTF8Encoding]::new($false))}}
+          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10'
+          $exe=Join-Path $dir 'python.exe'
+          if(-not(Test-Path -LiteralPath $exe)){
+            $zip=Join-Path $env:RUNNER_TEMP 'python-3.12.10-embed.zip'
+            New-Item -ItemType Directory -Force -Path $dir|Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          }
           & $exe -c "import sys;assert sys.version_info[:2]==(3,12);print(sys.version)"
-          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          if($LASTEXITCODE-ne 0){throw 'RELEASE_PYTHON_BOOTSTRAP_FAILED'}
+          "EL_RELEASE_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: "📖 Materialize knowledge"
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-step1-knowledge.ps1'
-
-      - name: "📖🧪 Step 1 lexical/runtime regression"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8'
-          & $env:EL_PYTHON 'architecture\verify_phase6_step1_knowledge_foundation.py'
-          if($LASTEXITCODE-ne 0){throw 'STEP1_LEXICAL_RUNTIME_REGRESSION_FAILED'}
-
-      - name: "📦 Save foundation checkpoint"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-foundation.zip'
-          Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload foundation checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-foundation-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-foundation.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  g1:
-    name: "2️⃣🧠👁️ G1 checkpoint"
-    needs: foundation
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 60
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-
-      - name: "🐍 Python 3.12 + Torch 2.13 CPU"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe'
-          if(-not(Test-Path $exe)){$zip=Join-Path $env:RUNNER_TEMP 'python.zip';New-Item -ItemType Directory -Force -Path $dir|Out-Null;Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip;Expand-Archive $zip $dir -Force}
-          $pth=Join-Path $dir 'python312._pth';if(Test-Path $pth){$t=Get-Content $pth -Raw;if($t -match '#import site'){$t=$t -replace '#import site','import site';[IO.File]::WriteAllText($pth,$t,[Text.UTF8Encoding]::new($false))}}
-          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';$marker=Join-Path $torchDir '.ready'
-          if(-not(Test-Path $marker)){if(Test-Path $torchDir){Remove-Item $torchDir -Recurse -Force};New-Item -ItemType Directory -Force -Path $torchDir|Out-Null;$pipDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPip';$pipz=Join-Path $pipDir 'pip.pyz';New-Item -ItemType Directory -Force -Path $pipDir|Out-Null;if(-not(Test-Path $pipz)){Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/pip/pip.pyz' -OutFile $pipz};& $exe $pipz install --disable-pip-version-check --only-binary=:all: --target $torchDir -r 'requirements-phase6-step2.txt';if($LASTEXITCODE-ne 0){throw 'TORCH_INSTALL_FAILED'};Set-Content $marker 'ready' -Encoding ASCII}
-          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
-          & $exe -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
-
-      - name: "⬇️ Restore foundation checkpoint"
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-foundation-${{ github.sha }}
-          path: ${{ runner.temp }}\foundation
-      - name: "📂 Expand foundation checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\foundation\phase6-foundation.zip' -DestinationPath . -Force
-
-      - name: "🧠👁️ Reconstruct verified multimodal G1"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$step2=Join-Path (Get-Location) 'data\phase6-step2'
-          & $env:EL_PYTHON 'scripts\phase6-step2-train-g1.py' --output $step2 --steps 480 --batch-size 28;if($LASTEXITCODE-ne 0){throw 'G1_TRAIN_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step2-rehearse-g1.py' --artifact-dir $step2 --steps 240 --batch-size 32;if($LASTEXITCODE-ne 0){throw 'G1_REHEARSE_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step2-train-vision.py' --artifact-dir $step2 --steps 360 --batch-size 28;if($LASTEXITCODE-ne 0){throw 'G1_VISION_FAILED'}
-          $rocket=[char]::ConvertFromUtf32(0x1F680);$red=[char]::ConvertFromUtf32(0x1F534)
-          & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir $step2 --direction 'ABC_TO_EL' --text 'rocket' --expected $rocket --evidence (Join-Path $step2 'infer-abc-to-el.json');if($LASTEXITCODE-ne 0){throw 'G1_FORWARD_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step2-infer.py' --artifact-dir $step2 --direction 'EL_TO_ABC' --text $rocket --expected 'rocket' --evidence (Join-Path $step2 'infer-el-to-abc.json');if($LASTEXITCODE-ne 0){throw 'G1_REVERSE_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir $step2 --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence (Join-Path $step2 'infer-image-to-el.json');if($LASTEXITCODE-ne 0){throw 'G1_IMAGE_EL_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --artifact-dir $step2 --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence (Join-Path $step2 'infer-image-to-abc.json');if($LASTEXITCODE-ne 0){throw 'G1_IMAGE_ABC_FAILED'}
-          & $env:EL_PYTHON 'architecture\verify_phase6_step2_g0_g1.py';if($LASTEXITCODE-ne 0){throw 'G1_AUTHORITY_FAILED'}
-          & $env:EL_PYTHON 'architecture\verify_phase6_step2_native_vision.py';if($LASTEXITCODE-ne 0){throw 'G1_VISION_AUTHORITY_FAILED'}
-
-      - name: "📦 Save G1 checkpoint"
-        shell: powershell
-        run: |
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-g1.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload G1 checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-g1-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-g1.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  g2:
-    name: "3️⃣🦙👁️ G2 checkpoint"
-    needs: g1
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 60
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "🐍 Python 3.12 + Torch 2.13 CPU"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
-          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AFTER_G1'}
-          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AFTER_G1'}
-          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
-          & $exe -c "import torch;assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
-      - name: "⬇️ Restore G1 checkpoint"
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-g1-${{ github.sha }}
-          path: ${{ runner.temp }}\g1
-      - name: "📂 Expand G1 checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\g1\phase6-g1.zip' -DestinationPath . -Force
-
-      - name: "🦙👁️ Reconstruct teacher + verified multimodal G2"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$step2=Join-Path (Get-Location) 'data\phase6-step2';$step3=Join-Path (Get-Location) 'data\phase6-step3'
-          & $env:EL_PYTHON 'scripts\phase6-step3-teach.py' --output $step3;if($LASTEXITCODE-ne 0){throw 'TEACH_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step3-train-g2.py' --step2-artifact $step2 --step3-artifact $step3 --steps 360 --batch-size 40;if($LASTEXITCODE-ne 0){throw 'G2_TRAIN_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step3-refresh-vision.py' --step3-artifact $step3 --steps 300 --batch-size 28;if($LASTEXITCODE-ne 0){throw 'G2_VISION_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step3-promote.py' --step2-artifact $step2 --step3-artifact $step3;if($LASTEXITCODE-ne 0){throw 'G2_PROMOTE_FAILED'}
-          $bicycle=[char]::ConvertFromUtf32(0x1F6B2);$red=[char]::ConvertFromUtf32(0x1F534);$registry=Join-Path $step3 'generation-registry.json'
-          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'ABC_TO_EL' --text 'vehicle powered by pedals with two wheels' --expected $bicycle --evidence (Join-Path $step3 'infer-selected-forward.json');if($LASTEXITCODE-ne 0){throw 'G2_FORWARD_EVIDENCE_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-step3-infer-selected.py' --registry $registry --direction 'EL_TO_ABC' --text $bicycle --expected 'bicycle' --evidence (Join-Path $step3 'infer-selected-reverse.json');if($LASTEXITCODE-ne 0){throw 'G2_REVERSE_EVIDENCE_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --registry $registry --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence (Join-Path $step3 'infer-selected-image-to-el.json');if($LASTEXITCODE-ne 0){throw 'G2_IMAGE_EL_FAILED'}
-          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --registry $registry --direction 'IMAGE_TO_ABC' --fixture-concept 'red-circle' --fixture-seed 9000 --expected 'red circle' --evidence (Join-Path $step3 'infer-selected-image-to-abc.json');if($LASTEXITCODE-ne 0){throw 'G2_IMAGE_ABC_FAILED'}
-
-      - name: "🧪 Step 3 multimodal regression"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8'
-          & $env:EL_PYTHON 'architecture\verify_phase6_step3_teacher_learning.py';if($LASTEXITCODE-ne 0){throw 'STEP3_REGRESSION_FAILED'}
-          & $env:EL_PYTHON 'architecture\verify_phase6_step3_native_vision.py';if($LASTEXITCODE-ne 0){throw 'STEP3_VISION_REGRESSION_FAILED'}
-
-      - name: "📦 Save G2 checkpoint"
-        shell: powershell
-        run: |
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-g2.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'data' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload G2 checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-g2-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-g2.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  runtime_visual:
-    name: "4️⃣⚡📸 Runtime + visual checkpoint"
-    needs: [cleanup, g2]
-    if: ${{ always() && needs.cleanup.result == 'success' && !contains(github.event.head_commit.message, '[release-only]') && (needs.g2.result == 'success' || contains(github.event.head_commit.message, '[resume-g2]')) }}
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "🟩 Node 24"
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: "🐍 Restore cached Python + Torch"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
-          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AFTER_G2'};"EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AFTER_G2'}
-          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
-      - name: "⬇️ Restore prior proven G2 checkpoint"
-        if: ${{ contains(github.event.head_commit.message, '[resume-g2]') }}
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-g2-4988456217ea5c8679c9ecd6895bfc18dcc6a4af
-          path: ${{ runner.temp }}\g2
-          github-token: ${{ github.token }}
-          run-id: 32315508280
-      - name: "⬇️ Restore current-run G2 checkpoint"
-        if: ${{ !contains(github.event.head_commit.message, '[resume-g2]') }}
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-g2-${{ github.sha }}
-          path: ${{ runner.temp }}\g2
-      - name: "📂 Expand G2 checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\g2\phase6-g2.zip' -DestinationPath . -Force
-      - name: "📦 Node/Electron dependencies"
-        shell: powershell
-        run: npm install --no-audit --no-fund
-
-      - name: "⚡ Step 4 runtime/status/auth/console regression"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8';$env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path
-          node 'scripts\phase6-step4-runtime-proof.js';if($LASTEXITCODE-ne 0){throw 'STEP4_RUNTIME_PROOF_FAILED'}
-          node 'scripts\phase6-step4-status-proof.js';if($LASTEXITCODE-ne 0){throw 'STEP4_STATUS_PROOF_FAILED'}
-          node 'scripts\phase6-step4-auth-proof.js' 'data\phase6-step4\auth-proof.json';if($LASTEXITCODE-ne 0){throw 'STEP4_AUTH_PROOF_FAILED'}
-          & '.\node_modules\.bin\electron.cmd' 'scripts\phase6-step4-console-proof.js' 'data\phase6-step4\console-proof.json';if($LASTEXITCODE-ne 0){throw 'STEP4_CONSOLE_PROOF_FAILED'}
-          & $env:EL_PYTHON 'architecture\verify_phase6_step4_runtime_console.py';if($LASTEXITCODE-ne 0){throw 'STEP4_AUTHORITY_FAILED'}
-
-      - name: "📸👁️ Forgey-first screenshot-vision regression"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path
-          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\ci-screenshot-vision.ps1' -PythonExe $env:EL_PYTHON
-          if($LASTEXITCODE-ne 0){throw 'SCREENSHOT_VISION_REGRESSION_FAILED'}
-
-      - name: "🧪 Current complete 44-engine regression"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$env:PYTHONIOENCODING='utf-8'
-          & $env:EL_PYTHON -c "import pathlib,runpy;p=next(x for x in pathlib.Path('.').rglob('*') if x.is_file() and x.name==chr(0x2705));runpy.run_path(str(p),run_name='__main__')";if($LASTEXITCODE-ne 0){throw 'CURRENT_COMPLETE_REGRESSION_FAILED'}
-
-      - name: "📸🎞️ Phase 5 real-rendered visual regression"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';npm run proof:visual
-          $proof=Get-Content -LiteralPath 'proof\phase5\proof.json' -Raw -Encoding UTF8|ConvertFrom-Json;$angles=$proof.sampled_angles_degrees
-          if($proof.fps-ne 30 -or $proof.rendered_frames-ne 168 -or [math]::Abs([double]$angles.start)-gt 1.5 -or [math]::Abs([double]$angles.inverted-180.0)-gt 2.0 -or [math]::Abs([double]$angles.returned)-gt 2.0){throw 'Phase-5 rendered visual contract failed'}
-          if(-not $proof.warning_state_rendered -or -not $proof.preview_zoom_rendered){throw 'Phase-5 warning/zoom proof failed'}
-
-      - name: "📦 Save runtime/visual checkpoint"
-        shell: powershell
-        run: |
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-runtime-visual.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'data','proof' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload runtime/visual checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-runtime-visual-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-runtime-visual.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  authority:
-    name: "5️⃣🧪 Step-5 static authority"
-    needs: runtime_visual
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 10
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "🐍 Restore cached Python"
-        shell: powershell
-        run: |
-          $exe=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_AUTHORITY'}
-          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: "🧪 Step 5 static authority"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase6_step5_release.py';if($LASTEXITCODE-ne 0){throw 'STEP5_AUTHORITY_FAILED'}
-
-  package:
-    name: "6️⃣📦🪟 Windows package checkpoint"
-    needs: authority
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 60
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "🟩 Node 24"
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: "🐍 Restore cached Python + Torch"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$dir=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10';$exe=Join-Path $dir 'python.exe';$pth=Join-Path $dir 'python312._pth'
-          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_PACKAGE'};"EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AT_PACKAGE'}
-          $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
-      - name: "⬇️ Restore runtime/visual checkpoint"
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-runtime-visual-${{ github.sha }}
-          path: ${{ runner.temp }}\runtime
-      - name: "📂 Expand runtime/visual checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\runtime\phase6-runtime-visual.zip' -DestinationPath . -Force
-      - name: "📦 Node/Electron dependencies"
-        shell: powershell
-        run: npm install --no-audit --no-fund
-
-      - name: "📦🧠 Materialize relocatable G1/G2 runtime"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'scripts\materialize-phase6-runtime.py';if($LASTEXITCODE-ne 0){throw 'PHASE6_RUNTIME_MATERIALIZE_FAILED'}
-          $env:EL_FORGEY_REGISTRY=(Resolve-Path 'data\phase6-step3\generation-registry.json').Path
-          node 'scripts\phase6-step4-runtime-proof.js';if($LASTEXITCODE-ne 0){throw 'PORTABLE_REGISTRY_RUNTIME_FAILED'}
-          $red=[char]::ConvertFromUtf32(0x1F534)
-          & $env:EL_PYTHON 'scripts\phase6-vision-infer.py' --registry $env:EL_FORGEY_REGISTRY --direction 'IMAGE_TO_EL' --fixture-concept 'red-circle' --fixture-seed 9000 --expected $red --evidence 'data\phase6-step3\runtime-vision-proof.json';if($LASTEXITCODE-ne 0){throw 'PORTABLE_REGISTRY_VISION_FAILED'}
-
-      - name: "🐍🔥 Materialize embedded Python + Torch"
-        shell: powershell
-        run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\materialize-phase6-python.ps1'
-          if($LASTEXITCODE-ne 0){throw 'PHASE6_EMBEDDED_RUNTIME_FAILED'}
-          & '.\python\python.exe' -c "import sys,torch;assert sys.version_info[:2]==(3,12);assert torch.__version__.startswith('2.13.0');print(torch.__version__)"
-
-      - name: "9️⃣📦🪟 Build Setup + Portable"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';npm run build:windows
-          if(-not(Test-Path -LiteralPath 'dist\win-unpacked\EL-Bot.exe')){throw 'unpacked packaged executable missing'}
-          if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Setup-0.6.0-x64.exe')){throw 'Phase-6 NSIS installer missing'}
-          if(-not(Test-Path -LiteralPath 'dist\EL-Bot-Portable-0.6.0-x64.exe')){throw 'Phase-6 portable executable missing'}
-          $app='dist\win-unpacked\resources\app'
-          $brain=[char]::ConvertFromUtf32(0x1F9E0);$robot=[char]::ConvertFromUtf32(0x1F916);$eye=([char]::ConvertFromUtf32(0x1F441)+[char]0xFE0)
-          $requiredPaths=@('python\python.exe','data\phase6-step3\generation-registry.json','scripts\phase6-step4-status.py','scripts\phase6-step4-admin-action.py','scripts\phase6-vision-infer.py',(Join-Path $brain $robot),(Join-Path $brain $eye),'architecture\phase6_step4_runtime_console_manifest.json')
-          foreach($required in $requiredPaths){if(-not(Test-Path -LiteralPath (Join-Path $app $required))){throw "packaged runtime missing $required"}}
-
-      - name: "📦 Save Windows package checkpoint"
-        shell: powershell
-        run: |
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-package.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'dist','data','proof' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload Windows package checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-package-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-package.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  certify:
-    name: "7️⃣🧠👁️📦 Package proof + final regression"
-    needs: package
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 30
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "🐍 Restore cached Python"
-        shell: powershell
-        run: |
-          $exe=Join-Path $env:RUNNER_TOOL_CACHE 'ELPython\3.12.10\python.exe'
-          if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AT_CERTIFY'}
-          "EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: "⬇️ Restore Windows package checkpoint"
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-package-${{ github.sha }}
-          path: ${{ runner.temp }}\package
-      - name: "📂 Expand Windows package checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\package\phase6-package.zip' -DestinationPath . -Force
-
-      - name: "🧪📦🖥️ Existing packaged UI/Python smoke"
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop';$smoke=Join-Path $env:RUNNER_TEMP 'el-bot-package-smoke.json';Remove-Item -LiteralPath $smoke -Force -ErrorAction SilentlyContinue
-          $env:EL_PACKAGE_SMOKE_FILE=$smoke;Remove-Item Env:EL_PYTHON -ErrorAction SilentlyContinue
-          $process=Start-Process -FilePath (Resolve-Path 'dist\win-unpacked\EL-Bot.exe') -PassThru
-          if(-not $process.WaitForExit(120000)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;throw 'packaged UI smoke timed out'}
-          if($process.ExitCode-ne 0){throw "packaged UI smoke exit $($process.ExitCode)"};if(-not(Test-Path -LiteralPath $smoke)){throw 'packaged UI smoke evidence missing'}
-          $e=Get-Content -LiteralPath $smoke -Raw -Encoding UTF8|ConvertFrom-Json
-          if(-not $e.app_is_packaged -or -not $e.rendered -or -not $e.polished -or -not $e.bundled_python -or -not $e.python_exec){throw 'packaged UI/Python smoke failed'}
-          Copy-Item -LiteralPath $smoke -Destination 'dist\package-smoke.json' -Force
-
-      - name: "🧠👁️📦 Real packaged multimodal Forgey G2 proof"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'scripts\phase6-step5-package-forgey-proof.py';if($LASTEXITCODE-ne 0){throw 'PACKAGED_FORGEY_PROOF_FAILED'}
-          $p=Get-Content -LiteralPath 'dist\phase6-package-forgey-proof.json' -Raw -Encoding UTF8|ConvertFrom-Json
-          if($p.selected_generation-ne 'G2' -or $p.forward_provider_calls-ne 0 -or $p.reverse_provider_calls-ne 0 -or $p.native_vision_provider_calls-ne 0 -or -not $p.vision_enabled -or $p.vision_parameters-le 0 -or $p.diagnostics-ne '44/44'){throw 'packaged multimodal Forgey evidence contract failed'}
-
-      - name: "🧪 Phase 2 + Phase 3 + 44/44 final regression"
-        shell: powershell
-        run: |
-          $env:PYTHONIOENCODING='utf-8';& $env:EL_PYTHON 'architecture\verify_phase2_knowledge_foundation.py';if($LASTEXITCODE-ne 0){throw 'PHASE2_FAILED'};& $env:EL_PYTHON 'architecture\verify_phase3_semantic_search.py';if($LASTEXITCODE-ne 0){throw 'PHASE3_FAILED'};& $env:EL_PYTHON -c "import importlib.machinery,importlib.util,pathlib,sys;root=pathlib.Path('.');a=chr(0x1F9EA);p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a);l=importlib.machinery.SourceFileLoader('_p6s5_diag',str(p));s=importlib.util.spec_from_loader('_p6s5_diag',l);m=importlib.util.module_from_spec(s);sys.modules['_p6s5_diag']=m;l.exec_module(m);r=m.DiagnosticsEngine().run();print(r.render_el());assert r.passed and len(r.checks)==44"
-
-      - name: "📦 Save certified release checkpoint"
-        shell: powershell
-        run: |
-          $zip=Join-Path $env:RUNNER_TEMP 'phase6-certified.zip';Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'dist','data','proof' -DestinationPath $zip -CompressionLevel Fastest
-      - name: "⬆️ Upload certified release checkpoint"
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-certified-${{ github.sha }}
-          path: ${{ runner.temp }}\phase6-certified.zip
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  release:
-    name: "8️⃣🚀 Publish exact-main v0.6.0"
-    needs: certify
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 30
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-      - name: "⬇️ Restore certified release checkpoint"
-        uses: actions/download-artifact@v4
-        with:
-          name: phase6-certified-${{ github.sha }}
-          path: ${{ runner.temp }}\certified
-      - name: "📂 Expand certified release checkpoint"
-        shell: powershell
-        run: Expand-Archive -LiteralPath '${{ runner.temp }}\certified\phase6-certified.zip' -DestinationPath . -Force
-      - name: "🚀 Publish exact-main Phase 6 release"
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: "1️⃣🔎 Release preflight snapshot"
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          $ErrorActionPreference='Stop';powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\publish-step5-main-release.ps1'
-          if($LASTEXITCODE-ne 0){throw 'PHASE6_RELEASE_PUBLISH_FAILED'}
+          & $env:EL_RELEASE_PYTHON '.github\release\release_manager.py' preflight
+          if($LASTEXITCODE-ne 0){throw 'RELEASE_PREFLIGHT_FAILED'}
 
-  release_only:
-    name: "🚀📦 Release-only recovery from highest real checkpoint"
-    needs: cleanup
-    if: ${{ contains(github.event.head_commit.message, '[release-only]') }}
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 30
-    steps:
-      - name: "📥 Source"
-        uses: actions/checkout@v4
-
-      - name: "🚀 Recover highest real checkpoint + certify if needed + publish"
+      - name: "2️⃣📦 Restore or certify v0.6.0 payload"
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts\release-only-recovery.ps1'
-          if($LASTEXITCODE-ne 0){throw 'PHASE6_RELEASE_ONLY_RECOVERY_FAILED'}
+          & $env:EL_RELEASE_PYTHON '.github\release\release_manager.py' prepare-v06
+          if($LASTEXITCODE-ne 0){throw 'V06_PAYLOAD_PREPARE_FAILED'}
 
-      - name: "🔒 Record actual release verification status"
+      - name: "3️⃣🕰️ Ensure preferred v0.5.0 historical release"
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          & $env:EL_RELEASE_PYTHON '.github\release\release_manager.py' ensure-v05
+          if($LASTEXITCODE-ne 0){throw 'V05_RELEASE_ENSURE_FAILED'}
+
+      - name: "4️⃣🚀 Ensure exact-main v0.6.0 + 14 assets"
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          & $env:EL_RELEASE_PYTHON '.github\release\release_manager.py' ensure-v06
+          if($LASTEXITCODE-ne 0){throw 'V06_RELEASE_ENSURE_FAILED'}
+
+      - name: "5️⃣🧹🔒 Final cleanup + remote invariant verification"
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          & $env:EL_RELEASE_PYTHON '.github\release\release_manager.py' finalize
+          if($LASTEXITCODE-ne 0){throw 'FINAL_RELEASE_INVARIANT_FAILED'}
+
+      - name: "🧾 Preserve release transaction state"
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-release-transaction-${{ github.sha }}
+          path: ${{ runner.temp }}\el-bot-release-state.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: "🔒 Record truthful GitHub release verification"
         if: ${{ always() }}
         uses: actions/github-script@v7
-        env:
-          EL_CERTIFIED_RELEASE_SHA: ${{ env.EL_CERTIFIED_RELEASE_SHA }}
         with:
           github-token: ${{ github.token }}
           script: |
-            const succeeded = '${{ job.status }}' === 'success';
-            const certified = process.env.EL_CERTIFIED_RELEASE_SHA || 'unknown';
+            const fs = require('fs');
+            const path = require('path');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const statePath = path.join(process.env.RUNNER_TEMP, 'el-bot-release-state.json');
+            let state = {};
+            try {
+              state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+            } catch (_) {}
+
+            const succeeded = '${{ job.status }}' === 'success'
+              && state.final
+              && state.final.release_count === 2
+              && state.final['v0.6.0']
+              && state.final['v0.6.0'].assets === 14;
+
+            const releaseUrl = succeeded && state.final['v0.6.0'].url
+              ? state.final['v0.6.0'].url
+              : runUrl;
+
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: succeeded ? 'success' : 'failure',
               context: 'phase6-release-verification',
-              target_url: runUrl,
+              target_url: releaseUrl,
               description: succeeded
-                ? `v0.6.0 release/API/assets verified from ${certified.slice(0, 12)}`
-                : `v0.6.0 release verification failed (${certified.slice(0, 12)})`,
+                ? 'Verified: exactly v0.5.0 + v0.6.0; v0.6.0 has 14 assets'
+                : 'Release transaction incomplete or remote invariant failed',
             });
-            core.info(`PHASE6_RELEASE_STATUS_RECORDED state=${succeeded ? 'success' : 'failure'} certified=${certified} run=${context.runId}`)
+
+            core.info(
+              succeeded
+                ? `PHASE6_RELEASE_STATUS_SUCCESS url=${releaseUrl}`
+                : `PHASE6_RELEASE_STATUS_FAILURE run=${context.runId}`
+            );
