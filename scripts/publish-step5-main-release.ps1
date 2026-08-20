@@ -47,22 +47,32 @@ function Remove-ReleaseAndTag([object]$Release) {
 }
 
 # Keep exactly one historical v0.5.0 release: the strongest completed Phase-5 build.
+# Historical Phase-5 tags used shorter SHA suffixes, so accept any unambiguous prefix
+# of the locked keeper SHA instead of requiring the newer 12-character format.
 $releaseHistory = @(Get-AllReleases)
 $phase5Prefix = 'el-bot-v0.5.0-'
-$phase5KeepPrefix = $Phase5KeepSha.Substring(0, [Math]::Min(12, $Phase5KeepSha.Length))
+$phase5KeepShort = $Phase5KeepSha.Substring(0, 7)
 $phase5Releases = @($releaseHistory | Where-Object { [string]$_.tag_name -like "$phase5Prefix*" })
 $phase5KeepCandidates = @($phase5Releases | Where-Object {
-  ([string]$_.target_commitish).StartsWith($phase5KeepPrefix) -or ([string]$_.tag_name).Contains($phase5KeepPrefix)
+  $target = ([string]$_.target_commitish).Trim()
+  $tagName = [string]$_.tag_name
+  $targetMatches = $false
+  if ($target) {
+    $targetMatches = $Phase5KeepSha.StartsWith($target, [StringComparison]::OrdinalIgnoreCase) -or $target.StartsWith($Phase5KeepSha, [StringComparison]::OrdinalIgnoreCase)
+  }
+  $tagMatches = $tagName.IndexOf($phase5KeepShort, [StringComparison]::OrdinalIgnoreCase) -ge 0
+  $targetMatches -or $tagMatches
 })
-if ($phase5KeepCandidates.Count -lt 1) { throw "Required Phase-5 keeper release not found for $Phase5KeepPrefix" }
+if ($phase5KeepCandidates.Count -lt 1) { throw "Required Phase-5 keeper release not found for $phase5KeepShort" }
 $phase5Keeper = @($phase5KeepCandidates | Sort-Object @{ Expression = { @($_.assets).Count }; Descending = $true }, @{ Expression = { $_.published_at }; Descending = $true })[0]
+if (@($phase5Keeper.assets).Count -lt 12) { throw "Phase-5 keeper is incomplete: expected at least 12 assets, found $(@($phase5Keeper.assets).Count)" }
 foreach ($old in $phase5Releases) {
   if ([int64]$old.id -eq [int64]$phase5Keeper.id) { continue }
   Remove-ReleaseAndTag $old
 }
 Write-Output "PHASE5_RELEASE_KEEP tag=$($phase5Keeper.tag_name) target=$($phase5Keeper.target_commitish) assets=$(@($phase5Keeper.assets).Count)"
 
-# Version releases are single-authority too: remove any older v0.6.0 release before publishing this exact-main build.
+# Version releases are single-authority too: remove any older v0.6.0 release before publishing this certified build.
 $releaseHistory = @(Get-AllReleases)
 foreach ($old in @($releaseHistory | Where-Object { [string]$_.tag_name -like "el-bot-v$Version-*" -and [string]$_.tag_name -ne $tag })) {
   Remove-ReleaseAndTag $old
@@ -106,7 +116,7 @@ try { $release = Invoke-RestMethod -Method Get -Uri "$api/repos/$repo/releases/t
 catch { $status = $_.Exception.Response.StatusCode.value__; if ($status -ne 404) { throw } }
 
 if (-not $release) {
-  $body = @{ tag_name = $tag; target_commitish = $sha; name = "EL Bot v$Version - Phase 6 Multimodal Forgey Insta ($short)"; body = "Phase 6 exact-main Windows release for commit $sha. Normal install flow: download EL-Bot-Setup-$Version-x64.exe and run the NSIS setup wizard. A portable x64 EXE is also included. Embedded Python 3.12.10 and PyTorch 2.13 CPU, verified G1/G2 Forgey artifacts, provider-free text and native image inference proof, 44/44 diagnostics, and retained Phase-5 rendered visual proof are included."; draft = $false; prerelease = $false } | ConvertTo-Json -Depth 4
+  $body = @{ tag_name = $tag; target_commitish = $sha; name = "EL Bot v$Version - Phase 6 Multimodal Forgey Insta ($short)"; body = "Phase 6 certified Windows release for commit $sha. Normal install flow: download EL-Bot-Setup-$Version-x64.exe and run the NSIS setup wizard. A portable x64 EXE is also included. Embedded Python 3.12.10 and PyTorch 2.13 CPU, verified G1/G2 Forgey artifacts, provider-free text and native image inference proof, 44/44 diagnostics, and retained Phase-5 rendered visual proof are included."; draft = $false; prerelease = $false } | ConvertTo-Json -Depth 4
   $release = Invoke-RestMethod -Method Post -Uri "$api/repos/$repo/releases" -Headers $headers -ContentType 'application/json' -Body $body
 }
 
