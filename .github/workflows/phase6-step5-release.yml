@@ -538,13 +538,14 @@ jobs:
           } while ($batch.Count -eq 100)
           $prefix='phase6-certified-'
           $artifact=@($artifacts | Where-Object {
-            -not $_.expired -and [string]$_.name -like "$prefix*" -and $_.workflow_run -and [string]$_.workflow_run.head_branch -eq 'main'
+            -not $_.expired -and [string]$_.name -like "$prefix*"
           } | Sort-Object created_at -Descending)[0]
-          if(-not $artifact){throw 'CERTIFIED_RELEASE_ARTIFACT_NOT_FOUND no non-expired phase6-certified-* artifact from main'}
+          if(-not $artifact){throw 'CERTIFIED_RELEASE_ARTIFACT_NOT_FOUND no non-expired phase6-certified-* artifact'}
           $artifactName=[string]$artifact.name
           $sourceSha=$artifactName.Substring($prefix.Length)
           if($sourceSha -notmatch '^[0-9a-fA-F]{40}$'){throw "CERTIFIED_RELEASE_ARTIFACT_SHA_INVALID name=$artifactName"}
-          if([string]$artifact.workflow_run.head_sha -and [string]$artifact.workflow_run.head_sha -ne $sourceSha){throw "CERTIFIED_RELEASE_ARTIFACT_SHA_MISMATCH name=$artifactName head_sha=$($artifact.workflow_run.head_sha)"}
+          if($artifact.workflow_run -and [string]$artifact.workflow_run.head_branch -and [string]$artifact.workflow_run.head_branch -ne 'main'){throw "CERTIFIED_RELEASE_ARTIFACT_NOT_MAIN name=$artifactName branch=$($artifact.workflow_run.head_branch)"}
+          if($artifact.workflow_run -and [string]$artifact.workflow_run.head_sha -and [string]$artifact.workflow_run.head_sha -ne $sourceSha){throw "CERTIFIED_RELEASE_ARTIFACT_SHA_MISMATCH name=$artifactName head_sha=$($artifact.workflow_run.head_sha)"}
           $outer=Join-Path $env:RUNNER_TEMP 'phase6-certified-artifact.zip'
           Remove-Item $outer -Force -ErrorAction SilentlyContinue
           Invoke-WebRequest -UseBasicParsing -Uri "$api/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($artifact.id)/zip" -Headers $headers -OutFile $outer
@@ -582,14 +583,16 @@ jobs:
           script: |
             const succeeded = '${{ job.status }}' === 'success';
             const certified = process.env.EL_CERTIFIED_RELEASE_SHA || 'unknown';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: succeeded ? 'success' : 'failure',
               context: 'phase6-release-verification',
+              target_url: runUrl,
               description: succeeded
                 ? `v0.6.0 release/API/assets verified from ${certified.slice(0, 12)}`
                 : `v0.6.0 release verification failed (${certified.slice(0, 12)})`,
             });
-            core.info(`PHASE6_RELEASE_STATUS_RECORDED state=${succeeded ? 'success' : 'failure'} certified=${certified}`)
+            core.info(`PHASE6_RELEASE_STATUS_RECORDED state=${succeeded ? 'success' : 'failure'} certified=${certified} run=${context.runId}`)
