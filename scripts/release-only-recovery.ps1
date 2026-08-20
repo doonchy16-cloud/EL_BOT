@@ -99,7 +99,7 @@ function Assert-RuntimeCheckpointApplicable([string]$CheckpointSha) {
   if ($LASTEXITCODE -ne 0) { throw "RUNTIME_CHECKPOINT_DIFF_FAILED sha=$CheckpointSha" }
   $forbidden = @($changed | Where-Object { $_ -and $allowed -notcontains ([string]$_).Trim() })
   if ($forbidden.Count -gt 0) {
-    throw "RUNTIME_CHECKPOINT_INVALIDATED app/runtime files changed since $CheckpointSha: $($forbidden -join ', ')"
+    throw "RUNTIME_CHECKPOINT_INVALIDATED app/runtime files changed since ${CheckpointSha}: $($forbidden -join ', ')"
   }
   Write-Output "RUNTIME_CHECKPOINT_REUSE_SAFE sha=$CheckpointSha changed_only=$($changed -join ',')"
 }
