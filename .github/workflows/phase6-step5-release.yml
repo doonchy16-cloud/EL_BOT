@@ -525,7 +525,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
-          $sourceSha='7d9bae006abb9b03768891109663b060b1390362'
+          $sourceSha='4397fcfde451a3f7db632dfb61fafabc770b3135'
           $artifactName="phase6-certified-$sourceSha"
           $api=if($env:GITHUB_API_URL){$env:GITHUB_API_URL.TrimEnd('/')}else{'https://api.github.com'}
           $headers=@{Authorization="Bearer $($env:GITHUB_TOKEN)";Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
