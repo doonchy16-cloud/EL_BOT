@@ -98,7 +98,7 @@ long_result=abc_engine.translate(long_source,verifier=emoji_engine,cross_verify=
 assert long_result.winner!="🟡❓" and "⏱️45" in long_result.winner and len(long_result.winner)>200
 assert long_result.metrics.get("unknown_density",1.0)<.40
 assert long_result.winner.count("❓")<24
-unknown=abc_engine.translate("flibbertigibbet",verifier=emoji_engine,cross_verify=True,emit=False)
+unknown=abc_engine.translate("zxqvplmno",verifier=emoji_engine,cross_verify=True,emit=False)
 assert "❓" in unknown.winner and unknown.metrics.get("quality_status")=="fail"
 
 for target in ("converter","ChatGPT","words"):

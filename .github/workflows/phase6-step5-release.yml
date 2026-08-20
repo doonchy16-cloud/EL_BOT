@@ -79,6 +79,7 @@ jobs:
   foundation:
     name: "1️⃣📖 Knowledge + lexical checkpoint"
     needs: cleanup
+    if: ${{ !contains(github.event.head_commit.message, '[resume-g2]') }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 20
     steps:
@@ -246,7 +247,8 @@ jobs:
 
   runtime_visual:
     name: "4️⃣⚡📸 Runtime + visual checkpoint"
-    needs: g2
+    needs: [cleanup, g2]
+    if: ${{ always() && needs.cleanup.result == 'success' && (needs.g2.result == 'success' || contains(github.event.head_commit.message, '[resume-g2]')) }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     steps:
@@ -263,7 +265,16 @@ jobs:
           if(-not(Test-Path $exe)){throw 'CACHED_PYTHON_MISSING_AFTER_G2'};"EL_PYTHON=$exe"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           $torchDir=Join-Path $env:RUNNER_TOOL_CACHE 'ELTorch\2.13.0-cp312';if(-not(Test-Path (Join-Path $torchDir '.ready'))){throw 'CACHED_TORCH_MISSING_AFTER_G2'}
           $lines=@(Get-Content $pth|Where-Object{$_ -notmatch 'ELTorch\\'});$lines+=$torchDir;if(-not($lines -contains 'import site')){$lines+='import site'};[IO.File]::WriteAllLines($pth,$lines,[Text.UTF8Encoding]::new($false))
-      - name: "⬇️ Restore G2 checkpoint"
+      - name: "⬇️ Restore prior proven G2 checkpoint"
+        if: ${{ contains(github.event.head_commit.message, '[resume-g2]') }}
+        uses: actions/download-artifact@v4
+        with:
+          name: phase6-g2-4988456217ea5c8679c9ecd6895bfc18dcc6a4af
+          path: ${{ runner.temp }}\g2
+          github-token: ${{ github.token }}
+          run-id: 32315508280
+      - name: "⬇️ Restore current-run G2 checkpoint"
+        if: ${{ !contains(github.event.head_commit.message, '[resume-g2]') }}
         uses: actions/download-artifact@v4
         with:
           name: phase6-g2-${{ github.sha }}
