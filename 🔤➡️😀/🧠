@@ -245,10 +245,11 @@ class Phase3SemanticBridge:
                     else:
                         lexical_hypernym += 1
                     continue
-                if resolution.status == "ambiguous":
-                    unresolved_words.append(word)
-                    continue
 
+                # Lexical ambiguity is not a terminal failure. It is exactly the
+                # condition where the deeper deterministic Phase-3 sense engine
+                # should get a chance to disambiguate before we mark the token
+                # unknown.
                 decomposition = self.decomposition.decompose(word, clause.source)
                 if not decomposition.resolved:
                     unresolved_words.append(word)
