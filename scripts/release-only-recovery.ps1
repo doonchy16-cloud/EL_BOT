@@ -17,7 +17,25 @@ $allowedChanges = @(
   'scripts/publish-step5-main-release.ps1',
   'scripts/release-only-recovery.ps1'
 )
+$releasePayload = @(
+  "dist\EL-Bot-Setup-$Version-x64.exe",
+  "dist\EL-Bot-Portable-$Version-x64.exe",
+  'dist\package-smoke.json',
+  'dist\phase6-package-forgey-proof.json',
+  'dist\phase6-package-vision-el.json',
+  'dist\phase6-package-vision-abc.json',
+  'data\phase6-step3\runtime-package-manifest.json',
+  'proof\phase5\hourglass-30fps.mp4',
+  'proof\phase5\hourglass-contact-sheet.png',
+  'proof\phase5\ui-idle.png',
+  'proof\phase5\ui-warning.png',
+  'proof\phase5\preview-zoom.png',
+  'proof\phase5\proof.json'
+)
 $localRoot = Join-Path $env:RUNNER_TOOL_CACHE 'ELReleaseCheckpoint'
+$localDir = Join-Path $localRoot $runSha
+$localPayload = Join-Path $localDir 'payload'
+$localMarker = Join-Path $localDir 'VERIFIED.txt'
 
 function Assert-OnlyReleasePlumbingChanged([string]$BaseSha) {
   & git fetch --no-tags --depth=1 origin $BaseSha | Out-Host
@@ -29,34 +47,36 @@ function Assert-OnlyReleasePlumbingChanged([string]$BaseSha) {
   Write-Output "CHECKPOINT_REUSE_SAFE base=$BaseSha changed=$($changed -join ',')"
 }
 
-function Restore-LocalCertified([object]$Directory) {
-  $baseSha = [string]$Directory.Name
-  Assert-OnlyReleasePlumbingChanged $baseSha
-  $zip = Join-Path $Directory.FullName 'phase6-certified.zip'
-  Expand-Archive -LiteralPath $zip -DestinationPath . -Force
-  Write-Output "LOCAL_CERTIFIED_RESTORED base=$baseSha path=$zip"
+function Save-ReleasePayload {
+  Remove-Item -LiteralPath $localPayload -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force -Path $localPayload | Out-Null
+  foreach ($relative in $releasePayload) {
+    if (-not (Test-Path -LiteralPath $relative)) { throw "LOCAL_PAYLOAD_SOURCE_MISSING $relative" }
+    $target = Join-Path $localPayload $relative
+    $parent = Split-Path -Parent $target
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    Copy-Item -LiteralPath $relative -Destination $target -Force
+  }
+  Set-Content -LiteralPath $localMarker -Value "sha=$runSha`nstatus=VERIFIED_FOR_RELEASE" -Encoding ASCII
+  Write-Output "LOCAL_RELEASE_PAYLOAD_SAVED sha=$runSha files=$($releasePayload.Count) path=$localPayload"
 }
 
-function Save-LocalCertified {
-  $dir = Join-Path $localRoot $runSha
-  New-Item -ItemType Directory -Force -Path $dir | Out-Null
-  $zip = Join-Path $dir 'phase6-certified.zip'
-  Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-  Compress-Archive -Path 'dist','data','proof' -DestinationPath $zip -CompressionLevel Fastest
-  if (-not (Test-Path -LiteralPath $zip)) { throw 'LOCAL_CERTIFIED_SAVE_FAILED' }
-  Write-Output "LOCAL_CERTIFIED_SAVED sha=$runSha path=$zip"
+function Restore-ReleasePayload {
+  if (-not (Test-Path -LiteralPath $localMarker)) { return $false }
+  foreach ($relative in $releasePayload) {
+    $source = Join-Path $localPayload $relative
+    if (-not (Test-Path -LiteralPath $source)) { throw "LOCAL_PAYLOAD_CORRUPT missing=$relative" }
+    $parent = Split-Path -Parent $relative
+    if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+    Copy-Item -LiteralPath $source -Destination $relative -Force
+  }
+  Write-Output "LOCAL_RELEASE_PAYLOAD_RESTORED sha=$runSha files=$($releasePayload.Count)"
+  return $true
 }
 
-$local = $null
-if (Test-Path -LiteralPath $localRoot) {
-  $local = @(Get-ChildItem -LiteralPath $localRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
-    $_.Name -match '^[0-9a-fA-F]{40}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'phase6-certified.zip'))
-  } | Sort-Object LastWriteTimeUtc -Descending)[0]
-}
-
-if ($local) {
-  Restore-LocalCertified $local
-  $mode = 'local-certified'
+$restored = Restore-ReleasePayload
+if ($restored) {
+  $mode = 'same-commit-certified-payload'
 } else {
   $artifacts = @()
   $page = 1
@@ -131,11 +151,9 @@ if ($local) {
 
   & npm run build:windows | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_BUILD_FAILED' }
-  foreach ($path in @(
-    'dist\win-unpacked\EL-Bot.exe',
-    "dist\EL-Bot-Setup-$Version-x64.exe",
-    "dist\EL-Bot-Portable-$Version-x64.exe"
-  )) { if (-not (Test-Path -LiteralPath $path)) { throw "PACKAGE_OUTPUT_MISSING $path" } }
+  foreach ($path in @('dist\win-unpacked\EL-Bot.exe', "dist\EL-Bot-Setup-$Version-x64.exe", "dist\EL-Bot-Portable-$Version-x64.exe")) {
+    if (-not (Test-Path -LiteralPath $path)) { throw "PACKAGE_OUTPUT_MISSING $path" }
+  }
 
   $smoke = Join-Path $env:RUNNER_TEMP 'el-bot-package-smoke.json'
   Remove-Item -LiteralPath $smoke -Force -ErrorAction SilentlyContinue
@@ -162,7 +180,7 @@ if ($local) {
   & $pythonExe -c "import importlib.machinery,importlib.util,pathlib,sys;root=pathlib.Path('.');a=chr(0x1F9EA);p=next(x for x in root.rglob('*') if x.is_file() and x.name==a and x.parent.name==a);l=importlib.machinery.SourceFileLoader('_p6s5_diag',str(p));s=importlib.util.spec_from_loader('_p6s5_diag',l);m=importlib.util.module_from_spec(s);sys.modules['_p6s5_diag']=m;l.exec_module(m);r=m.DiagnosticsEngine().run();print(r.render_el());assert r.passed and len(r.checks)==44" | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'FINAL_44_DIAGNOSTICS_FAILED' }
 
-  Save-LocalCertified
+  Save-ReleasePayload
   $mode = "runtime-visual:$runtimeSha"
 }
 
