@@ -1,4 +1,4 @@
-name: Cancel QuoteSnap OLD-PC waiter
+name: Cancel obsolete QuoteSnap OLD-PC verification runs
 on:
   push:
     paths: ['.github/workflows/cancel-quotesnap-laptop-waiter.yml']
@@ -9,7 +9,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:
-      - name: Cancel via existing GitHub CLI auth
+      - name: Cancel obsolete LPS runs via existing GitHub CLI auth
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -17,6 +17,8 @@ jobs:
           $gh=Get-Command gh -ErrorAction SilentlyContinue
           if(-not $gh){throw 'GH_CLI_NOT_INSTALLED'}
           gh auth status
-          gh run cancel 34310095269 -R doonchy16-cloud/LPS
-          if($LASTEXITCODE-ne 0){throw 'GH_RUN_CANCEL_FAILED'}
-          Write-Host 'CANCEL_REQUEST_SENT'
+          foreach($id in @(34311827399,34312330132)){
+            gh run cancel $id -R doonchy16-cloud/LPS
+            if($LASTEXITCODE-ne 0){Write-Host "cancel $id returned $LASTEXITCODE (may already be terminal)"}
+          }
+          Write-Host 'OBSOLETE_OLDPC_CANCEL_REQUESTS_SENT'
