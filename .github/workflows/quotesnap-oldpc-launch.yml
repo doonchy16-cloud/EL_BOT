@@ -1,0 +1,43 @@
+name: QuoteSnap V3.3 OLD-PC launch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/quotesnap-oldpc-launch.yml'
+
+jobs:
+  launch_oldpc:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Launch QuoteSnap on OLD-PC
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          if($env:RUNNER_NAME -ne 'EL-bot-win'){ throw "WRONG_RUNNER=$env:RUNNER_NAME" }
+          if($env:COMPUTERNAME -ne 'DESKTOP-V9SCI9V'){ throw "WRONG_MACHINE=$env:COMPUTERNAME" }
+          if(-not(Test-Path "$root\Launch_training.bat")){ throw 'LAUNCHER_MISSING' }
+          $owner=Get-Content "$root\State\root_owner.json" -Raw | ConvertFrom-Json
+          if(([string]$owner.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($owner.node_id)" }
+          $live=Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|powershell|cmd' -and $_.CommandLine -match 'QuoteSnap\\AI\\V3\.3_AIO|aio_orchestrator|aio_dashboard|Launch_training' }
+          $live=@($live | Where-Object { $_.ProcessId -ne $PID })
+          if($live.Count -gt 0){
+            Write-Host 'ALREADY_RUNNING'
+            $live | Select-Object ProcessId,Name,CommandLine | Format-List
+          } else {
+            $oldTracking=$env:RUNNER_TRACKING_ID
+            $env:RUNNER_TRACKING_ID=''
+            try {
+              $p=Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c',('"'+$root+'\Launch_training.bat"') -WorkingDirectory $root -PassThru
+              Write-Host "LAUNCH_PARENT_PID=$($p.Id)"
+            } finally {
+              $env:RUNNER_TRACKING_ID=$oldTracking
+            }
+          }
+          Start-Sleep -Seconds 4
+          Write-Host '=== PROCESSES ==='
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|powershell|cmd' -and $_.CommandLine -match 'QuoteSnap\\AI\\V3\.3_AIO|aio_orchestrator|aio_dashboard|Launch_training' } | Select-Object ProcessId,Name,CommandLine | Format-List
+          Write-Host '=== STATUS ==='
+          if(Test-Path "$root\State\cluster_status.json"){ Get-Content "$root\State\cluster_status.json" }
+          Write-Host 'OLDPC_LAUNCH_STEP_PASS'
