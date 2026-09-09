@@ -25,3 +25,4 @@ jobs:
           Write-Host '=== PATH IDENTITY ==='
           Get-Item $root | Select-Object FullName,Attributes,LinkType,Target | Format-List
           Get-PSDrive D | Format-List Name,Root,DisplayRoot,Provider
+          Write-Host '=== END ==='
