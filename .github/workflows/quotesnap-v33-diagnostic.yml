@@ -7,34 +7,36 @@ on:
 jobs:
   inspect:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Initialize OLD-PC root ownership marker
+      - name: Checkout EL_BOT helper
+        uses: actions/checkout@v4
+      - name: Verify target and root owner
         shell: powershell
         run: |
           $root='D:\QuoteSnap\AI\V3.3_AIO'
-          $state=Join-Path $root 'State'
-          $marker=Join-Path $state 'root_owner.json'
+          if($env:RUNNER_NAME -ne 'EL-bot-win'){ throw "WRONG_RUNNER=$env:RUNNER_NAME" }
           if($env:COMPUTERNAME -ne 'DESKTOP-V9SCI9V'){ throw "WRONG_MACHINE=$env:COMPUTERNAME" }
-          New-Item -ItemType Directory -Force -Path $state | Out-Null
-          $expected=[ordered]@{version=1;node_id='desktopv9sci9v';hostname='DESKTOP-V9SCI9V';root='D:\QuoteSnap\AI\V3.3_AIO'}
-          if(Test-Path -LiteralPath $marker){
-            $existing=Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
-            if(([string]$existing.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($existing.node_id)" }
-            Write-Host "ROOT_OWNER_ALREADY_CORRECT=$($existing.node_id)"
-          } else {
-            $json=$expected | ConvertTo-Json -Compress
-            [System.IO.File]::WriteAllText($marker,$json+[Environment]::NewLine,[System.Text.UTF8Encoding]::new($false))
-            Write-Host 'ROOT_OWNER_CREATED=desktopv9sci9v'
-          }
-          Get-Content -LiteralPath $marker
-      - name: Verify evidence remains intact
+          $owner=Get-Content "$root\State\root_owner.json" -Raw | ConvertFrom-Json
+          if(([string]$owner.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($owner.node_id)" }
+          Write-Host "TARGET_PASS=$root owner=$($owner.node_id)"
+      - name: Apply hash-gated V3.3 fix
+        shell: powershell
+        run: |
+          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
+          if(-not(Test-Path $py)){ throw "RUNTIME_PYTHON_MISSING=$py" }
+          & $py '.\scripts\qs_oldpc_patch_temp.py'
+          if($LASTEXITCODE-ne 0){ throw 'PATCH_APPLY_FAILED' }
+      - name: Compile and self-test patched OLD-PC
         shell: powershell
         run: |
           $root='D:\QuoteSnap\AI\V3.3_AIO'
-          Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME ROOT=$(Test-Path $root)"
-          Write-Host '=== ROLE EVIDENCE ==='
-          Get-Content "$root\Logs\training_20260908_190355.log" | Select-String 'cluster_identity|cluster_role'
-          Get-Content "$root\Logs\training_20260908_190445.log" | Select-String 'cluster_identity|cluster_role'
-          Write-Host '=== ROOT OWNER ==='
-          Get-Content "$root\State\root_owner.json"
+          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
+          & $py -m py_compile "$root\Engines\cluster\root_ownership.py" "$root\Engines\orchestrator\aio_orchestrator.py" "$root\Engines\ui\aio_dashboard.py"
+          if($LASTEXITCODE-ne 0){ throw 'PATCH_COMPILE_FAILED' }
+          & $py -u "$root\Engines\orchestrator\aio_orchestrator.py" --self-test
+          if($LASTEXITCODE-ne 0){ throw 'ORCHESTRATOR_SELFTEST_FAILED' }
+          & $py -u "$root\Engines\ui\aio_dashboard.py" --self-test
+          if($LASTEXITCODE-ne 0){ throw 'DASHBOARD_SELFTEST_FAILED' }
+          Get-FileHash "$root\Engines\cluster\root_ownership.py","$root\Engines\orchestrator\aio_orchestrator.py","$root\Engines\ui\aio_dashboard.py" -Algorithm SHA256 | Select-Object Path,Hash | Format-List
+          Write-Host 'OLD_PC_PATCH_VERIFICATION_PASS'
