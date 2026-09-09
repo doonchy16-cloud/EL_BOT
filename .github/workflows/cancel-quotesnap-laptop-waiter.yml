@@ -1,4 +1,4 @@
-name: Cancel QuoteSnap laptop waiter
+name: Cancel QuoteSnap OLD-PC waiter
 on:
   push:
     paths: ['.github/workflows/cancel-quotesnap-laptop-waiter.yml']
@@ -17,6 +17,6 @@ jobs:
           $gh=Get-Command gh -ErrorAction SilentlyContinue
           if(-not $gh){throw 'GH_CLI_NOT_INSTALLED'}
           gh auth status
-          gh run cancel 34310181836 -R doonchy16-cloud/Universal_Memory
+          gh run cancel 34310095269 -R doonchy16-cloud/LPS
           if($LASTEXITCODE-ne 0){throw 'GH_RUN_CANCEL_FAILED'}
           Write-Host 'CANCEL_REQUEST_SENT'
