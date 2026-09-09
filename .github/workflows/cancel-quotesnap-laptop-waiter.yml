@@ -1,22 +1,41 @@
-name: Cancel pathological QuoteSnap OLD-PC autotune run
+name: Stop QuoteSnap V3.3 OLD-PC trainer
 on:
   push:
     paths: ['.github/workflows/cancel-quotesnap-laptop-waiter.yml']
 permissions:
   contents: read
 jobs:
-  cancel:
+  stop:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 3
     steps:
-      - name: Cancel active LPS autotune run via existing GitHub CLI auth
+      - name: Stop QuoteSnap trainer and verify it is gone
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){ throw "WRONG_MACHINE=$env:COMPUTERNAME RUNNER=$env:RUNNER_NAME" }
           Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"
-          $gh=Get-Command gh -ErrorAction SilentlyContinue
-          if(-not $gh){throw 'GH_CLI_NOT_INSTALLED'}
-          gh auth status
-          gh run cancel 34312423884 -R doonchy16-cloud/LPS
-          if($LASTEXITCODE-ne 0){throw "CANCEL_FAILED=$LASTEXITCODE"}
-          Write-Host 'PATHOLOGICAL_AUTOTUNE_CANCEL_REQUEST_SENT'
+          $pattern='D:\\QuoteSnap\\AI\\V3\.3_AIO|aio_orchestrator\.py|aio_dashboard\.py|Launch_training|QuoteSnap.*V3\.3'
+          $targets=Get-CimInstance Win32_Process | Where-Object {
+            $_.ProcessId -ne $PID -and
+            $_.Name -match '^(python|pythonw|powershell|pwsh|cmd)\.exe$' -and
+            $_.CommandLine -and $_.CommandLine -match $pattern
+          }
+          Write-Host '=== TARGETS BEFORE ==='
+          if($targets){ $targets | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List } else { Write-Host 'NONE' }
+          foreach($p in $targets){
+            Write-Host "STOPPING PID=$($p.ProcessId) NAME=$($p.Name)"
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+          }
+          Start-Sleep -Seconds 2
+          $remaining=Get-CimInstance Win32_Process | Where-Object {
+            $_.ProcessId -ne $PID -and
+            $_.Name -match '^(python|pythonw|powershell|pwsh|cmd)\.exe$' -and
+            $_.CommandLine -and $_.CommandLine -match $pattern
+          }
+          Write-Host '=== TARGETS AFTER ==='
+          if($remaining){
+            $remaining | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List
+            throw 'QUOTESNAP_TRAINER_STILL_RUNNING'
+          }
+          Write-Host 'QUOTESNAP_OLDPC_TRAINER_STOPPED_VERIFIED'
