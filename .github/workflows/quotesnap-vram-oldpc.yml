@@ -1,4 +1,4 @@
-name: QuoteSnap VRAM OLD-PC live benchmark diagnostic
+name: QuoteSnap VRAM OLD-PC progress diagnostic
 on:
   push:
     paths: ['.github/workflows/quotesnap-vram-oldpc.yml']
@@ -8,17 +8,34 @@ permissions:
 jobs:
   diag:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Inspect benchmark process and GPU
+      - name: Inspect active autotuner progress without launching CUDA
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME RUNNER=$env:RUNNER_NAME"}
-          Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME"
-          Write-Host '=== PYTHON PROCESSES ==='
-          Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(.exe)?$' } | Select-Object ProcessId,ParentProcessId,CommandLine | Format-List
-          Write-Host '=== GPU 6s ==='
-          1..6 | ForEach-Object { $s=& nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,utilization.memory,pstate,power.draw --format=csv,noheader,nounits; Write-Host "$(Get-Date -Format o) | $s"; Start-Sleep 1 }
-          Write-Host '=== GPU APPS ==='
-          & nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits
+          Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME NOW=$(Get-Date -Format o)"
+          Write-Host '=== QUOTESNAP AUTOTUNE PROCESSES ==='
+          $procs=Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(.exe)?$' -and $_.CommandLine -match 'auto_tune_training_config' }
+          foreach($p in $procs){
+            $gp=Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
+            [pscustomobject]@{
+              PID=$p.ProcessId
+              Parent=$p.ParentProcessId
+              StartTime=if($gp){$gp.StartTime}else{$null}
+              CPU_s=if($gp){[math]::Round($gp.CPU,1)}else{$null}
+              WorkingSetMiB=if($gp){[math]::Round($gp.WorkingSet64/1MB,1)}else{$null}
+              CommandLine=$p.CommandLine
+            } | Format-List
+          }
+          Write-Host '=== GPU SAMPLE ==='
+          1..3 | ForEach-Object {
+            $s=& nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,utilization.memory,clocks.sm,clocks.mem,pstate,power.draw,temperature.gpu --format=csv,noheader,nounits
+            Write-Host "$(Get-Date -Format o) | $s"
+            Start-Sleep 2
+          }
+          Write-Host '=== PRELAUNCH AUTOTUNE REPORT EXISTS? ==='
+          $report='D:\QuoteSnap\AI\V3.3_AIO\State\batch_autotune_prelaunch_oldpc.json'
+          if(Test-Path $report){Get-Item $report | Select-Object FullName,Length,LastWriteTime | Format-List;Get-Content $report -Raw}else{Write-Host 'REPORT_NOT_WRITTEN_YET'}
+          Write-Host 'OLDPC_AUTOTUNE_PROGRESS_DIAG_PASS'
