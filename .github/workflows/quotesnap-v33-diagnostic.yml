@@ -25,4 +25,10 @@ jobs:
           Write-Host '=== PATH IDENTITY ==='
           Get-Item $root | Select-Object FullName,Attributes,LinkType,Target | Format-List
           Get-PSDrive D | Format-List Name,Root,DisplayRoot,Provider
+          Write-Host '=== SMB SHARES ==='
+          try { Get-SmbShare | Where-Object { $_.Path -and ($_.Path -like 'D:\QuoteSnap*' -or $_.Name -match 'QuoteSnap|NetworkHub') } | Select-Object Name,Path,Description | Format-Table -AutoSize } catch { Write-Host "SMB_SHARE_READ_FAILED=$($_.Exception.Message)" }
+          Write-Host '=== SMB OPEN FILES UNDER QUOTESNAP ==='
+          try { Get-SmbOpenFile | Where-Object { $_.Path -like 'D:\QuoteSnap*' } | Select-Object ClientComputerName,ClientUserName,Path,SessionId | Format-Table -AutoSize } catch { Write-Host "SMB_OPEN_READ_FAILED=$($_.Exception.Message)" }
+          Write-Host '=== SMB SESSIONS ==='
+          try { Get-SmbSession | Select-Object ClientComputerName,ClientUserName,NumOpens,Dialect | Format-Table -AutoSize } catch { Write-Host "SMB_SESSION_READ_FAILED=$($_.Exception.Message)" }
           Write-Host '=== END ==='
