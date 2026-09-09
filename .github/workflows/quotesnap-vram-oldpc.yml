@@ -10,7 +10,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 10
     steps:
-      - name: GPU + trainer diagnostic
+      - name: GPU + trainer diagnostic after worker stop
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -20,5 +20,5 @@ jobs:
           if(Test-Path "$root\State\cluster_status.json"){Write-Host '=== CLUSTER STATUS ===';Get-Content "$root\State\cluster_status.json"}
           Write-Host '=== LATEST CHECKPOINTS ==='
           Get-ChildItem "$root\Checkpoints\base\quotesnap_base_step_*.pt" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name,Length,LastWriteTime | Format-Table -AutoSize
-          Write-Host '=== NVIDIA 6s ==='
-          1..6 | ForEach-Object { $s=& nvidia-smi --query-gpu=memory.used,memory.free,utilization.gpu,utilization.memory,power.draw --format=csv,noheader,nounits; Write-Host "$(Get-Date -Format o) | $s"; Start-Sleep 1 }
+          Write-Host '=== NVIDIA 3s ==='
+          1..3 | ForEach-Object { $s=& nvidia-smi --query-gpu=memory.used,memory.free,utilization.gpu,utilization.memory,power.draw --format=csv,noheader,nounits; Write-Host "$(Get-Date -Format o) | $s"; Start-Sleep 1 }
