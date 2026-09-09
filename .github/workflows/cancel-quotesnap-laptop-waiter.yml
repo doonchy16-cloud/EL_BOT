@@ -1,0 +1,22 @@
+name: Cancel QuoteSnap laptop waiter
+on:
+  push:
+    paths: ['.github/workflows/cancel-quotesnap-laptop-waiter.yml']
+permissions:
+  contents: read
+jobs:
+  cancel:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    steps:
+      - name: Cancel via existing GitHub CLI auth
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"
+          $gh=Get-Command gh -ErrorAction SilentlyContinue
+          if(-not $gh){throw 'GH_CLI_NOT_INSTALLED'}
+          gh auth status
+          gh run cancel 34310181836 -R doonchy16-cloud/Universal_Memory
+          if($LASTEXITCODE-ne 0){throw 'GH_RUN_CANCEL_FAILED'}
+          Write-Host 'CANCEL_REQUEST_SENT'
