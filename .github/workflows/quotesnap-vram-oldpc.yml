@@ -33,3 +33,4 @@ jobs:
           Write-Host '=== GPU ==='
           & nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,power.draw --format=csv,noheader,nounits
           Write-Host 'OLDPC_LAUNCH_CHAIN_DIAG_COMPLETE'
+          # verification trigger 2026-09-09T09:23Z
