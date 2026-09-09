@@ -17,20 +17,8 @@ jobs:
           if($env:RUNNER_NAME -ne 'EL-bot-win'){ throw "WRONG_RUNNER=$env:RUNNER_NAME" }
           $root='D:\QuoteSnap\AI\V3.3_AIO'
           Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME ROOT=$root"
-          Write-Host '=== TRAINING CONFIG ==='
-          Get-Content "$root\Config\training.json"
-          Write-Host '=== METRICS ==='
-          if(Test-Path "$root\State\metrics.json"){Get-Content "$root\State\metrics.json"}
-          Write-Host '=== CLUSTER STATUS ==='
-          if(Test-Path "$root\State\cluster_status.json"){Get-Content "$root\State\cluster_status.json"}
-          Write-Host '=== PROCESSES ==='
-          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'QuoteSnap|aio_' } | Select-Object ProcessId,Name,CommandLine | Format-List
-          Write-Host '=== NVIDIA STATIC ==='
-          & nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,pstate,power.draw,power.limit,clocks.sm,clocks.mem --format=csv,noheader,nounits
-          Write-Host '=== NVIDIA 12s SAMPLES ==='
-          1..12 | ForEach-Object {
-            $ts=Get-Date -Format o
-            $s=& nvidia-smi --query-gpu=memory.used,memory.free,utilization.gpu,utilization.memory,pstate,power.draw,clocks.sm,clocks.mem --format=csv,noheader,nounits
-            Write-Host "$ts | $s"
-            Start-Sleep -Seconds 1
-          }
+          if(Test-Path "$root\State\cluster_status.json"){Write-Host '=== CLUSTER STATUS ===';Get-Content "$root\State\cluster_status.json"}
+          Write-Host '=== LATEST CHECKPOINTS ==='
+          Get-ChildItem "$root\Checkpoints\base\quotesnap_base_step_*.pt" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name,Length,LastWriteTime | Format-Table -AutoSize
+          Write-Host '=== NVIDIA 6s ==='
+          1..6 | ForEach-Object { $s=& nvidia-smi --query-gpu=memory.used,memory.free,utilization.gpu,utilization.memory,power.draw --format=csv,noheader,nounits; Write-Host "$(Get-Date -Format o) | $s"; Start-Sleep 1 }
