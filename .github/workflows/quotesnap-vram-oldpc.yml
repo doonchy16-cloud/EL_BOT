@@ -1,4 +1,4 @@
-name: QuoteSnap VRAM OLD-PC progress diagnostic
+name: QuoteSnap OLD-PC production coordinator diagnostic
 on:
   push:
     paths: ['.github/workflows/quotesnap-vram-oldpc.yml']
@@ -8,34 +8,46 @@ permissions:
 jobs:
   diag:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
-      - name: Inspect active autotuner progress without launching CUDA
+      - name: Independently inspect coordinator process, status, log, and GPU
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME RUNNER=$env:RUNNER_NAME"}
-          Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME NOW=$(Get-Date -Format o)"
-          Write-Host '=== QUOTESNAP AUTOTUNE PROCESSES ==='
-          $procs=Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python(.exe)?$' -and $_.CommandLine -match 'auto_tune_training_config' }
-          foreach($p in $procs){
-            $gp=Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
-            [pscustomobject]@{
-              PID=$p.ProcessId
-              Parent=$p.ParentProcessId
-              StartTime=if($gp){$gp.StartTime}else{$null}
-              CPU_s=if($gp){[math]::Round($gp.CPU,1)}else{$null}
-              WorkingSetMiB=if($gp){[math]::Round($gp.WorkingSet64/1MB,1)}else{$null}
-              CommandLine=$p.CommandLine
-            } | Format-List
-          }
-          Write-Host '=== GPU SAMPLE ==='
-          1..3 | ForEach-Object {
-            $s=& nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,utilization.memory,clocks.sm,clocks.mem,pstate,power.draw,temperature.gpu --format=csv,noheader,nounits
-            Write-Host "$(Get-Date -Format o) | $s"
-            Start-Sleep 2
-          }
-          Write-Host '=== PRELAUNCH AUTOTUNE REPORT EXISTS? ==='
-          $report='D:\QuoteSnap\AI\V3.3_AIO\State\batch_autotune_prelaunch_oldpc.json'
-          if(Test-Path $report){Get-Item $report | Select-Object FullName,Length,LastWriteTime | Format-List;Get-Content $report -Raw}else{Write-Host 'REPORT_NOT_WRITTEN_YET'}
-          Write-Host 'OLDPC_AUTOTUNE_PROGRESS_DIAG_PASS'
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          $status=Join-Path $root 'State\cluster_status.json'
+          Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME NOW=$(Get-Date -Format o)"
+          Write-Host '=== V3.3 PYTHON PROCESSES ==='
+          $procs=Get-CimInstance Win32_Process|Where-Object{$_.Name-match'^python(.exe)?$'-and$_.CommandLine-match'D:\\QuoteSnap\\AI\\V3\.3_AIO'}
+          $procs|Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine|Format-List
+          if(-not$procs){throw 'NO_V33_PROCESS_RUNNING'}
+
+          Write-Host '=== CLUSTER STATUS ==='
+          if(-not(Test-Path $status)){throw 'CLUSTER_STATUS_MISSING'}
+          $item=Get-Item $status
+          Write-Host "STATUS_MTIME=$($item.LastWriteTime.ToString('o')) AGE_SECONDS=$([math]::Round(((Get-Date)-$item.LastWriteTime).TotalSeconds,1))"
+          $raw=Get-Content $status -Raw
+          Write-Host $raw
+          $s=$raw|ConvertFrom-Json
+          if(([string]$s.role).ToUpperInvariant()-ne'COORDINATOR'){throw "ROLE_NOT_COORDINATOR=$($s.role)"}
+          if([int]$s.canonical_step-lt10000){throw "CANONICAL_REGRESSED=$($s.canonical_step)"}
+          if(([string]$s.peer)-match'192\.168\.1\.110'){throw "SELF_PEER_DETECTED=$($s.peer)"}
+          if(((Get-Date)-$item.LastWriteTime).TotalSeconds-gt30){throw 'CLUSTER_STATUS_STALE'}
+
+          Write-Host '=== LATEST TRAINING LOG ==='
+          $log=Get-ChildItem "$root\Logs\training_*.log" -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 1
+          if(-not$log){throw 'TRAINING_LOG_MISSING'}
+          Write-Host "LOG=$($log.FullName) MTIME=$($log.LastWriteTime.ToString('o'))"
+          Get-Content $log.FullName -Tail 160
+          $roleLine=Select-String -Path $log.FullName -Pattern 'cluster_role=COORDINATOR' -SimpleMatch|Select-Object -Last 1
+          if(-not$roleLine){throw 'COORDINATOR_ROLE_LOG_MISSING'}
+          $batchLine=Select-String -Path $log.FullName -Pattern 'batch_autotune role=COORDINATOR' -SimpleMatch|Select-Object -Last 1
+          if(-not$batchLine){throw 'COORDINATOR_BATCH_AUTOTUNE_LOG_MISSING'}
+          Write-Host "ROLE_LINE=$($roleLine.Line)"
+          Write-Host "BATCH_LINE=$($batchLine.Line)"
+          if($batchLine.Line-notmatch'micro=64\s+accum=2\s+effective=128'){throw "COORDINATOR_BATCH_NOT_64X2=$($batchLine.Line)"}
+
+          Write-Host '=== GPU ==='
+          & nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,power.draw --format=csv,noheader,nounits
+          Write-Host 'OLDPC_LIVE_COORDINATOR_DIAG_PASS'
