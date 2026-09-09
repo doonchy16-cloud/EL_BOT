@@ -11,16 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify exact v2.2 tuner and test bytes
+      - name: Verify exact v2.2 tuner and deterministic test upgrade
         shell: bash
         run: |
           set -euo pipefail
-          base='https://raw.githubusercontent.com/doonchy16-cloud/EL_BOT/main/.github/runner_commands/quotesnap-vram-v22'
-          curl -fsSL "$base/batch_tuner.b64" -o batch.b64
-          curl -fsSL "$base/test_batch_tuner.b64" -o test.b64
+          root='https://raw.githubusercontent.com/doonchy16-cloud/EL_BOT/main/.github/runner_commands'
+          curl -fsSL "$root/quotesnap-vram-v22/batch_tuner.b64" -o batch.b64
+          curl -fsSL "$root/quotesnap-vram-v22/test_batch_tuner_suffix.b64" -o suffix.b64
           base64 -d batch.b64 > batch_tuner.py
-          base64 -d test.b64 > test_batch_tuner.py
+          base64 -d suffix.b64 > suffix.pyfrag
           echo '01cbeb6f8552faf3e23ba90214da847e0d1091afe46fa7a057a51857761f453b  batch_tuner.py' | sha256sum -c -
+          echo 'a04ce187e5c958978db1ad644d47cc74bbd993224e7f18cdc8c1a62a3c2bb2cd  suffix.pyfrag' | sha256sum -c -
+
+          : > old_patch.b64
+          for i in 00 01 02 03 04; do
+            curl -fsSL "$root/quotesnap-vram-v2/part_$i" >> old_patch.b64
+          done
+          base64 -d old_patch.b64 > old_patch.zip
+          unzip -q old_patch.zip 'Tests/python/test_batch_tuner.py' -d old
+          cp old/Tests/python/test_batch_tuner.py test_batch_tuner.py
+          echo '7f665d9f4e8278c4c4b149da876e7b4a4f6a7d8dc412fd3f284ab8eb8ddc3836  test_batch_tuner.py' | sha256sum -c -
+          cat suffix.pyfrag >> test_batch_tuner.py
           echo '1218b2fcbc9e7a032aa5000db90055d1264526f41d30638ea2d059d770512d0b  test_batch_tuner.py' | sha256sum -c -
           python -m py_compile batch_tuner.py test_batch_tuner.py
           echo 'V22_TRANSPORT_VERIFY_PASS'
