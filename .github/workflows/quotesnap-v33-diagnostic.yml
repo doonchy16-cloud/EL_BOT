@@ -9,26 +9,32 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     steps:
-      - name: Inspect QuoteSnap V3.3 local evidence
+      - name: Initialize OLD-PC root ownership marker
+        shell: powershell
+        run: |
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          $state=Join-Path $root 'State'
+          $marker=Join-Path $state 'root_owner.json'
+          if($env:COMPUTERNAME -ne 'DESKTOP-V9SCI9V'){ throw "WRONG_MACHINE=$env:COMPUTERNAME" }
+          New-Item -ItemType Directory -Force -Path $state | Out-Null
+          $expected=[ordered]@{version=1;node_id='desktopv9sci9v';hostname='DESKTOP-V9SCI9V';root='D:\QuoteSnap\AI\V3.3_AIO'}
+          if(Test-Path -LiteralPath $marker){
+            $existing=Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+            if(([string]$existing.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($existing.node_id)" }
+            Write-Host "ROOT_OWNER_ALREADY_CORRECT=$($existing.node_id)"
+          } else {
+            $json=$expected | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($marker,$json+[Environment]::NewLine,[System.Text.UTF8Encoding]::new($false))
+            Write-Host 'ROOT_OWNER_CREATED=desktopv9sci9v'
+          }
+          Get-Content -LiteralPath $marker
+      - name: Verify evidence remains intact
         shell: powershell
         run: |
           $root='D:\QuoteSnap\AI\V3.3_AIO'
           Write-Host "RUNNER=$env:RUNNER_NAME COMPUTER=$env:COMPUTERNAME ROOT=$(Test-Path $root)"
-          Write-Host '=== LOG DIRECTORY ==='
-          Get-ChildItem "$root\Logs\training_*.log" | Sort-Object LastWriteTime | Select-Object Name,Length,CreationTime,LastWriteTime | Format-Table -AutoSize
-          Write-Host '=== 190355 ROLE ==='
-          if(Test-Path "$root\Logs\training_20260908_190355.log"){Get-Content "$root\Logs\training_20260908_190355.log" | Select-String 'cluster_identity|cluster_role|resolved_role|authority_match'}
-          Write-Host '=== 190445 ROLE ==='
-          if(Test-Path "$root\Logs\training_20260908_190445.log"){Get-Content "$root\Logs\training_20260908_190445.log" | Select-String 'cluster_identity|cluster_role|resolved_role|authority_match'}
-          Write-Host '=== CURRENT STATE ==='
-          if(Test-Path "$root\State\cluster_status.json"){Get-Content "$root\State\cluster_status.json"}
-          Write-Host '=== PATH IDENTITY ==='
-          Get-Item $root | Select-Object FullName,Attributes,LinkType,Target | Format-List
-          Get-PSDrive D | Format-List Name,Root,DisplayRoot,Provider
-          Write-Host '=== SMB SHARES ==='
-          try { Get-SmbShare | Where-Object { $_.Path -and ($_.Path -like 'D:\QuoteSnap*' -or $_.Name -match 'QuoteSnap|NetworkHub') } | Select-Object Name,Path,Description | Format-Table -AutoSize } catch { Write-Host "SMB_SHARE_READ_FAILED=$($_.Exception.Message)" }
-          Write-Host '=== SMB OPEN FILES UNDER QUOTESNAP ==='
-          try { Get-SmbOpenFile | Where-Object { $_.Path -like 'D:\QuoteSnap*' } | Select-Object ClientComputerName,ClientUserName,Path,SessionId | Format-Table -AutoSize } catch { Write-Host "SMB_OPEN_READ_FAILED=$($_.Exception.Message)" }
-          Write-Host '=== SMB SESSIONS ==='
-          try { Get-SmbSession | Select-Object ClientComputerName,ClientUserName,NumOpens,Dialect | Format-Table -AutoSize } catch { Write-Host "SMB_SESSION_READ_FAILED=$($_.Exception.Message)" }
-          Write-Host '=== END ==='
+          Write-Host '=== ROLE EVIDENCE ==='
+          Get-Content "$root\Logs\training_20260908_190355.log" | Select-String 'cluster_identity|cluster_role'
+          Get-Content "$root\Logs\training_20260908_190445.log" | Select-String 'cluster_identity|cluster_role'
+          Write-Host '=== ROOT OWNER ==='
+          Get-Content "$root\State\root_owner.json"
