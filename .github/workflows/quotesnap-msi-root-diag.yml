@@ -1,0 +1,36 @@
+name: QuoteSnap MSI root diagnostic
+on:
+  push:
+    paths: ['.github/workflows/quotesnap-msi-root-diag.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: [self-hosted, Windows, X64, DBRunner_MSI]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect MSI QuoteSnap root without modifying it
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"
+          if($env:RUNNER_NAME -ne 'DBRunner_MSI'){throw "WRONG_RUNNER=$env:RUNNER_NAME"}
+          if($env:COMPUTERNAME -ine 'MSI'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='C:\QuoteSnap_AI\V3.3_AIO'
+          $owner=Join-Path $root 'State\root_owner.json'
+          if(-not(Test-Path -LiteralPath $root)){throw 'MSI_ROOT_MISSING'}
+          Write-Host '=== ROOT ==='
+          Get-Item -LiteralPath $root | Select-Object FullName,Attributes,LinkType,Target | Format-List
+          Write-Host '=== DRIVE ==='
+          Get-PSDrive C | Select-Object Name,Root,DisplayRoot,Provider | Format-List
+          Write-Host '=== SMB MAPPINGS ==='
+          Get-SmbMapping -ErrorAction SilentlyContinue | Format-Table LocalPath,RemotePath,Status -AutoSize
+          Write-Host '=== OWNER MARKER ==='
+          if(Test-Path -LiteralPath $owner){Get-Content -LiteralPath $owner -Raw}else{Write-Host 'OWNER_MARKER_MISSING'}
+          Write-Host '=== QUOTESNAP PROCESSES ==='
+          $p=Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^(python|pythonw|powershell|pwsh|cmd)\.exe$' -and $_.CommandLine -and $_.CommandLine -match 'QuoteSnap_AI|V3\.3_AIO|aio_dashboard|aio_orchestrator'}
+          if($p){$p|Select-Object ProcessId,ParentProcessId,Name,CommandLine|Format-List}else{Write-Host 'NONE'}
+          Write-Host '=== KEY HASHES ==='
+          foreach($f in @('Engines\cluster\root_ownership.py','Engines\cluster\worker.py','Engines\cluster\cluster_engine.py','Engines\ui\aio_dashboard.py')){$x=Join-Path $root $f;if(Test-Path $x){Get-FileHash $x -Algorithm SHA256|Select-Object Path,Hash}}
+          Write-Host 'MSI_ROOT_DIAG_COMPLETE'
