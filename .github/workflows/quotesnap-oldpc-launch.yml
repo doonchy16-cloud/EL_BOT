@@ -6,61 +6,23 @@ on:
       - '.github/workflows/quotesnap-oldpc-launch.yml'
 
 jobs:
-  launch_oldpc:
+  verify_oldpc:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 5
+    timeout-minutes: 2
     steps:
-      - name: Normalize and launch exactly one OLD-PC coordinator
+      - name: Snapshot OLD-PC coordinator
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           $root='D:\QuoteSnap\AI\V3.3_AIO'
-          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
-          $dash=Join-Path $root 'Engines\ui\aio_dashboard.py'
           if($env:RUNNER_NAME -ne 'EL-bot-win'){ throw "WRONG_RUNNER=$env:RUNNER_NAME" }
           if($env:COMPUTERNAME -ne 'DESKTOP-V9SCI9V'){ throw "WRONG_MACHINE=$env:COMPUTERNAME" }
-          if(-not(Test-Path $py)){ throw "RUNTIME_PYTHON_MISSING=$py" }
-          if(-not(Test-Path $dash)){ throw 'DASHBOARD_MISSING' }
-          $owner=Get-Content "$root\State\root_owner.json" -Raw | ConvertFrom-Json
-          if(([string]$owner.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($owner.node_id)" }
-
-          Write-Host '=== STOP OLD QUOTESNAP V3.3 PROCESSES ==='
-          $targets=Get-CimInstance Win32_Process | Where-Object {
-            $_.ProcessId -ne $PID -and $_.Name -match 'python|powershell|cmd' -and $_.CommandLine -match 'D:\\QuoteSnap\\AI\\V3\.3_AIO'
-          }
-          $targets | Select-Object ProcessId,ParentProcessId,CreationDate,Name,CommandLine | Format-List
-          foreach($p in $targets){ Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
           Start-Sleep -Seconds 2
-
-          $oldTracking=$env:RUNNER_TRACKING_ID
-          $env:RUNNER_TRACKING_ID=''
-          try {
-            $p=Start-Process -FilePath $py -ArgumentList '-u',('"'+$dash+'"') -WorkingDirectory $root -PassThru
-            Write-Host "DASHBOARD_PID=$($p.Id)"
-          } finally {
-            $env:RUNNER_TRACKING_ID=$oldTracking
-          }
-
-          $deadline=(Get-Date).AddSeconds(45)
-          $ok=$false
-          do {
-            Start-Sleep -Seconds 2
-            $dashes=@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'D:\\QuoteSnap\\AI\\V3\.3_AIO\\Engines\\ui\\aio_dashboard\.py' })
-            $orch=@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'D:\\QuoteSnap\\AI\\V3\.3_AIO\\Engines\\orchestrator\\aio_orchestrator\.py' })
-            if(Test-Path "$root\State\cluster_status.json"){
-              try {
-                $s=Get-Content "$root\State\cluster_status.json" -Raw | ConvertFrom-Json
-                $hostkey=(([string]$s.local_hostname).ToLowerInvariant() -replace '[^a-z0-9]','')
-                Write-Host "STATUS role=$($s.role) host=$($s.local_hostname) authority=$($s.authority_match) epoch=$($s.epoch) session=$($s.session_id) fallback=$($s.fallback) peer=$($s.peer) dashboards=$($dashes.Count) orchestrators=$($orch.Count)"
-                if($s.role -eq 'COORDINATOR' -and $s.authority_match -eq $true -and $hostkey -eq 'desktopv9sci9v' -and $dashes.Count -eq 1 -and $orch.Count -eq 1){
-                  $ok=$true
-                  break
-                }
-              } catch {}
-            }
-          } while((Get-Date) -lt $deadline)
-
-          Write-Host '=== FINAL PROCESSES ==='
-          Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -match 'D:\\QuoteSnap\\AI\\V3\.3_AIO\\Engines\\(ui\\aio_dashboard|orchestrator\\aio_orchestrator)\.py' } | Select-Object ProcessId,ParentProcessId,CreationDate,Name,CommandLine | Format-List
-          if(-not $ok){ throw 'OLDPC_SINGLE_COORDINATOR_NOT_VERIFIED' }
-          Write-Host 'OLDPC_SINGLE_COORDINATOR_VERIFIED'
+          $s=Get-Content "$root\State\cluster_status.json" -Raw | ConvertFrom-Json
+          Write-Host "STATUS role=$($s.role) host=$($s.local_hostname) authority=$($s.authority_match) epoch=$($s.epoch) session=$($s.session_id) fallback=$($s.fallback) peer=$($s.peer) transport=$($s.transport) round=$($s.round) canonical=$($s.canonical_step) last_merge=$($s.last_merge)"
+          $hostkey=(([string]$s.local_hostname).ToLowerInvariant() -replace '[^a-z0-9]','')
+          if($s.role -ne 'COORDINATOR' -or $s.authority_match -ne $true -or $hostkey -ne 'desktopv9sci9v'){ throw 'OLDPC_ROLE_INVALID' }
+          $log=Get-ChildItem "$root\Logs\training_*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          Write-Host "LATEST_LOG=$($log.FullName)"
+          Get-Content $log.FullName -Tail 80 | Select-String 'cluster_identity|cluster_role|worker|session|round|merge|fallback|READY' | Select-Object -Last 25
+          Write-Host 'OLDPC_CLUSTER_SNAPSHOT_PASS'
