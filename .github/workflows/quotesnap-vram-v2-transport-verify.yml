@@ -1,0 +1,35 @@
+name: QuoteSnap VRAM v2 transport verify
+on:
+  push:
+    paths:
+      - '.github/workflows/quotesnap-vram-v2-transport-verify.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reassemble and verify patch transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://raw.githubusercontent.com/doonchy16-cloud/EL_BOT/main/.github/runner_commands/quotesnap-vram-v2'
+          : > patch.b64
+          for i in 00 01 02 03 04; do
+            curl -fsSL "$base/part_$i" -o "part_$i"
+            wc -c "part_$i"
+            cat "part_$i" >> patch.b64
+          done
+          test "$(wc -c < patch.b64)" -eq 24220
+          base64 -d patch.b64 > patch.zip
+          actual=$(sha256sum patch.zip | awk '{print $1}')
+          echo "PATCH_SHA256=$actual"
+          test "$actual" = '3dbe14b866ddc1c7aaf549fc50a1315d46854f74a118aafd92e93e7a23cc0d31'
+          unzip -t patch.zip
+          rm -rf unpack && mkdir unpack && unzip -q patch.zip -d unpack
+          echo 'd792540da33fefe2efd4d79ff0f722e7e2d8ce062b57ffb1972aa9967a78122a  unpack/Engines/trainer/core/batch_tuner.py' | sha256sum -c -
+          echo 'eba521e4518159ee2b9a181ac6f57365317f9c58c1af5c46a10d8cef02055d66  unpack/Engines/cluster/cluster_engine.py' | sha256sum -c -
+          echo 'c5c569b27c1dbbc9e28297de19d347f64098cfebccc4dc46caf3d4d4b5fcbc53  unpack/Engines/cluster/worker.py' | sha256sum -c -
+          echo 'TRANSPORT_VERIFY_PASS'
