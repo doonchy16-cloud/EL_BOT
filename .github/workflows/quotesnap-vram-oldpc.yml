@@ -1,4 +1,4 @@
-name: QuoteSnap OLD-PC production coordinator diagnostic
+name: QuoteSnap OLD-PC launch-chain diagnostic
 on:
   push:
     paths: ['.github/workflows/quotesnap-vram-oldpc.yml']
@@ -10,44 +10,26 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 4
     steps:
-      - name: Independently inspect coordinator process, status, log, and GPU
+      - name: Trace BAT, PowerShell, dashboard, status, and latest logs
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME RUNNER=$env:RUNNER_NAME"}
           $root='D:\QuoteSnap\AI\V3.3_AIO'
-          $status=Join-Path $root 'State\cluster_status.json'
           Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME NOW=$(Get-Date -Format o)"
-          Write-Host '=== V3.3 PYTHON PROCESSES ==='
-          $procs=Get-CimInstance Win32_Process|Where-Object{$_.Name-match'^python(.exe)?$'-and$_.CommandLine-match'D:\\QuoteSnap\\AI\\V3\.3_AIO'}
-          $procs|Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine|Format-List
-          if(-not$procs){throw 'NO_V33_PROCESS_RUNNING'}
-
-          Write-Host '=== CLUSTER STATUS ==='
-          if(-not(Test-Path $status)){throw 'CLUSTER_STATUS_MISSING'}
-          $item=Get-Item $status
-          Write-Host "STATUS_MTIME=$($item.LastWriteTime.ToString('o')) AGE_SECONDS=$([math]::Round(((Get-Date)-$item.LastWriteTime).TotalSeconds,1))"
-          $raw=Get-Content $status -Raw
-          Write-Host $raw
-          $s=$raw|ConvertFrom-Json
-          if(([string]$s.role).ToUpperInvariant()-ne'COORDINATOR'){throw "ROLE_NOT_COORDINATOR=$($s.role)"}
-          if([int]$s.canonical_step-lt10000){throw "CANONICAL_REGRESSED=$($s.canonical_step)"}
-          if(([string]$s.peer)-match'192\.168\.1\.110'){throw "SELF_PEER_DETECTED=$($s.peer)"}
-          if(((Get-Date)-$item.LastWriteTime).TotalSeconds-gt30){throw 'CLUSTER_STATUS_STALE'}
-
-          Write-Host '=== LATEST TRAINING LOG ==='
-          $log=Get-ChildItem "$root\Logs\training_*.log" -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 1
-          if(-not$log){throw 'TRAINING_LOG_MISSING'}
-          Write-Host "LOG=$($log.FullName) MTIME=$($log.LastWriteTime.ToString('o'))"
-          Get-Content $log.FullName -Tail 160
-          $roleLine=Select-String -Path $log.FullName -Pattern 'cluster_role=COORDINATOR' -SimpleMatch|Select-Object -Last 1
-          if(-not$roleLine){throw 'COORDINATOR_ROLE_LOG_MISSING'}
-          $batchLine=Select-String -Path $log.FullName -Pattern 'batch_autotune role=COORDINATOR' -SimpleMatch|Select-Object -Last 1
-          if(-not$batchLine){throw 'COORDINATOR_BATCH_AUTOTUNE_LOG_MISSING'}
-          Write-Host "ROLE_LINE=$($roleLine.Line)"
-          Write-Host "BATCH_LINE=$($batchLine.Line)"
-          if($batchLine.Line-notmatch'micro=64\s+accum=2\s+effective=128'){throw "COORDINATOR_BATCH_NOT_64X2=$($batchLine.Line)"}
-
+          Write-Host '=== MATCHING PROCESS TREE ==='
+          Get-CimInstance Win32_Process |
+            Where-Object { $_.Name -match 'python|powershell|pwsh|cmd|conhost' -and ($_.CommandLine -match 'QuoteSnap|V3\.3_AIO|aio_launcher|Launch_training') } |
+            Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | Format-List
+          Write-Host '=== STATUS ==='
+          $status=Join-Path $root 'State\cluster_status.json'
+          if(Test-Path $status){$i=Get-Item $status;Write-Host "MTIME=$($i.LastWriteTime.ToString('o')) AGE_S=$([math]::Round(((Get-Date)-$i.LastWriteTime).TotalSeconds,1))";Get-Content $status -Raw}else{Write-Host 'STATUS_MISSING'}
+          Write-Host '=== LATEST LOG FILES ==='
+          Get-ChildItem "$root\Logs" -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 8 Name,Length,LastWriteTime|Format-Table -AutoSize
+          $logs=Get-ChildItem "$root\Logs" -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 3
+          foreach($log in $logs){Write-Host "--- $($log.FullName) ---";Get-Content $log.FullName -Tail 160 -ErrorAction SilentlyContinue}
+          Write-Host '=== LAUNCHER/BAT HASHES ==='
+          Get-FileHash "$root\Launch_training.bat","$root\Runtime\bootstrap\aio_launcher.ps1","$root\Engines\ui\aio_dashboard.py","$root\Engines\orchestrator\aio_orchestrator.py" -Algorithm SHA256|Format-Table Path,Hash -AutoSize
           Write-Host '=== GPU ==='
           & nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu,power.draw --format=csv,noheader,nounits
-          Write-Host 'OLDPC_LIVE_COORDINATOR_DIAG_PASS'
+          Write-Host 'OLDPC_LAUNCH_CHAIN_DIAG_COMPLETE'
