@@ -10,7 +10,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     steps:
-      - name: Launch QuoteSnap on OLD-PC
+      - name: Launch and verify QuoteSnap on OLD-PC
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -20,12 +20,10 @@ jobs:
           if(-not(Test-Path "$root\Launch_training.bat")){ throw 'LAUNCHER_MISSING' }
           $owner=Get-Content "$root\State\root_owner.json" -Raw | ConvertFrom-Json
           if(([string]$owner.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){ throw "ROOT_OWNER_CONFLICT=$($owner.node_id)" }
+
           $live=Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|powershell|cmd' -and $_.CommandLine -match 'QuoteSnap\\AI\\V3\.3_AIO|aio_orchestrator|aio_dashboard|Launch_training' }
           $live=@($live | Where-Object { $_.ProcessId -ne $PID })
-          if($live.Count -gt 0){
-            Write-Host 'ALREADY_RUNNING'
-            $live | Select-Object ProcessId,Name,CommandLine | Format-List
-          } else {
+          if($live.Count -eq 0){
             $oldTracking=$env:RUNNER_TRACKING_ID
             $env:RUNNER_TRACKING_ID=''
             try {
@@ -34,10 +32,29 @@ jobs:
             } finally {
               $env:RUNNER_TRACKING_ID=$oldTracking
             }
+          } else {
+            Write-Host 'ALREADY_RUNNING'
+            $live | Select-Object ProcessId,Name,CommandLine | Format-List
           }
-          Start-Sleep -Seconds 4
-          Write-Host '=== PROCESSES ==='
+
+          $deadline=(Get-Date).AddSeconds(45)
+          $ok=$false
+          do {
+            Start-Sleep -Seconds 2
+            if(Test-Path "$root\State\cluster_status.json"){
+              try {
+                $s=Get-Content "$root\State\cluster_status.json" -Raw | ConvertFrom-Json
+                Write-Host "STATUS role=$($s.role) host=$($s.local_hostname) authority=$($s.authority_match) epoch=$($s.epoch) session=$($s.session_id) fallback=$($s.fallback) peer=$($s.peer)"
+                $hostkey=(([string]$s.local_hostname).ToLowerInvariant() -replace '[^a-z0-9]','')
+                if($s.role -eq 'COORDINATOR' -and $s.authority_match -eq $true -and $hostkey -eq 'desktopv9sci9v'){
+                  $ok=$true
+                  break
+                }
+              } catch {}
+            }
+          } while((Get-Date) -lt $deadline)
+
+          Write-Host '=== FINAL PROCESSES ==='
           Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python|powershell|cmd' -and $_.CommandLine -match 'QuoteSnap\\AI\\V3\.3_AIO|aio_orchestrator|aio_dashboard|Launch_training' } | Select-Object ProcessId,Name,CommandLine | Format-List
-          Write-Host '=== STATUS ==='
-          if(Test-Path "$root\State\cluster_status.json"){ Get-Content "$root\State\cluster_status.json" }
-          Write-Host 'OLDPC_LAUNCH_STEP_PASS'
+          if(-not $ok){ throw 'OLDPC_COORDINATOR_STATUS_NOT_VERIFIED' }
+          Write-Host 'OLDPC_COORDINATOR_LAUNCH_VERIFIED'
