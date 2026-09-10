@@ -1,0 +1,46 @@
+name: TEMP QuoteSnap V3.4.1 stop at durable checkpoint
+on:
+  push:
+    branches: ['deploy/quotesnap-v34-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v341-stop-at-checkpoint.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stop:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    steps:
+      - name: Wait for next durable BASE checkpoint then stop OLD trainer
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO';$dir=Join-Path $root 'Checkpoints\base'
+          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
+          $deadline=(Get-Date).AddMinutes(12);$chosen=$null
+          while((Get-Date)-lt$deadline){
+            $candidates=Get-ChildItem $dir -File -Filter 'quotesnap_base_step_*.pt' | ForEach-Object {
+              if($_.BaseName -match 'step_(\d+)$'){[pscustomobject]@{File=$_;Step=[int]$Matches[1]}}
+            } | Where-Object {$_.Step -ge 55000} | Sort-Object Step -Descending
+            if($candidates){
+              $candidate=$candidates[0]
+              $len1=$candidate.File.Length;Start-Sleep 3;$candidate.File.Refresh();$len2=$candidate.File.Length
+              if($len1 -gt 1000000 -and $len1 -eq $len2){$chosen=$candidate;break}
+            }
+            $status=Join-Path $root 'State\cluster_status.json'
+            if(Test-Path $status){try{$s=Get-Content $status -Raw|ConvertFrom-Json;Write-Host "WAIT can=$($s.canonical_step) round=$($s.round) workers=$(@($s.workers).Count)"}catch{}}
+            Start-Sleep 10
+          }
+          if(-not$chosen){throw 'NO_NEW_DURABLE_CHECKPOINT_BEFORE_TIMEOUT'}
+          $hash=(Get-FileHash $chosen.File.FullName -Algorithm SHA256).Hash
+          Write-Host "DURABLE_CHECKPOINT step=$($chosen.Step) path=$($chosen.File.FullName) sha=$hash size=$($chosen.File.Length)"
+          $live=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and ($_.CommandLine -match 'aio_orchestrator\.py|aio_dashboard\.py|aio_launcher\.ps1|Launch_training\.bat')}
+          $live|Sort-Object ProcessId -Descending|ForEach-Object{Write-Host "STOP PID=$($_.ProcessId) $($_.Name)";Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}
+          Start-Sleep 3
+          $after=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and ($_.CommandLine -match 'aio_orchestrator\.py|aio_dashboard\.py|aio_launcher\.ps1|Launch_training\.bat')}
+          if($after){throw 'OLD_TRAINER_STILL_RUNNING'}
+          $marker=@{step=$chosen.Step;path=$chosen.File.FullName;sha256=$hash;stopped_at=(Get-Date -Format o)}|ConvertTo-Json -Compress
+          Set-Content -LiteralPath 'D:\NetworkHub\QuoteSnap_V341_Stop_Gate.json' -Value $marker -Encoding UTF8
+          Write-Host "MARKER=$marker"
+          Write-Host 'V341_OLD_STOP_GATE_PASS'
