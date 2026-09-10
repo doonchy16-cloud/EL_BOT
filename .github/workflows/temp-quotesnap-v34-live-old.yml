@@ -11,21 +11,21 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 4
     steps:
-      - name: Snapshot OLD-PC live trainer state
+      - name: Sample OLD-PC coordinator across round transition
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
-          $root='D:\QuoteSnap\AI\V3.3_AIO'
-          Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME NOW=$(Get-Date -Format o)"
-          $status=Join-Path $root 'State\cluster_status.json'
-          if(Test-Path $status){Write-Host "STATUS_MTIME=$((Get-Item $status).LastWriteTime.ToString('o'))";Write-Host "STATUS=$(Get-Content $status -Raw)"}else{Write-Host 'STATUS_MISSING'}
-          $procs=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and ($_.CommandLine -match 'aio_orchestrator\.py|aio_dashboard\.py|aio_launcher\.ps1|Launch_training\.bat')}
-          if($procs){$procs|Select-Object ProcessId,Name,CommandLine|Format-List|Out-String|Write-Host}else{Write-Host 'NO_TRAINER_PROCESSES'}
-          Write-Host 'GPU:'
-          & nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu,power.draw --format=csv,noheader
-          $cp=Join-Path $root 'Checkpoints\base\quotesnap_base_step_000050000.pt'
-          if(Test-Path $cp){Write-Host "CP50000_SHA=$((Get-FileHash $cp -Algorithm SHA256).Hash)"}
-          $recent=Get-ChildItem (Join-Path $root 'Checkpoints\base') -Filter '*.pt' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name,Length,LastWriteTime
-          Write-Host ($recent|Format-Table -AutoSize|Out-String)
-          Write-Host 'OLD_LIVE_SNAPSHOT_DONE'
+          $root='D:\QuoteSnap\AI\V3.3_AIO';$status=Join-Path $root 'State\cluster_status.json'
+          for($i=1;$i -le 15;$i++){
+            $now=Get-Date -Format o
+            try{$s=Get-Content $status -Raw|ConvertFrom-Json}catch{$s=$null}
+            if($s){
+              $workers=@($s.workers)
+              $ws=($workers|ForEach-Object{"$($_.node_id):$($_.state):step=$($_.local_window_step):r=$($_.round):spd=$($_.steps_per_second)"}) -join ';'
+              Write-Host "SAMPLE=$i NOW=$now CAN=$($s.canonical_step) ROUND=$($s.round) CTRL=$($s.control_state) FB=$($s.fallback) WORKERS=$($workers.Count) [$ws]"
+            }else{Write-Host "SAMPLE=$i NOW=$now STATUS_UNREADABLE"}
+            & nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw --format=csv,noheader
+            Start-Sleep 10
+          }
+          Write-Host 'OLD_ROUND_TRACE_DONE'
