@@ -1,0 +1,75 @@
+name: TEMP QuoteSnap V3.4 OLD deploy
+on:
+  push:
+    branches: ['deploy/quotesnap-v34-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v34-old-deploy.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 12
+    steps:
+      - name: Deploy verified V3.4 patch on OLD-PC
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Write-Host "RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          $zip='D:\NetworkHub\QuoteSnap_V3.4_Production_Patch.zip'
+          $cp=Join-Path $root 'Checkpoints\base\quotesnap_base_step_000050000.pt'
+          $live=Get-CimInstance Win32_Process | Where-Object {$_.CommandLine -and ($_.CommandLine -match [regex]::Escape($root) -or $_.CommandLine -match 'aio_dashboard\.py|aio_orchestrator\.py')}
+          if($live){$live|Select-Object ProcessId,Name,CommandLine|Format-List|Out-String|Write-Host;throw 'OLD_TRAINER_NOT_STOPPED'}
+          $ownerPath=Join-Path $root 'State\root_owner.json'
+          if(-not(Test-Path $ownerPath)){throw 'ROOT_OWNER_MISSING'}
+          $owner=Get-Content $ownerPath -Raw|ConvertFrom-Json
+          if(([string]$owner.node_id).ToLowerInvariant() -ne 'desktopv9sci9v'){throw 'ROOT_OWNER_BAD'}
+          if(-not(Test-Path $zip)){throw 'PATCH_MISSING'}
+          $zh=(Get-FileHash $zip -Algorithm SHA256).Hash
+          Write-Host "PATCH_SHA=$zh"
+          if($zh -ne '62912DA8F352D2BB7649A39D7A75A281AAE90159F17871A2DB4B513A1E5142D6'){throw 'PATCH_SHA_BAD'}
+          if(-not(Test-Path $cp)){throw 'CHECKPOINT_50000_MISSING'}
+          $cb=(Get-FileHash $cp -Algorithm SHA256).Hash
+          Write-Host "CHECKPOINT_BEFORE=$cb"
+          if($cb -ne '9935DE5743106C0A39B334806D4CB4B6D473A28347BFFF04C37D11A60AA94F52'){throw 'CHECKPOINT_50000_HASH_BAD'}
+          $extract=Join-Path $env:RUNNER_TEMP ('qs_v34_old_'+[guid]::NewGuid().ToString('N'))
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+          $backup=Join-Path $root ('Backups\pre_v34_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
+          New-Item -ItemType Directory -Path $backup -Force|Out-Null
+          Get-ChildItem $extract -File -Recurse|ForEach-Object{
+            $rel=$_.FullName.Substring($extract.Length).TrimStart('\');$dst=Join-Path $root $rel
+            if(Test-Path $dst){$bak=Join-Path $backup $rel;New-Item -ItemType Directory -Path (Split-Path $bak -Parent) -Force|Out-Null;Copy-Item $dst $bak -Force}
+          }
+          Get-ChildItem $extract -File -Recurse|ForEach-Object{
+            $rel=$_.FullName.Substring($extract.Length).TrimStart('\');$dst=Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force|Out-Null;Copy-Item $_.FullName $dst -Force
+          }
+          $expected=@{
+            'Config\aio.json'='96924878043DCE785BE195F82FE334951571B86031C9CDF7DD3B72764434993F';
+            'Config\cluster.json'='FB3E7BA0C54A6570ADEAA3D88216172C312F44408D20124C5D7D3979E4C6F7C9';
+            'Engines\cluster\cluster_engine.py'='6A85496FF523097089506A1093073E827E2FD57A43F5EEDB776543A677DE2492';
+            'Engines\cluster\control_plane.py'='805F505727A942A201523C7FFA825EFD5707352511C8F21BC6F4E1B59159B7B2';
+            'Engines\cluster\coordinator.py'='91E60ED83C69DDAF01C6F2828069FE7817C5F36D2D5B758817871CAB5AE7AC7A';
+            'Engines\cluster\sharding.py'='C70B8F303AB22DB8AC5E887DB7C41843E3AEA9AF255DC25D5037F805D33888AE';
+            'Engines\cluster\status.py'='3A1E6DC6169A5A1C545B1CD5031F11AF9DF04DA78547294FCE4AFDCD3873FABA';
+            'Engines\cluster\weights.py'='CC086AC7B10D65F96E2A99C23337220D2EC212231DEA156FF3CF4122846C1BC9';
+            'Engines\cluster\worker.py'='7B998479E9FD68E05823658398D9C8D903C5C30E364E370E3F35B22CAE2206E9';
+            'Engines\orchestrator\aio_orchestrator.py'='351A045AC3C568EAF2CAEF19E2496610F365A072E26F06F7EC7455806E1BCE8F';
+            'Engines\trainer\core\training_loop.py'='411922EF7AA56FFF993FE1D0C0857CB3073197568F95E9A748FB82DEF64BED0E';
+            'Engines\ui\aio_dashboard.py'='83AAF5F37CDA8A41D5C6620939AD3BD63B74F488F0DDC4EF248437BF5D7424B0';
+            'Launch_training.bat'='087C73E5634C32A313267ED6C499FF2FC7812AC0B92CA755831BB1800451F053';
+            'Runtime\bootstrap\aio_launcher.ps1'='2C07AD0CCA0E2CF46F836A48C5FEF80F8DC9C07063A89B431A328F4D6FAE3852'
+          }
+          foreach($rel in $expected.Keys){$p=Join-Path $root $rel;$h=(Get-FileHash $p -Algorithm SHA256).Hash;Write-Host "$rel=$h";if($h-ne$expected[$rel]){throw "HASH_FAIL=$rel"}}
+          $cfg=Get-Content (Join-Path $root 'Config\cluster.json') -Raw|ConvertFrom-Json
+          if(([string]$cfg.version)-ne'3.4' -or ([string]$cfg.software_version)-ne'3.4.0' -or [int]$cfg.sync_window_steps-ne250){throw 'V34_CONFIG_BAD'}
+          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
+          if(-not(Test-Path $py)){throw 'RUNTIME_PYTHON_MISSING'}
+          & $py -m compileall -q (Join-Path $root 'Engines');if($LASTEXITCODE-ne0){throw 'COMPILE_FAILED'}
+          Push-Location $root
+          try{& $py 'Engines\orchestrator\aio_orchestrator.py' --self-test;if($LASTEXITCODE-ne0){throw 'ORCH_TEST_FAIL'};& $py 'Engines\ui\aio_dashboard.py' --self-test;if($LASTEXITCODE-ne0){throw 'DASH_TEST_FAIL'}}finally{Pop-Location}
+          $ca=(Get-FileHash $cp -Algorithm SHA256).Hash
+          if($ca-ne$cb){throw 'CHECKPOINT_CHANGED'}
+          Write-Host "V34_DEPLOY_OLD_PASS BACKUP=$backup CHECKPOINT=$ca"
