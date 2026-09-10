@@ -1,0 +1,23 @@
+{
+  "version": "3.4.2",
+  "name": "QuoteSnap AI Trainer V3.4.2 Adaptive Multi-Worker Cluster AIO",
+  "stage_order": [
+    "BASE",
+    "CPT",
+    "SFT",
+    "SAFETY",
+    "PREF"
+  ],
+  "persistent_runtime": "%LOCALAPPDATA%\\QuoteSnap\\Runtime",
+  "dependency_policy_source": "Runtime/dependencies/requirements.json",
+  "expected_parameters": 8428032,
+  "training_runtime_data_separation": true,
+  "cluster_local_sgd": true,
+  "cluster_control_plane": true,
+  "cluster_protocol_version": 2,
+  "cluster_sync_window_steps": 250,
+  "ui_redraw_ms": 50,
+  "metrics_refresh_ms": 50,
+  "gpu_refresh_ms": 500,
+  "preferred_coordinator_hostname": "DESKTOP_v9sci9v"
+}

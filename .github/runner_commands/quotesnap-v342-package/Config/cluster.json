@@ -1,0 +1,42 @@
+{
+  "enabled": true,
+  "version": "3.4",
+  "cluster_id": "quotesnap-main",
+  "role": "auto",
+  "authority_mode": "preferred_primary",
+  "preferred_coordinator_hostname": "DESKTOP_v9sci9v",
+  "udp_discovery_port": 48570,
+  "tcp_port": 48571,
+  "static_peers": [
+    {
+      "host": "192.168.1.110",
+      "port": 48571
+    },
+    {
+      "host": "100.110.81.9",
+      "port": 48571
+    }
+  ],
+  "discovery_timeout_seconds": 1.0,
+  "beacon_interval_seconds": 1.0,
+  "listener_poll_seconds": 0.5,
+  "handshake_timeout_seconds": 5.0,
+  "connect_timeout_seconds": 3.0,
+  "reconnect_min_seconds": 1.0,
+  "reconnect_max_seconds": 8.0,
+  "sync_window_steps": 250,
+  "wire_parent_dtype": "float32",
+  "wire_update_dtype": "float16",
+  "max_payload_bytes": 134217728,
+  "round_timeout_seconds": 900.0,
+  "heartbeat_steps": 10,
+  "max_worker_delta_norm_factor": 100.0,
+  "single_gpu_fallback": true,
+  "software_version": "3.4.2",
+  "session_freshness_seconds": 30.0,
+  "session_keepalive_seconds": 5.0,
+  "adaptive_round_balancing": true,
+  "adaptive_min_window_ratio": 0.5,
+  "adaptive_max_window_ratio": 2.0,
+  "expected_worker_count": 2
+}
