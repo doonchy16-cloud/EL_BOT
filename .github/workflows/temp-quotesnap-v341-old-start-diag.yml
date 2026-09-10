@@ -1,0 +1,38 @@
+name: TEMP QuoteSnap V3.4.1 OLD start diagnostic
+on:
+  push:
+    branches: ['deploy/quotesnap-v341-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v341-old-start-diag.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 4
+    steps:
+      - name: Diagnose OLD startup without changing trainer
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Continue'
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          Write-Host "NOW=$(Get-Date -Format o)"
+          $status=Join-Path $root 'State\cluster_status.json'
+          if(Test-Path $status){Write-Host "STATUS_MTIME=$((Get-Item $status).LastWriteTime.ToString('o'))";Write-Host "STATUS=$(Get-Content $status -Raw)"}
+          Write-Host '=== PROCESSES ==='
+          $procs=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and ($_.CommandLine -match [regex]::Escape($root) -or $_.CommandLine -match 'QuoteSnap')}
+          if($procs){$procs|Select-Object ProcessId,Name,CreationDate,CommandLine|Format-List|Out-String|Write-Host}else{Write-Host 'NONE'}
+          Write-Host '=== RECENT STATE ==='
+          Get-ChildItem (Join-Path $root 'State') -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 15 Name,Length,LastWriteTime|Format-Table -AutoSize|Out-String|Write-Host
+          Write-Host '=== RECENT LOG FILES ==='
+          $dirs=@((Join-Path $root 'Logs'),(Join-Path $root 'Runtime'),$root)
+          $logs=@()
+          foreach($d in $dirs){if(Test-Path $d){$logs += Get-ChildItem $d -File -Recurse -ErrorAction SilentlyContinue|Where-Object{$_.Extension -in '.log','.txt','.err','.out'}|Sort-Object LastWriteTime -Descending|Select-Object -First 12}}
+          $logs=$logs|Sort-Object FullName -Unique|Sort-Object LastWriteTime -Descending|Select-Object -First 12
+          $logs|Select-Object FullName,Length,LastWriteTime|Format-Table -AutoSize|Out-String|Write-Host
+          foreach($f in ($logs|Select-Object -First 5)){Write-Host "=== TAIL $($f.FullName) ===";Get-Content $f.FullName -Tail 120 -ErrorAction SilentlyContinue|Write-Host}
+          Write-Host '=== LAUNCHER SOURCE HEAD ==='
+          Get-Content (Join-Path $root 'Launch_training.bat') -TotalCount 120|Write-Host
+          Get-Content (Join-Path $root 'Runtime\bootstrap\aio_launcher.ps1') -TotalCount 220|Write-Host
+          Write-Host 'OLD_START_DIAG_DONE'
