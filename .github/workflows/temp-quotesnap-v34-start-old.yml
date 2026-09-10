@@ -1,0 +1,34 @@
+name: TEMP QuoteSnap V3.4 start OLD
+on:
+  push:
+    branches: ['deploy/quotesnap-v34-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v34-start-old.yml']
+permissions:
+  contents: read
+jobs:
+  start:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Start OLD-PC V3.4 coordinator
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO';$status=Join-Path $root 'State\cluster_status.json';$cp=Join-Path $root 'Checkpoints\base\quotesnap_base_step_000050000.pt'
+          $cfg=Get-Content (Join-Path $root 'Config\cluster.json') -Raw|ConvertFrom-Json
+          if(([string]$cfg.version)-ne'3.4' -or ([string]$cfg.software_version)-ne'3.4.0'){throw 'NOT_V34'}
+          $ch=(Get-FileHash $cp -Algorithm SHA256).Hash;if($ch-ne'9935DE5743106C0A39B334806D4CB4B6D473A28347BFFF04C37D11A60AA94F52'){throw 'CHECKPOINT_BAD'}
+          $live=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match 'aio_orchestrator\.py'}
+          if($live){throw 'OLD_ALREADY_RUNNING'}
+          $launch=Get-Date;$env:RUNNER_TRACKING_ID='';Start-Process -FilePath (Join-Path $root 'Launch_training.bat') -WorkingDirectory $root
+          $deadline=(Get-Date).AddSeconds(120);$good=$null
+          while((Get-Date)-lt$deadline){
+            if(Test-Path $status){try{$s=Get-Content $status -Raw|ConvertFrom-Json}catch{$s=$null};if($s -and (Get-Item $status).LastWriteTime -ge $launch.AddSeconds(-2)){Write-Host "STATUS=$($s|ConvertTo-Json -Compress -Depth 6)";if(([string]$s.role).ToUpperInvariant()-eq'COORDINATOR' -and $s.authority_match-eq$true){$good=$s;break}}}
+            Start-Sleep 2
+          }
+          if(-not$good){throw 'COORDINATOR_START_TIMEOUT'}
+          if([int]$good.canonical_step -lt 50000){throw "CANONICAL_REGRESSION=$($good.canonical_step)"}
+          $proc=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match 'aio_orchestrator\.py'}
+          if(-not$proc){throw 'ORCHESTRATOR_NOT_RUNNING'}
+          Write-Host "V34_OLD_START_PASS canonical=$($good.canonical_step) epoch=$($good.epoch) state=$($good.control_state)"
