@@ -1,0 +1,59 @@
+name: TEMP QuoteSnap V3.4.2 GREEN staging OLD
+on:
+  push:
+    branches: ['deploy/quotesnap-v342-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v342-green-old.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  green:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: deploy/quotesnap-v342-20260909
+      - name: Validate V3.4.2 in isolated staging tree
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_NAME -ne 'EL-bot-win'){throw "WRONG_RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"}
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $live='D:\QuoteSnap\AI\V3.3_AIO'
+          $pkg=Join-Path $env:GITHUB_WORKSPACE '.github\runner_commands\quotesnap-v342-package'
+          if(-not(Test-Path $pkg)){throw 'V342_PACKAGE_MISSING'}
+          $liveProcs=@(Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($live) -and $_.CommandLine -match 'aio_orchestrator\.py'})
+          Write-Host "LIVE_ORCH_COUNT=$($liveProcs.Count) LIVE_TRAINER_UNTOUCHED=true"
+          $stage=Join-Path $env:RUNNER_TEMP ('qs_v342_green_'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $stage -Force|Out-Null
+          Copy-Item (Join-Path $live 'Engines') (Join-Path $stage 'Engines') -Recurse -Force
+          Copy-Item (Join-Path $live 'Config') (Join-Path $stage 'Config') -Recurse -Force
+          Copy-Item (Join-Path $live 'Tests') (Join-Path $stage 'Tests') -Recurse -Force
+          Get-ChildItem $pkg -File -Recurse|ForEach-Object{
+            $rel=$_.FullName.Substring($pkg.Length).TrimStart('\')
+            $dst=Join-Path $stage $rel
+            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force|Out-Null
+            Copy-Item $_.FullName $dst -Force
+          }
+          $py=Join-Path $env:LOCALAPPDATA 'QuoteSnap\Runtime\venv\Scripts\python.exe'
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          $env:PYTHONPATH=$stage
+          & $py -m compileall -q (Join-Path $stage 'Engines')
+          if($LASTEXITCODE-ne0){throw 'V342_COMPILE_FAILED'}
+          Push-Location $stage
+          try{
+            & $py 'Tests\python\test_v342_status_ui.py'
+            if($LASTEXITCODE-ne0){throw 'V342_CONTRACT_TEST_FAILED'}
+            & $py 'Engines\orchestrator\aio_orchestrator.py' --self-test
+            if($LASTEXITCODE-ne0){throw 'V342_ORCH_SELFTEST_FAILED'}
+            & $py 'Engines\ui\aio_dashboard.py' --self-test
+            if($LASTEXITCODE-ne0){throw 'V342_DASH_SELFTEST_FAILED'}
+          }finally{Pop-Location}
+          $aio=Get-Content (Join-Path $stage 'Config\aio.json') -Raw|ConvertFrom-Json
+          $cfg=Get-Content (Join-Path $stage 'Config\cluster.json') -Raw|ConvertFrom-Json
+          if(([string]$aio.version)-ne'3.4.2'){throw 'AIO_VERSION_BAD'}
+          if(([string]$cfg.version)-ne'3.4'){throw 'PROTOCOL_VERSION_CHANGED'}
+          if(([string]$cfg.software_version)-ne'3.4.2'){throw 'SOFTWARE_VERSION_BAD'}
+          if([int]$cfg.expected_worker_count-ne2){throw 'WORKER_COUNT_CONTRACT_BAD'}
+          Write-Host 'V342_GREEN_STAGING_PASS live_tree_untouched=true protocol=3.4 software=3.4.2'
