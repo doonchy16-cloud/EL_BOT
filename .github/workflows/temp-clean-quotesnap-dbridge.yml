@@ -1,0 +1,33 @@
+name: TEMP remove QuoteSnap refs from Doonchy_Bridge
+on:
+  push:
+    branches: ['cleanup/remove-quotesnap-dbridge-20260909']
+    paths: ['.github/workflows/temp-clean-quotesnap-dbridge.yml']
+permissions:
+  contents: read
+jobs:
+  cleanup:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    steps:
+      - name: Delete QuoteSnap branches from Doonchy_Bridge
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V') { throw "WRONG_MACHINE=$env:COMPUTERNAME" }
+          $repo = 'doonchy16-cloud/Doonchy_Bridge'
+          $refs = @(
+            'heads/deploy/quotesnap-v34-20260909',
+            'heads/deploy/quotesnap-v341-20260909',
+            'heads/deploy/quotesnap-v341-stop-msi-20260909'
+          )
+          gh auth status
+          foreach ($ref in $refs) {
+            Write-Host "DELETE_REF=$ref"
+            gh api --method DELETE "repos/$repo/git/refs/$ref"
+            if ($LASTEXITCODE -ne 0) { throw "DELETE_FAILED=$ref" }
+          }
+          $remaining = gh api "repos/$repo/git/matching-refs/heads/deploy/quotesnap" --jq 'length'
+          Write-Host "REMAINING_QUOTESNAP_REFS=$remaining"
+          if ([int]$remaining -ne 0) { throw 'QUOTESNAP_REFS_REMAIN' }
+          Write-Host 'DOONCHY_BRIDGE_QUOTESNAP_REFS_REMOVED'
