@@ -1,0 +1,25 @@
+name: TEMP QuoteSnap V3.4.1 live status
+on:
+  push:
+    branches: ['deploy/quotesnap-v341-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v341-live-status.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 2
+    steps:
+      - name: Read OLD live cluster status
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO';$p=Join-Path $root 'State\cluster_status.json'
+          if(-not(Test-Path $p)){throw 'NO_STATUS'}
+          $s=Get-Content $p -Raw|ConvertFrom-Json
+          Write-Host "MTIME=$((Get-Item $p).LastWriteTime.ToString('o'))"
+          Write-Host "STATUS=$($s|ConvertTo-Json -Compress -Depth 8)"
+          $procs=Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match 'aio_orchestrator\.py'}
+          Write-Host "ORCH_COUNT=$(@($procs).Count)"
