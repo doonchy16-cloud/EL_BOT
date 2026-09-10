@@ -1,0 +1,47 @@
+name: TEMP QuoteSnap V3.4.2 inspect OLD
+on:
+  push:
+    branches: ['deploy/quotesnap-v342-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v342-inspect-old.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Capture installed V3.4.1 source and tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_NAME -ne 'EL-bot-win'){throw "WRONG_RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"}
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          if(-not(Test-Path $root)){throw 'TRAINER_ROOT_MISSING'}
+          $stage=Join-Path $env:RUNNER_TEMP ('qs342_capture_'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $stage -Force|Out-Null
+          $files=@()
+          $files += Get-ChildItem (Join-Path $root 'Engines\cluster') -File -Filter '*.py' -ErrorAction Stop
+          $files += Get-Item (Join-Path $root 'Engines\ui\aio_dashboard.py') -ErrorAction Stop
+          $files += Get-Item (Join-Path $root 'Engines\orchestrator\aio_orchestrator.py') -ErrorAction Stop
+          $files += Get-Item (Join-Path $root 'Config\cluster.json') -ErrorAction Stop
+          $files += Get-Item (Join-Path $root 'Config\aio.json') -ErrorAction Stop
+          $testFiles=Get-ChildItem $root -Recurse -File -Include 'test_*.py','*_test.py' -ErrorAction SilentlyContinue
+          $files += $testFiles
+          $files=$files|Sort-Object FullName -Unique
+          foreach($f in $files){
+            $rel=$f.FullName.Substring($root.Length).TrimStart('\')
+            $dst=Join-Path $stage $rel
+            New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force|Out-Null
+            Copy-Item -LiteralPath $f.FullName -Destination $dst -Force
+          }
+          $manifest=$files|ForEach-Object{$rel=$_.FullName.Substring($root.Length).TrimStart('\');[pscustomobject]@{path=$rel;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash;size=$_.Length}}
+          $manifest|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $stage 'capture_manifest.json') -Encoding UTF8
+          $zip=Join-Path $env:RUNNER_TEMP ('QuoteSnap_V341_SourceCapture_'+[guid]::NewGuid().ToString('N')+'.zip')
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+          $hash=(Get-FileHash $zip -Algorithm SHA256).Hash
+          $b64=[Convert]::ToBase64String([IO.File]::ReadAllBytes($zip))
+          Write-Host "QS342_CAPTURE_META sha=$hash bytes=$((Get-Item $zip).Length) files=$($files.Count) tests=$($testFiles.Count)"
+          Write-Host 'QS342_CAPTURE_BEGIN'
+          for($i=0;$i-lt$b64.Length;$i+=6000){Write-Host $b64.Substring($i,[Math]::Min(6000,$b64.Length-$i))}
+          Write-Host 'QS342_CAPTURE_END'
