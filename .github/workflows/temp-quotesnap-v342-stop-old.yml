@@ -1,0 +1,65 @@
+name: TEMP QuoteSnap V3.4.2 OLD checkpoint stop gate
+on:
+  push:
+    branches: ['deploy/quotesnap-v342-20260909']
+    paths: ['.github/workflows/temp-quotesnap-v342-stop-old.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stop:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 25
+    steps:
+      - name: Wait for new durable checkpoint and stop OLD coordinator
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_NAME -ne 'EL-bot-win'){throw "WRONG_RUNNER=$env:RUNNER_NAME MACHINE=$env:COMPUTERNAME"}
+          if($env:COMPUTERNAME -ine 'DESKTOP-V9SCI9V'){throw "WRONG_MACHINE=$env:COMPUTERNAME"}
+          $root='D:\QuoteSnap\AI\V3.3_AIO'
+          $cfg=Get-Content (Join-Path $root 'Config\cluster.json') -Raw|ConvertFrom-Json
+          $aio=Get-Content (Join-Path $root 'Config\aio.json') -Raw|ConvertFrom-Json
+          if(([string]$cfg.version)-ne'3.4' -or ([string]$cfg.software_version)-ne'3.4.1' -or ([string]$aio.version)-ne'3.4.1'){throw 'PREDEPLOY_VERSION_NOT_V341'}
+          $statusPath=Join-Path $root 'State\cluster_status.json'
+          if(Test-Path $statusPath){Write-Host "START_STATUS=$(Get-Content $statusPath -Raw)"}
+          $matchPattern='aio_orchestrator\.py|aio_dashboard\.py|aio_launcher\.ps1|Launch_training\.bat'
+          $live=@(Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match $matchPattern})
+          if(-not$live){throw 'OLD_TRAINER_NOT_RUNNING'}
+          Write-Host "START_LIVE_PROCESS_COUNT=$($live.Count)"
+          $dir=Join-Path $root 'Checkpoints\base'
+          function Get-Checkpoints {
+            @(Get-ChildItem $dir -File -Filter 'quotesnap_base_step_*.pt' -ErrorAction Stop | ForEach-Object {
+              if($_.BaseName -match 'step_(\d+)$'){[pscustomobject]@{File=$_;Step=[int64]$Matches[1]}}
+            } | Sort-Object Step)
+          }
+          $before=Get-Checkpoints
+          if(-not$before){throw 'NO_BASE_CHECKPOINTS'}
+          $baseline=$before[-1]
+          $baselineHash=(Get-FileHash $baseline.File.FullName -Algorithm SHA256).Hash
+          Write-Host "BASELINE_CHECKPOINT step=$($baseline.Step) sha=$baselineHash path=$($baseline.File.FullName)"
+          $deadline=(Get-Date).AddMinutes(20)
+          $chosen=$null
+          while((Get-Date)-lt$deadline){
+            $new=@(Get-Checkpoints|Where-Object{$_.Step -gt $baseline.Step})
+            if($new){
+              $candidate=$new[-1]
+              $size1=$candidate.File.Length;$hash1=(Get-FileHash $candidate.File.FullName -Algorithm SHA256).Hash
+              Start-Sleep 3
+              $fresh=Get-Item $candidate.File.FullName
+              $size2=$fresh.Length;$hash2=(Get-FileHash $fresh.FullName -Algorithm SHA256).Hash
+              if($size1 -gt 0 -and $size1-eq$size2 -and $hash1-eq$hash2){$chosen=[pscustomobject]@{File=$fresh;Step=$candidate.Step;Hash=$hash2};break}
+            }
+            Start-Sleep 5
+          }
+          if(-not$chosen){throw 'NO_NEW_STABLE_DURABLE_CHECKPOINT_BEFORE_TIMEOUT'}
+          Write-Host "DURABLE_CHECKPOINT step=$($chosen.Step) sha=$($chosen.Hash) size=$($chosen.File.Length) path=$($chosen.File.FullName)"
+          $live=@(Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match $matchPattern})
+          $live|Sort-Object ProcessId -Descending|ForEach-Object{Write-Host "STOP PID=$($_.ProcessId) NAME=$($_.Name)";Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}
+          Start-Sleep 4
+          $remain=@(Get-CimInstance Win32_Process|Where-Object{$_.CommandLine -and $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match $matchPattern})
+          if($remain){throw "OLD_TRAINER_STOP_INCOMPLETE count=$($remain.Count)"}
+          $marker=[ordered]@{software_before='3.4.1';checkpoint_step=$chosen.Step;checkpoint_path=$chosen.File.FullName;checkpoint_sha256=$chosen.Hash;stopped_at=(Get-Date -Format o)}|ConvertTo-Json -Compress
+          Set-Content -LiteralPath 'D:\NetworkHub\QuoteSnap_V342_Stop_Gate.json' -Value $marker -Encoding UTF8
+          Write-Host "MARKER=$marker"
+          Write-Host 'V342_OLD_STOP_GATE_PASS'
